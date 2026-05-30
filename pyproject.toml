@@ -1,0 +1,40 @@
+[project]
+name = "dj-htmx-cbv"
+version = "0.1.0"
+description = "Class-based-view ergonomics for Django + HTMX 4, layered on django-htmx"
+authors = [{name = "William Talcott"}]
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+dependencies = [
+    "django>=4.2",
+    # Provides request.htmx, trigger_client_event(), reswap/retarget/reselect, etc.
+    # The HX-* header contract is unchanged in HTMX 4, so this is forward-compatible.
+    "django-htmx>=1.17",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.1.0",
+    "pytest>=7.0",
+    "pytest-django>=4.5",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["dj_htmx_cbv"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "Q", "UP", "W"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "tests.settings"
+python_files = "test_*.py"

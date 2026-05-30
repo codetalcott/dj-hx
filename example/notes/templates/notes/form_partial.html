@@ -1,0 +1,7 @@
+{# Fragment served to htmx form submits. The form targets itself (default target) and
+   replaces itself with the response — errors on invalid, a fresh form on success. #}
+<form id="note-form" hx-post="{% url 'note_create' %}" hx-swap="outerHTML">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Add note</button>
+</form>
