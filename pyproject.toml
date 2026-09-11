@@ -1,19 +1,45 @@
 [project]
-name = "dj-htmx-cbv"
+name = "dj-hx"
 version = "0.1.0"
-description = "Class-based-view ergonomics for Django + HTMX 4, layered on django-htmx"
+description = "Handler-first htmx 4 for Django: the view names the outcome, the template keeps the controls"
 authors = [{name = "William Talcott"}]
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
+keywords = ["django", "htmx", "hypermedia", "partials", "htmx4"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Web Environment",
+    "Framework :: Django",
+    "Framework :: Django :: 4.2",
+    "Framework :: Django :: 5.0",
+    "Framework :: Django :: 5.1",
+    "Framework :: Django :: 5.2",
+    "Framework :: Django :: 6.0",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP",
+    "Typing :: Typed",
+]
 dependencies = [
     "django>=4.2",
-    # Provides request.htmx, trigger_client_event(), reswap/retarget/reselect, etc.
-    # The HX-* header contract is unchanged in HTMX 4, so this is forward-compatible.
-    "django-htmx>=1.17",
 ]
 
+[project.urls]
+Homepage = "https://github.com/codetalcott/dj-hx"
+Source = "https://github.com/codetalcott/dj-hx"
+Changelog = "https://github.com/codetalcott/dj-hx/blob/main/CHANGELOG.md"
+Issues = "https://github.com/codetalcott/dj-hx/issues"
+
 [project.optional-dependencies]
+# Template partials on Django 4.2 to 5.x; Django 6.0 has them built in.
+partials = ["django-template-partials"]
+browser = ["playwright"]
 dev = [
     "ruff>=0.1.0",
     "pytest>=7.0",
@@ -25,16 +51,15 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["dj_htmx_cbv"]
+packages = ["dj_hx"]
 
 [tool.ruff]
-line-length = 100
+line-length = 120
 target-version = "py310"
+# Vendored from hx-flask verbatim; formatted there.
+exclude = ["dj_hx/hxlint.py", "dj_hx/hx_vocab.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "Q", "UP", "W"]
-ignore = ["E501"]
-
-[tool.pytest.ini_options]
-DJANGO_SETTINGS_MODULE = "tests.settings"
-python_files = "test_*.py"
+# N818: the exception names mirror hx-flask (HxPageIntoFragment, HxNoSwap) on purpose.
+ignore = ["E501", "N818"]

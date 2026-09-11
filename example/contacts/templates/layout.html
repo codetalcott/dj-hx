@@ -1,0 +1,31 @@
+{% load static %}<!doctype html>
+<html lang="">
+<head>
+    <title>Contact App</title>
+    <link rel="stylesheet" href="{% static 'site.css' %}">
+    <link rel="stylesheet" href="{% static 'missing.css' %}">
+    <script src="{% static 'js/htmx-4.0.0.js' %}"></script>
+    <script src="{% static 'js/hx-live-4.0.0.js' %}"></script>
+</head>
+{# Under htmx 4 an attribute reaches descendants only with :inherited. The CSRF #}
+{# header rides along on every htmx request, including the query-string DELETEs. #}
+<body hx-boost:inherited="true" hx-headers:inherited='{"X-CSRFToken": "{{ csrf_token }}"}'>
+<main>
+    <header>
+        <h1>
+            <all-caps>contacts.app</all-caps>
+            <sub-title>A Demo Contacts Application</sub-title>
+        </h1>
+    </header>
+    {# A partial, so a fragment response can update it too (HX_MESSAGES_TEMPLATE). #}
+    {% partialdef messages inline %}
+    <div id="messages">
+        {% for message in messages %}
+        <div class="flash">{{ message }}</div>
+        {% endfor %}
+    </div>
+    {% endpartialdef %}
+    {% block content %}{% endblock %}
+</main>
+</body>
+</html>

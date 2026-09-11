@@ -1,16 +1,10 @@
 #!/usr/bin/env python
-"""Django's command-line utility for the dj-htmx-cbv example."""
-
 import os
 import sys
 
-
-def main():
-    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "example.settings")
+if __name__ == "__main__":
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "contactapp.settings")
     from django.core.management import execute_from_command_line
 
     execute_from_command_line(sys.argv)
-
-
-if __name__ == "__main__":
-    main()
