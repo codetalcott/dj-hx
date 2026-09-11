@@ -63,7 +63,8 @@ def guard(request, response) -> list[HxError]:
         found.append(
             HxProtocolError(
                 f"{who(request)}: HX-Request is set but HX-Request-Type is not; this needs htmx 4. "
-                "A proxy stripping headers, or an htmx 2 client, are the usual causes."
+                "A proxy stripping headers, or an htmx 2 client, are the usual causes. "
+                'HX_REQUEST_TYPE_FALLBACK = "full" answers such requests with the page instead of raising.'
             )
         )
         return found

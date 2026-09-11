@@ -221,6 +221,17 @@ def test_htmx_request_without_request_type_is_a_protocol_error(client):
         client.get("/lib/plain/", HTTP_HX_REQUEST="true")  # raised by the guard
 
 
+@override_settings(HX_REQUEST_TYPE_FALLBACK="full")
+def test_a_fallback_answers_a_stripped_header_and_is_still_recorded():
+    # A proxy that drops HX-Request-Type must not be a 500: the page goes out,
+    # and the guard's finding is still on the response for the log.
+    r = HxTestClient(strict=False).get("/lib/", HTTP_HX_REQUEST="true")
+    assert r.status_code == 200 and b"<html>" in r.content
+    assert [type(f) for f in r.hx_findings] == [HxProtocolError]
+    with override_settings(HX_REQUEST_TYPE_FALLBACK="partial"):
+        assert b"<html>" not in HxTestClient(strict=False).get("/lib/", HTTP_HX_REQUEST="true").content
+
+
 # ------------------------------------------------------------------ text, provenance
 
 

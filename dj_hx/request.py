@@ -9,6 +9,7 @@ reads them, on purpose: a handler that branches on an element id is dead code
 the moment the template is edited.
 """
 
+from django.conf import settings
 from django.utils.cache import patch_vary_headers
 
 from .errors import HxProtocolError
@@ -37,16 +38,28 @@ def is_htmx(request) -> bool:
 
 
 def request_type(request) -> str | None:
-    """``"full"``, ``"partial"``, or ``None`` for a browser. Raises on htmx without htmx 4."""
+    """
+    ``"full"``, ``"partial"``, or ``None`` for a browser.
+
+    An htmx request without ``HX-Request-Type`` is not htmx 4 and raises, so
+    the problem is found in the first test rather than in production. A
+    deployment whose proxy strips the header can set
+    ``HX_REQUEST_TYPE_FALLBACK = "full"`` (or ``"partial"``) to answer as that
+    type instead; the guard still records the finding on every such request.
+    """
     if not is_htmx(request):
         return None
     rtype = request.headers.get(REQUEST_TYPE_HEADER)
-    if rtype not in ("full", "partial"):
-        raise HxProtocolError(
-            f"{who(request)}: HX-Request is set but HX-Request-Type is not; this needs htmx 4. "
-            "A proxy stripping headers, or an htmx 2 client, are the usual causes."
-        )
-    return rtype
+    if rtype in ("full", "partial"):
+        return rtype
+    fallback = getattr(settings, "HX_REQUEST_TYPE_FALLBACK", None)
+    if fallback in ("full", "partial"):
+        return fallback
+    raise HxProtocolError(
+        f"{who(request)}: HX-Request is set but HX-Request-Type is not; this needs htmx 4. "
+        "A proxy stripping headers, or an htmx 2 client, are the usual causes. "
+        'HX_REQUEST_TYPE_FALLBACK = "full" answers such requests with the page instead of raising.'
+    )
 
 
 def wants_page(request) -> bool:
