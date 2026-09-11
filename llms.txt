@@ -1,0 +1,438 @@
+# dj-hx
+
+> Handler-first htmx 4 for Django. The view names the outcome with a verb (`render`, `page`, `fragment`,
+> `invalid`, `redirect`, `removed`, `text`); the template keeps every request-side control; fragments are
+> `{% partialdef %}` regions of the page template. Nothing depends on django-htmx. Every way htmx 4 fails
+> silently is turned into a raised or recorded error with a message that says what to change.
+
+Facts to hold while writing code against this package:
+
+- Requires htmx **4** (`HX-Request-Type` header). htmx 1/2 idioms are rejected by a lint that runs on every
+  test-client response. Django 4.2 to 6.0, Python 3.10+.
+- The only client fact a handler reads is `HX-Request-Type`: `full` (browser, boosted link, or a control
+  whose target is `body` or that sets `hx-select`) or `partial` (a control targeting an element). Never
+  read `HX-Source` or `HX-Target`; never branch on an element id.
+- One template per resource. A fragment is a named `{% partialdef name inline %}` region of that page
+  template. A partial name containing a dot (`rows.html`) is a separate file instead.
+- Any partial delivered as an `<hx-partial>` (`.partial("count")`, the messages partial) must have exactly
+  one root element whose `id` equals the partial's name.
+- Verbs *raise* when the mistake is certain at call time. Everything else is *recorded* on
+  `response.hx_findings`, logged to the `dj_hx` logger, and raised by `HxTestClient`. Production never 500s
+  on a recorded finding.
+
+## Install
+
+```python
+INSTALLED_APPS = [..., "django.contrib.messages", "dj_hx", ...]
+
+MIDDLEWARE = [
+    ...,
+    "django.middleware.common.CommonMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "dj_hx.middleware.HxMiddleware",          # AFTER MessageMiddleware (check dj_hx.E002)
+]
+
+HX_MESSAGES_TEMPLATE = "layout.html#messages"  # flash messages bridged into fragment responses
+```
+
+Django 4.2 to 5.x has no `{% partialdef %}`; install `django-template-partials` and register its tags
+as a builtin (or every template must `{% load partials %}`). Django 6.0 needs none of this:
+
+```python
+import django
+if django.VERSION < (6, 0):
+    INSTALLED_APPS.insert(0, "template_partials")
+    TEMPLATES[0]["OPTIONS"]["builtins"] = ["template_partials.templatetags.partials"]
+```
+
+Layout. In htmx 4 an attribute reaches descendants only with `:inherited`; a bare `hx-boost="true"` on
+`<body>` boosts nothing. The CSRF header rides on every htmx request this way, including query-string
+DELETEs. The messages partial is a `partialdef` so a fragment response can update it too.
+
+```django
+{% load static %}<!doctype html>
+<html><head><script src="{% static 'js/htmx-4.0.0.js' %}"></script></head>
+<body hx-boost:inherited="true" hx-headers:inherited='{"X-CSRFToken": "{{ csrf_token }}"}'>
+{% partialdef messages inline %}
+<div id="messages">{% for message in messages %}<div class="flash">{{ message }}</div>{% endfor %}</div>
+{% endpartialdef %}
+{% block content %}{% endblock %}
+</body></html>
+```
+
+Template context processors must include `django.template.context_processors.request` and
+`django.contrib.messages.context_processors.messages`.
+
+## Choosing the verb
+
+| The handler's outcome | Write |
+|---|---|
+| Same URL serves the page to a browser and one region to a control | `render(request, "index.html", "rows", ctx)` |
+| Always the whole page (a detail or edit page) | `page(request, "show.html", ctx)` |
+| Always a fragment: a polling widget, a region never served as a page | `fragment(request, "archive_ui.html", context=ctx)` or `fragment(request, "index.html", "rows", ctx)` |
+| Form failed validation | `invalid(request, "new.html", "form", ctx)` (status 422; htmx 4 swaps it) |
+| Success; the browser or a body-targeted control should land elsewhere | `redirect(request, "contacts", pk=3)` (plain 303) |
+| Resource deleted; the control says `hx-swap="delete"` | `removed(request)` (200, empty body) |
+| A short string into a span or an error slot | `text(request, "(3 total)")` (HTML-escaped) |
+| One URL reached by both a body-targeted control and an element-targeted one | branch on `wants_page(request)` |
+
+Never return `HttpResponse(status=204)`, `HttpResponseRedirect`, `django.shortcuts.redirect` or
+`HttpResponse("")` to an htmx request. Say what happened with a verb.
+
+## API
+
+Everything below is importable from `dj_hx`.
+
+### Request side
+
+```python
+is_htmx(request) -> bool            # HX-Request: true
+request_type(request) -> str|None   # "full" | "partial" | None (a browser)
+wants_page(request) -> bool         # browser, boosted link, or body-targeted control
+wants_fragment(request) -> bool     # a control targeting an element
+current_url(request) -> str|None    # HX-Current-URL
+vary_on_hx(response) -> response    # Vary: HX-Request, HX-Request-Type (the verbs and middleware do this)
+```
+
+An htmx request without `HX-Request-Type` raises `HxProtocolError` (this needs htmx 4). A proxy that strips
+the header can be worked around with `HX_REQUEST_TYPE_FALLBACK = "full"` or `"partial"`; the guard still
+records the finding.
+
+### Verbs
+
+```python
+render(request, template, partial, context=None, *, status=200) -> HxResponse
+    # wants_page: the page. Otherwise: the partial of `template` (or the file if `partial` has a dot).
+
+page(request, template, context=None) -> HxResponse
+    # Always the page. RAISES HxPageIntoFragment on a partial request.
+
+fragment(request, template, partial=None, context=None) -> HxResponse
+    # Always a fragment: the file `template`, or `partial` of it. RECORDS HxFragmentIntoPage
+    # when a boosted or body-targeted htmx request would put a bare fragment into <body>.
+
+invalid(request, template, partial, context=None) -> HxResponse
+    # render() with status 422. No client configuration needed; htmx 4 swaps 422 bodies.
+
+redirect(request, to, *args, code=303, **kwargs) -> HxRedirectResponse
+    # `to` resolves like django.shortcuts.redirect (URL name, model, or URL).
+    # RAISES HxRedirectIntoFragment on a partial request (fetch would follow it into the element).
+
+removed(request) -> HxResponse
+    # 200 with an empty body. The control's hx-swap="delete" removes its own representation.
+
+text(request, value) -> HxResponse
+    # str(value), HTML-escaped. RECORDS HxFragmentIntoPage on a full htmx request.
+```
+
+Every verb sets `Vary`. Under `DEBUG` the response carries `X-HX-Template: index.html#rows`.
+
+### Response methods
+
+`HxResponse` (an `HttpResponse`) and `HxRedirectResponse` (a 303) share these; all return `self`:
+
+```python
+.trigger(name, *, target="body", **detail)   # HX-Trigger, always JSON, always with a target
+.partial(name, template=None)                # append <hx-partial hx-target="#name" hx-swap="outerHTML">
+                                             # rendered from the page template with the same context;
+                                             # only on fragment responses (no-op on a page); root id checked
+.push_url(url) / .replace_url(url)           # HX-Push-Url / HX-Replace-Url
+.with_status(code)
+.retarget(selector) / .reswap(spec)          # escape hatches: the template can no longer predict the
+                                             # DOM effect. Use with a comment saying why.
+```
+
+`.trigger()` always sets a `target` because after a `delete` swap the requesting element is gone and htmx 4
+would dispatch on `document`, where an `hx-trigger="x from:body"` listener cannot hear it. `detail` keys are
+unpacked into the scope of `hx-on` handlers.
+
+```python
+return render(request, "index.html", "rows", ctx).trigger("contacts-changed")
+return fragment(request, "index.html", "rows", ctx).partial("count")   # also refreshes #count
+```
+
+### Generic views
+
+```python
+from dj_hx import HxMixin
+
+class ContactList(HxMixin, ListView):          # HxMixin FIRST (check dj_hx.E007)
+    model = Contact
+    template_name = "index.html"
+    partial = "rows"                            # None means page() only, which raises on a partial request
+
+class ContactCreate(HxMixin, CreateView):
+    model = Contact
+    fields = ["first", "last", "email"]
+    template_name = "new.html"
+    partial = "form"
+    success_url = reverse_lazy("contacts")
+```
+
+`HxMixin` overrides three hooks: `render_to_response` (goes through `render` when `partial` is set, else
+`page`), `form_invalid` (422), and `form_valid` (raises `HxRedirectIntoFragment` if Django's redirect would
+answer a partial request; override it to return `render`/`fragment`/`removed` for element-targeted forms).
+
+### Settings
+
+| Setting | Meaning |
+|---|---|
+| `HX_MESSAGES_TEMPLATE = "layout.html#messages"` | Partial used to render pending `django.contrib.messages` into fragment responses. `#name` defaults to `messages`. Root element must be `id="<name>"`. |
+| `HX_REQUEST_TYPE_FALLBACK = "full"` | Answer htmx requests missing `HX-Request-Type` as this type instead of raising. Proxies only. |
+| `HX_LINT_IGNORE = ("implicit-inheritance",)` | Lint rules to silence everywhere (test client, middleware, `hx_lint`, W005). |
+| `HX_EXTENSIONS = ("hx-live",)` | Extensions the pages load, for the lint (also detected from `<script src>`). |
+| `SILENCED_SYSTEM_CHECKS = ["dj_hx.W005"]` | Standard Django; the check ids are below. |
+
+### Errors
+
+All subclass `HxError` except `HxRedirectError` (an `AssertionError` from the test client).
+
+| Error | Raised or recorded | Cause | Fix |
+|---|---|---|---|
+| `HxPageIntoFragment` | raised by `page()` | page answers an element-targeted request | `hx-target="body"` on the control, or `render(..., partial)` |
+| `HxRedirectIntoFragment` | raised by `redirect()` / `HxMixin.form_valid`; recorded by the guard for any other 3xx, including `APPEND_SLASH`'s 301 | 3xx answers an element-targeted request | target body, or return a fragment; match the route's trailing slash (`{% url %}` does) |
+| `HxFragmentIntoPage` | recorded by `fragment()` / `text()` | bare fragment answers a boosted or body-targeted request | target an element, or render a page |
+| `HxNoSwap` | recorded by the guard | 204 answers a partial request; htmx 4 does not swap | `removed()` + `hx-swap="delete"`, or a fragment |
+| `HxMessagesUnconfigured` | recorded by the middleware | messages added on a fragment response, `HX_MESSAGES_TEMPLATE` unset | set it |
+| `HxProtocolError` | raised by `request_type()`; recorded by the guard | `HX-Request` without `HX-Request-Type` | use htmx 4; `HX_REQUEST_TYPE_FALLBACK` for proxies |
+| `HxUnknownPartial` | raised at render | `partial=` names no partial of the template; message lists the ones it defines | write `{% partialdef name inline %}` around the region |
+| `HxPartialRootId` | raised at render | a partial used as `<hx-partial>` does not start with one element carrying `id="<name>"` | wrap the region in `<div id="name">` |
+| `HxLintError` | raised by `HxTestClient` | an error-level lint finding in a `text/html` response | fix the HTML; `lint_ignore=` / `HX_LINT_IGNORE` to silence a rule |
+| `HxRedirectError` | raised by `HxTestClient` | 3xx to a `full=True` request without `follow=` | pass `follow=True` (what the browser shows) or `follow=False` (assert on the 3xx) |
+
+## Templates
+
+A page defines its fragments inline. `inline` renders the region in place on the page; the handler
+names it to render it alone.
+
+```django
+{% extends "layout.html" %}
+{% block content %}
+<table><tbody>
+{% partialdef rows inline %}
+{% for contact in contacts %}
+<tr>
+  <td>{{ contact.first }}</td>
+  <td><a href="#" hx-delete="{% url 'contacts_view' contact.id %}"
+                  hx-confirm="Delete?" hx-target="closest tr" hx-swap="delete swap:1s">Delete</a></td>
+</tr>
+{% endfor %}
+{% endpartialdef %}
+</tbody></table>
+
+{% partialdef count inline %}<span id="count">{{ contacts|length }}</span>{% endpartialdef %}
+
+<span id="total" hx-get="{% url 'contacts_count' %}" hx-trigger="revealed, contacts-changed from:body"></span>
+{% endblock %}
+```
+
+A form region for `invalid()`:
+
+```django
+{% partialdef form inline %}
+<form id="form" action="{% url 'contacts_new' %}" method="post">
+  {% csrf_token %}
+  <input name="email" value="{{ contact.email }}"
+         hx-get="{% url 'contacts_email' contact.id %}" hx-target="next .error"
+         hx-trigger="change, keyup delay:200ms changed">
+  <span class="error">{{ contact.errors.email }}</span>
+  <button>Save</button>
+</form>
+{% endpartialdef %}
+```
+
+A button whose response is a page (a redirect after delete from an edit page):
+
+```django
+<button hx-delete="{% url 'contacts_view' contact.id %}" hx-target="body" hx-push-url="true">Delete</button>
+```
+
+htmx 4 rules the templates rely on (verified against htmx.js 4.0.0):
+
+- `HX-Request-Type` is `full` when the target is `body` or `hx-select` is set or the element is boosted.
+- Attributes reach descendants only with `:inherited` (`hx-target:inherited`, `hx-boost:inherited`).
+- `hx-delete` sends its parameters in the query string and excludes the enclosing form unless
+  `hx-include="closest form"`; the handler reads them from `request.GET`.
+- A `delete` swap runs regardless of response content and honors `swap:1s`.
+- Only 204 and 304 skip the swap. A 422 body swaps.
+- `hx-push-url="true"` pushes the URL after a redirect, so a plain 303 updates the location bar.
+- Events are colon-separated (`hx-on::after:swap`, `htmx:after:swap`); modifiers are `from:body`,
+  `delay:200ms`, `changed`, `once`, `throttle:1s`; swap styles are case-sensitive (`outerHTML`).
+
+## htmx 2 is rejected
+
+Agents default to htmx 1/2. These are what the lint reports (`[error]` raises in tests):
+
+| Do not write | Write | Rule |
+|---|---|---|
+| `hx-ext="..."` | nothing; loading the extension script is enough | `htmx2-attribute` |
+| `hx-vars`, `hx-params`, `hx-disinherit`, `hx-inherit`, `hx-request`, `hx-history`, `hx-disabled-elt` | `hx-vals='js:...'`, `htmx:config:request`, `:inherited`, `hx-config`, `hx-disable` | `htmx2-attribute` |
+| `<body hx-boost="true">`, `<div hx-target="#x">` over children | `hx-boost:inherited="true"`, `hx-target:inherited="#x"` | `implicit-inheritance` (warning) |
+| `hx-on::afterSwap`, `htmx:afterRequest`, `htmx:configRequest` | `hx-on::after:swap`, `htmx:after:request`, `htmx:config:request` | `htmx2-event-name` |
+| `hx-swap="outerhtml"` | `hx-swap="outerHTML"` | `swap-style-case` |
+| `hx-swap="innerHTML show:#x:top"` | `hx-swap="innerHTML show:top showTarget:#x"` | `swap-show-syntax` |
+| `hx-trigger="click queue:all"` | `hx-sync="this:queue all"` | `trigger-queue` |
+| `hx-trigger="click from:closest form"` | `hx-trigger="click from:'closest form'"` | `trigger-unquoted-selector` |
+| `hx-delete` with the default swap on `closest tr` | `hx-swap="delete"` or `outerHTML` | `delete-default-swap` (warning) |
+| `hx-target="#nope"` with no such id on the page | an existing id | `missing-target` |
+| two elements with the same `id` | unique ids | `duplicate-id` |
+| `hx-select="#main"` with a non-body target | let the server send the fragment | `select-not-body` (info) |
+
+Also `unknown-attribute`, `unknown-swap-style`, `unknown-swap-modifier`, `unknown-trigger-modifier`,
+`trigger-syntax`, `extension-not-loaded` (warning), `delete-without-include` (info). Each message suggests
+the nearest valid name.
+
+## Testing
+
+```python
+from dj_hx.testing import HxTestClient, assert_no_hx_check_issues
+
+client = HxTestClient()                       # strict=True, lint=True, lint_ignore=()
+client.get("/contacts/")                      # a browser
+client.hx_get("/contacts/?q=a")               # HX-Request: true, HX-Request-Type: partial
+client.hx_get("/contacts/", full=True)        # a boosted link or body-targeted control
+client.hx_post("/contacts/new/", {"email": "x"})            # partial: expect 422 or a fragment
+client.hx_post("/contacts/new/", form, full=True, follow=True)   # what the browser shows after the 303
+client.hx_delete("/contacts/3/", full=True, follow=False)   # assert on the 303 itself
+client.hx_delete("/contacts/?selected_contact_ids=1")       # DELETE params go in the query string
+client.hx_put("/x/", {"a": 1})                # form-encoded; json={...} sends application/json
+
+def test_dj_hx_is_configured():
+    assert_no_hx_check_issues()               # pytest never runs system checks; this does
+```
+
+What the client enforces on every request, including plain `client.get`:
+
+- Recorded findings (the verbs' and the guard's) raise the first one. `HxTestClient(strict=False)` records
+  instead.
+- Every `text/html` response is linted; an error-level finding raises `HxLintError`, a warning is a
+  `HxLintWarning` (`warnings.warn`). `lint=False` or `lint_ignore=("rule",)` per client.
+- A 3xx to a `full=True` request raises `HxRedirectError` unless `follow=True` or `follow=False` was
+  chosen, because htmx's fetch follows redirects and the browser never sees the 3xx.
+- Without `HxMiddleware` installed the client runs the guard itself.
+
+Assertions that match the protocol:
+
+```python
+r = client.hx_delete("/contacts/3/")                       # a row's link, hx-swap="delete"
+assert r.status_code == 200 and b"<tr>" not in r.content
+assert r.content.decode().startswith('\n<hx-partial hx-target="#messages" hx-swap="outerHTML">')
+
+r = client.hx_delete("/contacts/?selected_contact_ids=1&selected_contact_ids=2")
+assert json.loads(r["HX-Trigger"]) == {"contacts-changed": {"target": "body"}}
+
+with pytest.raises(HxPageIntoFragment, match=r"contacts_view\(\) renders the page"):
+    client.hx_get("/contacts/3/")                          # a page-only view reached by a partial control
+```
+
+## Tools and checks
+
+```
+manage.py hx_lint [paths...] [--warnings-as-errors]   # htmx 4 lint over template source, never site-packages
+manage.py hx_map [--no-check]                          # controls <-> views <-> events, checked
+```
+
+`hx_map` classifies each control as full or partial by htmx 4's rule, resolves it through `{% url %}` or
+the literal path, and errors when a partial control reaches a view that only calls `page`, or a full
+control reaches one that only calls `fragment`/`text`/`removed`. `if request.method == "DELETE":` branches
+are attributed to that method. It pairs `.trigger("x")` with `hx-trigger="x from:body"` both ways and warns
+on `hx-delete` controls that send no values to a handler that reads them.
+
+System checks (tag `dj_hx`):
+
+| ID | Fires when |
+|---|---|
+| W001 | `HxMiddleware` not installed |
+| E002 | `HxMiddleware` listed before `MessageMiddleware` |
+| W003 | `django.contrib.messages` installed but `HX_MESSAGES_TEMPLATE` unset |
+| W004 | `HX_MESSAGES_TEMPLATE` does not resolve to a template partial |
+| W005 | a project template fails the lint |
+| W006 | Django < 6 without django-template-partials |
+| E007 | a Django base class listed before `HxMixin` shadows its hooks |
+
+`HxMiddleware` also: adds `Vary` to every response, runs the guard, bridges pending messages onto partial
+2xx HTML responses (peeking before consuming), logs findings as warnings on the `dj_hx` logger, and under
+`DEBUG` lints every htmx response and sets `X-HX-Template`.
+
+## A resource end to end
+
+Function views, abridged from the example app (*Hypermedia Systems*' contact.app on the ORM):
+
+```python
+from django.contrib import messages
+from django.views.decorators.http import require_http_methods
+from dj_hx import invalid, page, redirect, removed, render, text, wants_page
+
+@require_http_methods(["GET", "DELETE"])
+def contacts(request):
+    if request.method == "DELETE":                       # bulk delete: hx-include="closest form"
+        for contact_id in request.GET.getlist("selected_contact_ids"):
+            Contact.find(contact_id).delete()
+        messages.success(request, "Deleted Contacts!")
+        return render(request, "index.html", "rows", {"contacts": Contact.all(1)}).trigger("contacts-changed")
+    q = request.GET.get("q")
+    contacts_set = Contact.search(q) if q is not None else Contact.all(int(request.GET.get("page", 1)))
+    return render(request, "index.html", "rows", {"contacts": contacts_set})
+
+def contacts_count(request):
+    return text(request, f"({Contact.count()} total Contacts)")
+
+@require_http_methods(["GET", "POST"])
+def contacts_new(request):
+    if request.method == "GET":
+        return page(request, "new.html", {"contact": Contact()})
+    c = Contact(first=request.POST["first_name"], last=request.POST["last_name"], email=request.POST["email"])
+    if not c.validate():
+        return invalid(request, "new.html", "form", {"contact": c})
+    c.save()
+    messages.success(request, "Created New Contact!")
+    return redirect(request, "contacts")
+
+@require_http_methods(["GET", "DELETE"])
+def contacts_view(request, contact_id):
+    contact = Contact.find(contact_id)
+    if request.method == "DELETE":
+        contact.delete()
+        messages.success(request, "Deleted Contact!")
+        if wants_page(request):          # the edit page's button targets the body
+            return redirect(request, "contacts")
+        return removed(request)          # a row's link says hx-swap="delete"
+    return page(request, "show.html", {"contact": contact})
+
+def contacts_email(request, contact_id):   # inline validation into <span class="error">
+    c = Contact.find(contact_id)
+    c.email = request.GET.get("email", "")
+    c.validate()
+    return text(request, c.errors.get("email", ""))
+```
+
+```python
+urlpatterns = [
+    path("contacts/", views.contacts, name="contacts"),
+    path("contacts/count/", views.contacts_count, name="contacts_count"),
+    path("contacts/new/", views.contacts_new, name="contacts_new"),
+    path("contacts/<int:contact_id>/", views.contacts_view, name="contacts_view"),
+    path("contacts/<int:contact_id>/email/", views.contacts_email, name="contacts_email"),
+]
+```
+
+Trailing slashes matter: a control whose URL misses one gets `APPEND_SLASH`'s 301, which the guard reports
+as `HxRedirectIntoFragment`. Always build URLs with `{% url %}`.
+
+## Files
+
+- [README.md](https://github.com/codetalcott/dj-hx/blob/main/README.md): the design, the vocabulary, the silent-failure catalogue
+- [CHANGELOG.md](https://github.com/codetalcott/dj-hx/blob/main/CHANGELOG.md): release notes
+- [dj_hx/verbs.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/verbs.py): the verbs and `HxResponse`
+- [dj_hx/request.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/request.py): `HX-Request-Type` and the `wants_*` helpers
+- [dj_hx/guard.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/guard.py): the recorded findings
+- [dj_hx/middleware.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/middleware.py): `HxMiddleware`
+- [dj_hx/messages.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/messages.py): the messages bridge
+- [dj_hx/mixins.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/mixins.py): `HxMixin`
+- [dj_hx/testing.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/testing.py): `HxTestClient`, `assert_no_hx_check_issues`
+- [dj_hx/checks.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/checks.py): W001 to E007
+- [dj_hx/errors.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/errors.py): every exception
+- [dj_hx/hxlint.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/hxlint.py): the htmx 4 lint (vendored from hx-flask)
+- [dj_hx/hx_vocab.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/hx_vocab.py): the htmx 4.0.0 vocabulary, generated
+- [example/](https://github.com/codetalcott/dj-hx/tree/main/example): contact.app on the ORM, the complete reference project
+- [tests/](https://github.com/codetalcott/dj-hx/tree/main/tests): one test per row of the failure catalogue
