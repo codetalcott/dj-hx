@@ -123,7 +123,6 @@ def _scan_handlers(urlconf=None) -> tuple[dict[str, Handler], dict[int, Handler]
 
 def build_map(urlconf=None, sources: dict[str, str] | None = None) -> Map:
     handlers, by_callback = _scan_handlers(urlconf)
-    by_name = {ep: h for ep, h in handlers.items()}
     short = {}
     for ep, h in handlers.items():
         short.setdefault(ep.rsplit(":", 1)[-1], h)
@@ -131,7 +130,7 @@ def build_map(urlconf=None, sources: dict[str, str] | None = None) -> Map:
     def resolve_control(url: str, method: str) -> tuple[str | None, str | None]:
         if url.startswith(URLFOR):
             name = url[len(URLFOR):].split("?", 1)[0].split("#", 1)[0]
-            h = by_name.get(name) or short.get(name)
+            h = handlers.get(name) or short.get(name)
             if h is None:
                 return None, f"{{% url '{name}' %}} names no URL pattern the map can see"
             return h.endpoint, None

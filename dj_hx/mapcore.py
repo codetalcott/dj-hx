@@ -305,9 +305,7 @@ class HandlerVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Attribute(self, node: ast.Attribute):
-        if isinstance(node.value, ast.Name) and node.value.id in ("request", "self.request") and node.attr in self.value_attrs:
-            self.h.reads_values = True
-        elif self._dotted(node) in {f"self.request.{a}" for a in self.value_attrs}:
+        if node.attr in self.value_attrs and self._dotted(node.value) in ("request", "self.request"):
             self.h.reads_values = True
         self.generic_visit(node)
 
