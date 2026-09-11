@@ -55,3 +55,12 @@ USE_TZ = True
 HX_MESSAGES_TEMPLATE = "layout.html#messages"
 # Extensions loaded by the pages, for the lint (also detected from <script src>).
 HX_EXTENSIONS = ("hx-live",)
+
+# Django 6.0 has {% partialdef %} built in. Below that it comes from
+# django-template-partials, whose tag library has to be a builtin or every
+# template must {% load partials %}.
+import django  # noqa: E402
+
+if django.VERSION < (6, 0):
+    INSTALLED_APPS.insert(0, "template_partials")
+    TEMPLATES[0]["OPTIONS"]["builtins"] = ["template_partials.templatetags.partials"]

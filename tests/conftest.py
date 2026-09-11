@@ -6,6 +6,7 @@ model's sleep is switched off the way the Flask suite does it.
 import types
 from pathlib import Path
 
+import django
 import pytest
 from django.test import override_settings
 
@@ -42,11 +43,19 @@ TEMPLATES_IN_MEMORY = {"layout.html": LAYOUT, "index.html": INDEX, "form.html": 
 
 def locmem(templates=None, **options):
     """A TEMPLATES setting serving in-memory templates, for exercising the library directly."""
+    loaders = [("django.template.loaders.locmem.Loader", {**TEMPLATES_IN_MEMORY, **(templates or {})})]
+    builtins = []
+    if django.VERSION < (6, 0):
+        # django-template-partials wraps settings.TEMPLATES at startup only, so an
+        # overridden setting has to carry its loader and tag library itself.
+        loaders = [("template_partials.loader.Loader", loaders)]
+        builtins = ["template_partials.templatetags.partials"]
     return [
         {
             "BACKEND": "django.template.backends.django.DjangoTemplates",
             "OPTIONS": {
-                "loaders": [("django.template.loaders.locmem.Loader", {**TEMPLATES_IN_MEMORY, **(templates or {})})],
+                "loaders": loaders,
+                "builtins": builtins,
                 "context_processors": [
                     "django.template.context_processors.request",
                     "django.contrib.messages.context_processors.messages",

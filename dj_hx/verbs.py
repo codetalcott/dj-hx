@@ -181,7 +181,10 @@ def _partial_names(template_name: str) -> list[str]:
         inner = get_template(template_name).template
     except Exception:
         return []
-    return sorted(getattr(inner, "extra_data", {}).get("partials", {}))
+    # Django 5.1+ keeps them on the template; django-template-partials on 4.2
+    # and 5.0 keeps them on its origin.
+    partials = getattr(inner, "extra_data", {}).get("partials") or getattr(inner.origin, "partial_contents", {})
+    return sorted(partials)
 
 
 def _get_partial(template_name: str, name: str):

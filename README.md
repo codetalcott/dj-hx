@@ -35,9 +35,10 @@ a `from:body` listener cannot hear them, and django-htmx headers htmx 4
 removed). The sibling for Fixi.js is dj-fixi. Nothing here depends on
 django-htmx.
 
-**Status:** 0.1.0, unreleased. 102 tests plus 7 in Chromium, green on Django
-6.0 and Python 3.13. The name `dj-hx` was chosen because `hx-django` is one
-letter from `django-htmx`, a real package with the opposite stance.
+**Status:** 0.1.0, unreleased. 103 tests plus 7 in Chromium, green on Django
+4.2, 5.2 and 6.0 and Python 3.10 to 3.13. The name `dj-hx` was chosen because
+`hx-django` is one letter from `django-htmx`, a real package with the opposite
+stance.
 
 ## The three rules
 
@@ -157,7 +158,7 @@ by `HxTestClient`. Nothing is gated on `DEBUG` that a test needs.
 | Messages added on a fragment with no messages template | `HxMessagesUnconfigured` |
 | A partial used as `<hx-partial>` whose root is not `id="<name>"` | `HxPartialRootId` at the render |
 | `partial=` names a partial the template does not define | `HxUnknownPartial`, listing the partials it does |
-| An htmx request without `HX-Request-Type` | `HxProtocolError`: this needs htmx 4 |
+| An htmx request without `HX-Request-Type` | `HxProtocolError`: this needs htmx 4. `HX_REQUEST_TYPE_FALLBACK = "full"` answers with the page instead, for a proxy that strips the header; the guard still records it |
 | htmx 2 idioms in the HTML: `hx-ext`, implicit inheritance, camelCase events, `show:#x:top` | the lint, on every test-client response, in the middleware log under `DEBUG`, in `manage.py hx_lint`, and as check `dj_hx.W005` |
 | A partial control pointing at a page-only view, or a boosted link at a fragment-only one | `manage.py hx_map` |
 | `HxMiddleware` missing, listed before `MessageMiddleware`, `HX_MESSAGES_TEMPLATE` unset or unresolvable, no partials on Django < 6, `HxMixin` after a Django base | checks `dj_hx.W001`, `E002`, `W003`, `W004`, `W006`, `E007` |
@@ -220,7 +221,7 @@ python manage.py runserver
 ```
 
 ```
-.venv/bin/python -m pytest                 # 102 tests
+.venv/bin/python -m pytest                 # 103 tests
 .venv/bin/python -m pytest -m browser      # 7 more, in Chromium (pip install playwright; playwright install chromium)
 python tools/sync_shared.py                # refresh the vendored core from hx-flask and dj-fixi
 ```

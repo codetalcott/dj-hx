@@ -31,6 +31,9 @@ the handler-first design built for Flask in hx-flask, standalone.
   redirect recognised whether the middleware sees the 301 or the 404 it comes
   from, an htmx request without `HX-Request-Type`. Recorded on
   `response.hx_findings`, logged, raised by `HxTestClient`.
+- `HX_REQUEST_TYPE_FALLBACK = "full"` or `"partial"`: answer an htmx request
+  whose `HX-Request-Type` a proxy stripped as that type instead of raising
+  `HxProtocolError`. The guard records the finding either way.
 - `HxTestClient`: `hx_get`/`hx_post`/`hx_put`/`hx_patch`/`hx_delete` with
   `full=`, Django's three-state `follow` for 3xx on full requests, every
   `text/html` response linted, findings raised; `assert_no_hx_check_issues()`.
@@ -42,7 +45,7 @@ the handler-first design built for Flask in hx-flask, standalone.
   `if request.method == ...` branches attributed to their method.
 - Checks W001, E002, W003, W004, W005, W006, E007.
 - The example: contact.app on the ORM, same routes, templates and tests as
-  hx-flask; 102 tests plus 7 in Chromium.
+  hx-flask; 103 tests plus 7 in Chromium, on Django 4.2, 5.2 and 6.0.
 - The shared core, vendored: `hxlint.py` and `hx_vocab.py` from hx-flask
   (one import line differs), `urlconf.py` from dj-fixi; `tools/sync_shared.py`
   and a pin test. `mapcore.py` is the framework-neutral map engine.

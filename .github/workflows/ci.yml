@@ -22,15 +22,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Django 4.2 to 5.x needs django-template-partials wired into TEMPLATES;
-        # tests/conftest.py builds its own TEMPLATES and does not do that yet, so
-        # the matrix is Django 6.0 until it does.
-        python-version: ["3.12", "3.13"]
+        # The oldest and newest Python each Django line supports.
+        include:
+          - { python: "3.10", django: "~=4.2.0" }
+          - { python: "3.12", django: "~=4.2.0" }
+          - { python: "3.10", django: "~=5.2.0" }
+          - { python: "3.13", django: "~=5.2.0" }
+          - { python: "3.12", django: "~=6.0.0" }
+          - { python: "3.13", django: "~=6.0.0" }
+    name: test (py${{ matrix.python }}, django${{ matrix.django }})
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
-          python-version: ${{ matrix.python-version }}
-      - run: pip install -e ".[dev,browser]"
+          python-version: ${{ matrix.python }}
+      - run: pip install -e ".[dev,browser,partials]" "django${{ matrix.django }}"
       - run: playwright install --with-deps chromium
       - run: pytest -q

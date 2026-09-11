@@ -49,13 +49,16 @@ def test_w005_names_the_template_and_the_rule(tmp_path):
         assert "dj_hx.W005" not in ids()
 
 
-def test_w006_only_below_django_6(monkeypatch):
+def test_w006_only_below_django_6(monkeypatch, settings):
     import django
 
     from dj_hx import checks
 
+    settings.INSTALLED_APPS = [a for a in settings.INSTALLED_APPS if a != "template_partials"]
     monkeypatch.setattr(django, "VERSION", (5, 2, 0, "final", 0))
     assert [m.id for m in checks.check_partials_available()] == ["dj_hx.W006"]
+    monkeypatch.setattr(django, "VERSION", (6, 0, 0, "final", 0))
+    assert checks.check_partials_available() == []
 
 
 def test_checks_stay_quiet_when_dj_hx_is_not_installed():
