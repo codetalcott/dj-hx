@@ -1,16 +1,15 @@
 # Changelog
 
-## 0.1.0 — redesign (unreleased)
+## 0.1.0 (unreleased)
 
-dj-htmx-cbv 0.1.0 ("CBV ergonomics for django-htmx") was correct against
-htmx 2 and wrong against htmx 4 in three places: its delete path returned a
-204, which htmx 4 does not swap; its `formSuccess`/`formError` events went out
-without a target, so after a delete swap they fired on `document` where a
-`from:body` listener never hears them; and django-htmx 1.27 still writes
-`HX-Trigger-After-Swap`/`-After-Settle` and offers `HttpResponseLocation`,
-both gone or ignored in htmx 4, while exposing `request.htmx.target` and
-`.trigger`, the id-sniffing the design forbids. This release replaces it with
-the handler-first design built for Flask in hx-flask, standalone.
+First release: the handler-first design built for Flask in hx-flask,
+standalone on Django. It does not build on django-htmx, which was written
+against htmx 2: django-htmx 1.27 still writes `HX-Trigger-After-Swap`/
+`-After-Settle` and offers `HttpResponseLocation`, both gone or ignored in
+htmx 4, and exposes `request.htmx.target` and `.trigger`, the id-sniffing this
+design forbids. Two more htmx 4 facts shaped it: a 204 does not swap, and an
+event fired without a target lands on `document` after a delete swap, where a
+`from:body` listener never hears it.
 
 ### Added
 
@@ -49,9 +48,3 @@ the handler-first design built for Flask in hx-flask, standalone.
 - The shared core, vendored: `hxlint.py` and `hx_vocab.py` from hx-flask
   (one import line differs), `urlconf.py` from dj-fixi; `tools/sync_shared.py`
   and a pin test. `mapcore.py` is the framework-neutral map engine.
-
-### Removed
-
-- `HxView`, `HxTemplateView`, `HxResponseMixin`, `ContextPersistenceMixin`,
-  `OptimizedQueryMixin`, the derived `_partial` / `fragments/` names, and the
-  django-htmx dependency.

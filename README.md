@@ -29,11 +29,10 @@ def contacts_view(request, contact_id):
 ```
 
 It is the Django expression of the design worked out for Flask in hx-flask,
-and a redesign of dj-htmx-cbv, which was written against htmx 2 and wrong
-against htmx 4 in three places (a 204 that no longer swaps, events fired where
-a `from:body` listener cannot hear them, and django-htmx headers htmx 4
-removed). The sibling for Fixi.js is dj-fixi. Nothing here depends on
-django-htmx.
+built around three places where htmx 2 habits go wrong against htmx 4: a 204
+no longer swaps, an event fired without a target lands where a `from:body`
+listener cannot hear it, and django-htmx still writes headers htmx 4 removed.
+The sibling for Fixi.js is dj-fixi. Nothing here depends on django-htmx.
 
 **Status:** 0.1.0, unreleased. 103 tests plus 7 in Chromium, green on Django
 4.2, 5.2 and 6.0 and Python 3.10 to 3.13. The name `dj-hx` was chosen because
