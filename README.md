@@ -35,7 +35,7 @@ a `from:body` listener cannot hear them, and django-htmx headers htmx 4
 removed). The sibling for Fixi.js is dj-fixi. Nothing here depends on
 django-htmx.
 
-**Status:** 0.1.0, unreleased. 93 tests plus 7 in Chromium, green on Django
+**Status:** 0.1.0, unreleased. 102 tests plus 7 in Chromium, green on Django
 6.0 and Python 3.13. The name `dj-hx` was chosen because `hx-django` is one
 letter from `django-htmx`, a real package with the opposite stance.
 
@@ -220,7 +220,7 @@ python manage.py runserver
 ```
 
 ```
-.venv/bin/python -m pytest                 # 93 tests
+.venv/bin/python -m pytest                 # 102 tests
 .venv/bin/python -m pytest -m browser      # 7 more, in Chromium (pip install playwright; playwright install chromium)
 python tools/sync_shared.py                # refresh the vendored core from hx-flask and dj-fixi
 ```

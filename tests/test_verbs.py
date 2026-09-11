@@ -5,6 +5,7 @@ or cannot be represented. Same cases as hx-flask's tests/test_hx.py.
 """
 
 import json
+import re
 
 import pytest
 from django.test import override_settings
@@ -20,6 +21,7 @@ from dj_hx import (
     HxUnknownPartial,
 )
 from dj_hx.testing import HxTestClient
+from dj_hx.verbs import check_root_id
 
 pytestmark = pytest.mark.usefixtures("lib")
 
@@ -131,6 +133,36 @@ def test_partial_appends_the_partial_as_an_hx_partial(client):
 def test_partial_root_must_carry_the_partial_name_as_id(client):
     with pytest.raises(HxPartialRootId, match='root <span> must carry id="badcount"; it has no id'):
         client.hx_get("/lib/bad-partial/")
+
+
+@pytest.mark.parametrize(
+    "html",
+    [
+        '<div id="count">3</div>',
+        "<div id='count'>3</div>",
+        "<div id=count>3</div>",
+        '<!-- the count --> <div id="count">3</div>',
+        # An attribute value may contain ">", so the root element cannot be found
+        # by scanning to the first one.
+        '<div hx-on:click="if (a > b) { go() }" id="count">3</div>',
+    ],
+)
+def test_the_root_id_is_read_by_the_parser_not_by_eye(html):
+    check_root_id(html, "count", "index.html#count")
+
+
+@pytest.mark.parametrize(
+    ("html", "complaint"),
+    [
+        ('<div><span id="count">3</span></div>', "must carry"),
+        ('<div class="count">3</div>', "it has no id"),
+        ('<div id="total">3</div>', 'it has id="total"'),
+        ("3 contacts", "does not start with an element"),
+    ],
+)
+def test_a_partial_root_without_the_name_as_its_id_is_loud(html, complaint):
+    with pytest.raises(HxPartialRootId, match=re.escape(complaint)):
+        check_root_id(html, "count", "index.html#count")
 
 
 def test_unknown_partial_lists_the_partials_the_template_defines(client):

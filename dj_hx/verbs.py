@@ -149,23 +149,26 @@ class HxRedirectResponse(_HxResponseMethods, HttpResponseRedirectBase):
 
 # ------------------------------------------------------------------- partials
 
-_ROOT_TAG = re.compile(r"^\s*(?:<!--.*?-->\s*)*<([a-zA-Z][\w-]*)([^>]*)>", re.S)
-_ID_ATTR = re.compile(r"""\sid\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))""")
+# Only where the first element begins; the attributes are the parser's job, because
+# an attribute value may itself contain ">" (hx-on:click="if (a > b) ...").
+_STARTS_WITH_ELEMENT = re.compile(r"^\s*(?:<!--.*?-->\s*)*<[a-zA-Z]", re.S)
 
 
 def check_root_id(html: str, name: str, where: str) -> None:
     """The one convention: a partial swapped by name has ``id=<name>`` on its root."""
-    m = _ROOT_TAG.match(html)
-    if not m:
+    from .hxlint import parse
+
+    root = parse(html)[0] if _STARTS_WITH_ELEMENT.match(html) else None
+    first = next(iter(root.children), None) if root is not None else None
+    if first is None:
         raise HxPartialRootId(
             f'{where} is used as an <hx-partial> but does not start with an element; it must be one element with id="{name}"'
         )
-    idm = _ID_ATTR.search(" " + m.group(2))
-    found = idm and (idm.group(1) or idm.group(2) or idm.group(3))
+    found = first.attrs.get("id") or None
     if found != name:
         have = f'id="{found}"' if found else "no id"
         raise HxPartialRootId(
-            f'{where} is used as an <hx-partial>, so its root <{m.group(1)}> must carry id="{name}"; it has {have}'
+            f'{where} is used as an <hx-partial>, so its root <{first.tag}> must carry id="{name}"; it has {have}'
         )
 
 

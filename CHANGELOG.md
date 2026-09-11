@@ -42,7 +42,7 @@ the handler-first design built for Flask in hx-flask, standalone.
   `if request.method == ...` branches attributed to their method.
 - Checks W001, E002, W003, W004, W005, W006, E007.
 - The example: contact.app on the ORM, same routes, templates and tests as
-  hx-flask; 93 tests plus 7 in Chromium.
+  hx-flask; 102 tests plus 7 in Chromium.
 - The shared core, vendored: `hxlint.py` and `hx_vocab.py` from hx-flask
   (one import line differs), `urlconf.py` from dj-fixi; `tools/sync_shared.py`
   and a pin test. `mapcore.py` is the framework-neutral map engine.
