@@ -28,16 +28,12 @@ def contacts_view(request, contact_id):
 </tbody>
 ```
 
-It is the Django expression of the design worked out for Flask in [hx-flask],
-built around three places where htmx 2 habits go wrong against htmx 4: a 204
-no longer swaps, an event fired without a target lands where a `from:body`
-listener cannot hear it, and django-htmx still writes headers htmx 4 removed.
-The sibling for Fixi.js is [dj-fixi]. Nothing here depends on django-htmx.
+Nothing here depends on django-htmx, which was written for htmx 2: a 204 no
+longer swaps, an event fired without a target lands where a `from:body`
+listener cannot hear it, and the headers it still writes are gone. The same
+design for Flask is [hx-flask]; the sibling for Fixi.js is [dj-fixi].
 
-**Status:** 0.1.0, unreleased. 103 tests plus 7 in Chromium, green on Django
-4.2, 5.2 and 6.0 and Python 3.10 to 3.13. The name `dj-hx` was chosen because
-`hx-django` is one letter from `django-htmx`, a real package with the opposite
-stance.
+**Status:** 0.1.0, unreleased. Django 4.2 to 6.0, Python 3.10 to 3.13.
 
 ## The three rules
 
@@ -98,9 +94,6 @@ What was rejected, and why:
   question is a guess.
 - **Decorators that render a returned dict.** A view that sometimes returns a
   dict and sometimes a redirect has two return types, which is an agent trap.
-
-`HxMixin` is here because Django's generic views are; the base-order failure
-that made the Flask design refuse mixins is check `dj_hx.E007`.
 
 ## Install
 
@@ -245,22 +238,10 @@ verbs its view calls, with `if request.method == "DELETE":` branches
 attributed to that method. It also pairs `.trigger("x")` with
 `hx-trigger="x from:body"` in both directions.
 
-## The shared core
-
-`dj_hx/hxlint.py` and `dj_hx/hx_vocab.py` are [hx-flask]'s, byte for byte
-apart from one import line; the vocabulary is generated there from the htmx
-4.0.0 source tree. `dj_hx/urlconf.py` is [dj-fixi]'s URLconf walk.
-`tools/sync_shared.py` refreshes them and `tests/test_shared_core.py` pins
-them. The map is split into `dj_hx/mapcore.py` (framework-neutral: template
-scanning, the handler visitor, the checks) and `dj_hx/hxmap.py` (Django:
-URLconf, `{% url %}`, `resolve()`), so hx-flask and a future `fixi_map` can
-share the core with their own vocabulary and resolver.
-
 ## The example
 
-`example/` is *Hypermedia Systems*' contact.app on the ORM: the same routes,
-the same templates modulo `{% url %}` and `{% partialdef %}`, and the same
-tests as hx-flask, for a like-for-like comparison.
+`example/` is *Hypermedia Systems*' contact.app on the ORM, with the book's
+routes and templates.
 
 ```
 cd example
@@ -269,9 +250,8 @@ python manage.py runserver
 ```
 
 ```
-.venv/bin/python -m pytest                 # 103 tests
-.venv/bin/python -m pytest -m browser      # 7 more, in Chromium (pip install playwright; playwright install chromium)
-python tools/sync_shared.py                # refresh the vendored core from hx-flask and dj-fixi
+python -m pytest                 # the suite
+python -m pytest -m browser      # in Chromium (pip install playwright; playwright install chromium)
 ```
 
 ## htmx 4 facts this depends on
