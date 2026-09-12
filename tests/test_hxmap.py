@@ -112,3 +112,18 @@ def test_the_management_command(tmp_path):
         with pytest.raises(CommandError, match="hx_map found errors"):
             call_command("hx_map", stdout=out)
     assert "detail() only calls page" in out.getvalue()
+
+
+def test_by_template_says_who_renders_each_partial():
+    from django.core.management import call_command
+
+    out = io.StringIO()
+    call_command("hx_map", "--by-template", stdout=out)
+    text = out.getvalue()
+    # The page and its partial are one template, and hx_map says which view renders each
+    rows = text.split("index.html#rows\n", 1)[1].split("\nnew.html", 1)[0]
+    assert rows.splitlines()[0].strip() == "contacts()  /contacts/"
+    assert "    <- index.html:10 <input#search> GET partial (hx-target=tbody)" in rows
+    assert "edit.html\n  contacts_edit()" in text and "edit.html#form\n  contacts_edit()" in text
+    assert text.rstrip().endswith("hx map: 7 templates, 9 handlers")
+    assert "0 errors, 0 warnings" not in text  # not the by-view report as well

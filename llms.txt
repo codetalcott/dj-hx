@@ -76,8 +76,9 @@ Template context processors must include `django.template.context_processors.req
 | A short string into a span or an error slot | `text(request, "(3 total)")` (HTML-escaped) |
 | One URL reached by both a body-targeted control and an element-targeted one | branch on `wants_page(request)` |
 
-Never return `HttpResponse(status=204)`, `HttpResponseRedirect`, `django.shortcuts.redirect` or
-`HttpResponse("")` to an htmx request. Say what happened with a verb.
+Never return `HttpResponse(status=204)`, `HttpResponseRedirect`, `django.shortcuts.redirect`,
+`django.shortcuts.render` or `HttpResponse("")` to an htmx request. Say what happened with a verb: a
+response no verb built that answers an element-targeted request is recorded as `HxBareResponse`.
 
 ## API
 
@@ -193,6 +194,7 @@ All subclass `HxError` except `HxRedirectError` (an `AssertionError` from the te
 | `HxRedirectIntoFragment` | raised by `redirect()` / `HxMixin.form_valid`; recorded by the guard for any other 3xx, including `APPEND_SLASH`'s 301 | 3xx answers an element-targeted request | target body, or return a fragment; match the route's trailing slash (`{% url %}` does) |
 | `HxFragmentIntoPage` | recorded by `fragment()` / `text()` | bare fragment answers a boosted or body-targeted request | target an element, or render a page |
 | `HxNoSwap` | recorded by the guard | 204 answers a partial request; htmx 4 does not swap | `removed()` + `hx-swap="delete"`, or a fragment |
+| `HxBareResponse` | recorded by the guard | a `text/html` 2xx no verb built answers an element-targeted request (`django.shortcuts.render`, `HttpResponse`, `TemplateResponse`) | use a verb, or `HxMixin` on a generic view |
 | `HxMessagesUnconfigured` | recorded by the middleware | messages added on a fragment response, `HX_MESSAGES_TEMPLATE` unset | set it |
 | `HxProtocolError` | raised by `request_type()`; recorded by the guard | `HX-Request` without `HX-Request-Type` | use htmx 4; `HX_REQUEST_TYPE_FALLBACK` for proxies |
 | `HxUnknownPartial` | raised at render | `partial=` names no partial of the template; message lists the ones it defines | write `{% partialdef name inline %}` around the region |
@@ -329,8 +331,11 @@ with pytest.raises(HxPageIntoFragment, match=r"contacts_view\(\) renders the pag
 
 ```
 manage.py hx_lint [paths...] [--warnings-as-errors]   # htmx 4 lint over template source, never site-packages
-manage.py hx_map [--no-check]                          # controls <-> views <-> events, checked
+manage.py hx_map [--no-check] [--by-template]          # controls <-> views <-> events, checked
 ```
+
+`--by-template` inverts the map: every template and partial a view names, who renders it, and the
+controls that reach them.
 
 `hx_map` classifies each control as full or partial by htmx 4's rule, resolves it through `{% url %}` or
 the literal path, and errors when a partial control reaches a view that only calls `page`, or a full

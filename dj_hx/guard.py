@@ -1,9 +1,10 @@
 """
 What htmx 4 would do silently with a response, said out loud.
 
-``guard(request, response)`` returns the findings for one response: a 3xx or
-a 204 answering a request that targets an element, an htmx request that is
-not htmx 4, messages pending on a fragment response with nowhere to go.
+``guard(request, response)`` returns the findings for one response: a 3xx, a
+204, or a response no verb built answering a request that targets an element,
+an htmx request that is not htmx 4, messages pending on a fragment response
+with nowhere to go.
 ``HxMiddleware`` records and logs them; ``HxTestClient`` raises them. The
 verbs record their own findings the same way, so ``response.hx_findings`` is
 the one place to look.
@@ -13,10 +14,18 @@ from __future__ import annotations
 
 from django.conf import settings
 
-from .errors import HxError, HxNoSwap, HxProtocolError, HxRedirectIntoFragment
+from .errors import HxBareResponse, HxError, HxNoSwap, HxProtocolError, HxRedirectIntoFragment
 from .request import REQUEST_TYPE_HEADER, is_htmx, who
 
-__all__ = ["guard", "findings_of"]
+__all__ = ["guard", "findings_of", "is_html"]
+
+
+def is_html(response) -> bool:
+    """A response whose body htmx would swap: not streamed, and ``text/html``."""
+    return (
+        not getattr(response, "streaming", False)
+        and (response.get("Content-Type") or "").startswith("text/html")
+    )
 
 
 def findings_of(response) -> list[HxError]:
@@ -94,4 +103,20 @@ def guard(request, response) -> list[HxError]:
                 'Use removed() with hx-swap="delete", or return a fragment.'
             )
         )
+    elif status < 300 and is_html(response) and not _built_by_a_verb(response):
+        found.append(
+            HxBareResponse(
+                f"{who(request)} answered a request that targets an element with a response no verb built "
+                "(django.shortcuts.render, a plain HttpResponse, a TemplateResponse); whether it is a page or a "
+                "fragment cannot be checked, and django.shortcuts.render sends the whole page into the element. "
+                "Use render(request, template, partial), fragment(), text() or removed(), or HxMixin on a "
+                "generic view."
+            )
+        )
     return found
+
+
+def _built_by_a_verb(response) -> bool:
+    from .verbs import HxResponse
+
+    return isinstance(response, HxResponse)

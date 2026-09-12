@@ -56,8 +56,11 @@ design for Flask is [hx-flask]; the sibling for Fixi.js is [dj-fixi].
 The three rules have working consequences. Each is a sentence to check code
 against.
 
-- **Never return `HttpResponseRedirect`, `HttpResponse("")` or a 204 to an
-  htmx request.** Say what happened: `redirect`, `removed`, `text`.
+- **Never return `HttpResponseRedirect`, `HttpResponse("")`, a 204 or
+  `django.shortcuts.render` to an htmx request.** Say what happened:
+  `redirect`, `removed`, `text`, `render(request, template, partial)`. A
+  response no verb built that answers a partial request is recorded
+  (`HxBareResponse`).
 - **Never read `HX-Source` or `HX-Target`.** The real question is whether the
   client asked for a page or a fragment: `wants_page(request)`.
 - **Announce facts; do not update regions.** Prefer `.trigger("contacts-changed")`
@@ -198,12 +201,14 @@ by `HxTestClient`. Nothing is gated on `DEBUG` that a test needs.
 | A fragment answers a boosted or body-targeted request | `fragment()` / `text()` record `HxFragmentIntoPage` |
 | Any 3xx answers a partial request, including `APPEND_SLASH`'s 301 | `redirect()` raises; the guard records `HxRedirectIntoFragment`, naming APPEND_SLASH when that is the cause |
 | A 204 answers a partial request | `HxNoSwap`: htmx 4 leaves the target untouched |
+| A response no verb built answers a partial request | `HxBareResponse`: `django.shortcuts.render`, a plain `HttpResponse` or a `TemplateResponse` cannot be checked, and Django's `render` sends the whole page |
 | Messages added on a fragment with no messages template | `HxMessagesUnconfigured` |
 | A partial used as `<hx-partial>` whose root is not `id="<name>"` | `HxPartialRootId` at the render |
 | `partial=` names a partial the template does not define | `HxUnknownPartial`, listing the partials it does |
 | An htmx request without `HX-Request-Type` | `HxProtocolError`: this needs htmx 4. `HX_REQUEST_TYPE_FALLBACK = "full"` answers with the page instead, for a proxy that strips the header; the guard still records it |
 | htmx 2 idioms in the HTML: `hx-ext`, implicit inheritance, camelCase events, `show:#x:top` | the lint, on every test-client response, in the middleware log under `DEBUG`, in `manage.py hx_lint`, and as check `dj_hx.W005` |
 | A partial control pointing at a page-only view, or a boosted link at a fragment-only one | `manage.py hx_map` |
+| A control pointing at a view that calls no verb; a view that calls `.retarget()` or `.reswap()` | `manage.py hx_map`, as warnings |
 | `HxMiddleware` missing, listed before `MessageMiddleware`, `HX_MESSAGES_TEMPLATE` unset or unresolvable, no partials on Django < 6, `HxMixin` after a Django base | checks `dj_hx.W001`, `E002`, `W003`, `W004`, `W006`, `E007` |
 
 ## Testing
@@ -230,8 +235,12 @@ htmx's fetch follows it and the browser never sees it.
 
 ```
 manage.py hx_lint [paths...] [--warnings-as-errors]   # template source, never site-packages
-manage.py hx_map [--no-check]                          # controls <-> views <-> events, checked
+manage.py hx_map [--no-check] [--by-template]          # controls <-> views <-> events, checked
 ```
+
+`--by-template` reads the same map from the other end: every template and
+partial a view names, the views that render it, and the controls that reach
+them, for when you are editing a partial and need to know who serves it.
 
 `hx_map` classifies every control as full or partial by htmx 4's own rule
 (the target is `body`, `hx-select` is present, or the element is boosted),

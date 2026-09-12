@@ -26,7 +26,9 @@ event fired without a target lands on `document` after a delete swap, where a
 - The messages bridge: `HX_MESSAGES_TEMPLATE = "layout.html#messages"`;
   `HxMiddleware` appends pending messages to fragment responses, peeking
   before consuming. Requires the middleware after `MessageMiddleware` (E002).
-- The guard: a 3xx or 204 answering a partial request, `APPEND_SLASH`'s
+- The guard: a 3xx, a 204, or a response no verb built (`HxBareResponse`:
+  `django.shortcuts.render`, a plain `HttpResponse`, a `TemplateResponse`)
+  answering a partial request, `APPEND_SLASH`'s
   redirect recognised whether the middleware sees the 301 or the 404 it comes
   from, an htmx request without `HX-Request-Type`. Recorded on
   `response.hx_findings`, logged, raised by `HxTestClient`.
@@ -41,10 +43,13 @@ event fired without a target lands on `document` after a delete swap, where a
 - `manage.py hx_lint` over template source, and check W005 for the same in
   the project's own templates (never site-packages, comments stripped).
 - `manage.py hx_map`: controls to views to events, checked, with
-  `if request.method == ...` branches attributed to their method.
+  `if request.method == ...` branches attributed to their method. It also warns
+  on a control reaching a view that calls no verb, and on a view that calls
+  `.retarget()` or `.reswap()`, naming the controls whose templates no longer
+  predict the DOM effect. `--by-template` reads the map from the other end.
 - Checks W001, E002, W003, W004, W005, W006, E007.
 - The example: contact.app on the ORM, same routes, templates and tests as
   hx-flask; 103 tests plus 7 in Chromium, on Django 4.2, 5.2 and 6.0.
-- The shared core, vendored: `hxlint.py` and `hx_vocab.py` from hx-flask
-  (one import line differs), `urlconf.py` from dj-fixi; `tools/sync_shared.py`
-  and a pin test. `mapcore.py` is the framework-neutral map engine.
+- The shared core, vendored: `hxlint.py`, `hx_vocab.py` and `mapcore.py`, the
+  framework-neutral map engine, from hx-flask (one or two import lines differ),
+  `urlconf.py` from dj-fixi; `tools/sync_shared.py` and a pin test.

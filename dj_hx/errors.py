@@ -32,6 +32,10 @@ class HxNoSwap(HxError):
     """A 204 answered a partial request; htmx 4 leaves the target untouched."""
 
 
+class HxBareResponse(HxError):
+    """A response no verb built answered a request that targets an element."""
+
+
 class HxUnknownPartial(HxError):
     """A ``partial=`` names a template partial the template does not define."""
 

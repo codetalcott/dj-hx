@@ -40,3 +40,24 @@ def test_nothing_is_gated_on_debug_that_a_test_needs(client):
 
     assert settings.DEBUG is False
     assert "<hx-partial" in client.hx_delete("/lib/flash-removed/").content.decode()
+
+
+def test_a_response_no_verb_built_is_recorded_on_a_partial_request(caplog):
+    """django.shortcuts.render, a plain HttpResponse and a TemplateResponse all bypass the verbs."""
+    client = HxTestClient(strict=False, lint=False)
+    with caplog.at_level("WARNING", logger="dj_hx"):
+        for url in ("/lib/plain/", "/lib/bare-page/", "/lib/bare-template-response/"):
+            r = client.hx_get(url)
+            assert r.status_code == 200
+            assert [type(f).__name__ for f in r.hx_findings] == ["HxBareResponse"], url
+    assert sum("without a verb" in m or "no verb built" in m for m in caplog.messages) == 3
+
+
+def test_a_response_no_verb_built_is_fine_for_a_page_and_for_what_htmx_never_swaps():
+    """A boosted link wants a page, whoever built it; JSON, a download and a stream are not swapped."""
+    client = HxTestClient(lint=False)  # strict: a finding would raise
+    assert client.hx_get("/lib/bare-page/", full=True).status_code == 200
+    assert client.get("/lib/bare-page/").status_code == 200
+    assert client.hx_get("/lib/json/").status_code == 200
+    assert client.hx_get("/lib/echo/").status_code == 200
+    assert client.hx_get("/lib/flash-stream/").status_code == 200

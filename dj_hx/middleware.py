@@ -14,18 +14,11 @@ import logging
 
 from django.conf import settings
 
-from .guard import findings_of, guard
+from .guard import findings_of, guard, is_html
 from .messages import bridge_messages
 from .request import REQUEST_TYPE_HEADER, is_htmx, vary_on_hx
 
 logger = logging.getLogger("dj_hx")
-
-
-def _is_html(response) -> bool:
-    return (
-        not getattr(response, "streaming", False)
-        and (response.get("Content-Type") or "").startswith("text/html")
-    )
 
 
 class HxMiddleware:
@@ -39,7 +32,7 @@ class HxMiddleware:
         already_logged = len(findings)  # the verbs log what they record
         guard(request, response)
         partial = is_htmx(request) and request.headers.get(REQUEST_TYPE_HEADER) == "partial"
-        if partial and response.status_code < 300 and response.status_code != 204 and _is_html(response):
+        if partial and response.status_code < 300 and response.status_code != 204 and is_html(response):
             bridge_messages(request, response)
         for finding in findings[already_logged:]:
             logger.warning("hx: %s", finding)
@@ -52,7 +45,7 @@ class HxMiddleware:
         template = getattr(response, "hx_template", None)
         if template:
             response["X-HX-Template"] = template
-        if not _is_html(response) or response.status_code >= 500:
+        if not is_html(response) or response.status_code >= 500:
             return
         from . import hxlint
 
