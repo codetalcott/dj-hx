@@ -1,17 +1,22 @@
 """
-The map engine, framework-neutral: controls in templates <-> the handlers that
-answer them <-> the events they exchange.
+mapcore.py -- the map engine, framework-neutral: controls in templates <-> the
+handlers that answer them <-> the events they exchange.
 
 Built from a static scan of the literal strings people and agents both write.
 A framework adapter supplies three things: preprocessed template sources
-(``{% url 'x' %}`` already turned into ``URLFOR:x``), a resolver from a control's
-URL and method to a handler key, and the handlers themselves with the verbs
-they call (``scan_function``). ``dj_hx.hxmap`` is the Django adapter; the
-Flask one is ``hxmap.py`` in hx-flask.
+(``url_for('x')`` or ``{% url 'x' %}`` already turned into ``URLFOR:x``), a
+resolver from a control's URL and method to a handler key, and the handlers
+themselves with the verbs they call (``scan_function``). ``hxmap.py`` is the
+Flask adapter; ``dj_hx.hxmap`` is the Django one. This file is canonical in
+hx-flask and vendored by dj-hx (``tools/sync_shared.py`` there).
 
 Its first check is the one a Python attribute DSL could not make: a partial
 control that reaches a handler calling only ``page``, or a full control that
 reaches one calling only ``fragment`` or ``text``, is reported at scan time.
+Its second is the one the request-time guards cannot make: a control that
+reaches a handler calling no verb at all, so nothing can check its shape, and
+a handler that calls ``.retarget()`` or ``.reswap()``, so its controls'
+templates no longer predict the DOM effect.
 """
 
 from __future__ import annotations
@@ -40,6 +45,7 @@ __all__ = [
     "PAGE_VERBS",
     "FRAGMENT_VERBS",
     "VERBS",
+    "ESCAPE_HATCHES",
 ]
 
 URLFOR = "URLFOR:"
@@ -56,6 +62,7 @@ DOM_EVENTS = {
 VERBS = {"render", "page", "fragment", "invalid", "redirect", "removed", "text"}
 PAGE_VERBS = {"page"}
 FRAGMENT_VERBS = {"fragment", "text", "removed"}
+ESCAPE_HATCHES = ("retarget", "reswap")
 ALL_METHODS = "*"
 
 
@@ -91,6 +98,7 @@ class Handler:
     by_method: dict[str, set[str]] = field(default_factory=dict)
     templates: set[str] = field(default_factory=set)
     announces: set[str] = field(default_factory=set)
+    escapes: set[str] = field(default_factory=set)
     reads_values: bool = False
     flashes: bool = False
     controls: list[Control] = field(default_factory=list)
@@ -300,8 +308,11 @@ class HandlerVisitor(ast.NodeVisitor):
                 self._templates(verb, node)
             elif name in self.flash_names or name.rsplit(".", 1)[-1] in self.flash_names:
                 self.h.flashes = True
-        if isinstance(node.func, ast.Attribute) and node.func.attr == "trigger" and node.args and isinstance(node.args[0], ast.Constant):
-            self.h.announces.add(str(node.args[0].value))
+        if isinstance(node.func, ast.Attribute):
+            if node.func.attr == "trigger" and node.args and isinstance(node.args[0], ast.Constant):
+                self.h.announces.add(str(node.args[0].value))
+            elif node.func.attr in ESCAPE_HATCHES:
+                self.h.escapes.add(node.func.attr)
         self.generic_visit(node)
 
     def visit_Attribute(self, node: ast.Attribute):
@@ -359,7 +370,11 @@ def scan_function(handler: Handler, tree: ast.AST, verb_names: dict[str, str], f
 # --------------------------------------------------------------------- checks
 
 
-def check(handlers: dict[str, Handler], controls: list[Control], listeners: list[Listener], script_names: set[str]) -> Map:
+def check(handlers: dict[str, Handler], controls: list[Control], listeners: list[Listener], script_names: set[str], verb_prefix: str = "") -> Map:
+    """
+    The checks. ``verb_prefix`` is how the framework spells a verb in a
+    message: ``"hx."`` for Flask's ``hx.page``, ``""`` for Django's ``page``.
+    """
     m = Map(handlers, controls, listeners, script_names)
     for c in controls:
         if c.problem:
@@ -372,18 +387,30 @@ def check(handlers: dict[str, Handler], controls: list[Control], listeners: list
         if h is None:
             continue
         h.controls.append(c)
+        if not h.verbs:
+            m.warnings.append(
+                f"{c.file}:{c.line} <{c.element}> reaches {h.label} which calls no hx verb, so whether it answers "
+                f"with a page or a fragment cannot be checked; call {verb_prefix}render/page/fragment/text/removed "
+                f"(or the verb is in a helper the scanner cannot see)."
+            )
+            continue
+        for hatch in sorted(h.escapes):
+            m.warnings.append(
+                f"{h.label} calls .{hatch}(); {c.file}:{c.line} <{c.element}> can no longer predict its DOM effect "
+                f"from the template. Keep the comment that says why."
+            )
         verbs = h.verbs_for(c.method)
         if not verbs:
             continue
         if c.scope == "partial" and verbs <= PAGE_VERBS:
             m.errors.append(
-                f"{c.file}:{c.line} <{c.element}> targets an element ({c.why}) but {h.label} only calls page; "
+                f"{c.file}:{c.line} <{c.element}> targets an element ({c.why}) but {h.label} only calls {verb_prefix}page; "
                 f"the page would land inside it. Target body, or give the handler a partial."
             )
         elif c.scope == "full" and verbs <= FRAGMENT_VERBS:
             m.errors.append(
                 f"{c.file}:{c.line} <{c.element}> wants a page ({c.why}) but {h.label} only calls "
-                f"{'/'.join(sorted(verbs))}; a bare fragment would land in <body>."
+                f"{verb_prefix}{'/'.join(sorted(verbs))}; a bare fragment would land in <body>."
             )
         if c.method == "DELETE" and not c.include and h.reads_values and not c.boosted:
             m.warnings.append(
@@ -409,6 +436,8 @@ def format_map(m: Map, check_: bool = True) -> str:
         lines.append(f"{h.label}  {'; '.join(h.rules)}")
         if h.verbs:
             lines.append(f"  verbs: {', '.join(sorted(h.verbs))}" + (f"  -> {', '.join(sorted(h.templates))}" if h.templates else ""))
+        if h.escapes:
+            lines.append(f"  escapes: {', '.join(sorted(h.escapes))}")
         for c in h.controls:
             lines.append(f"  <- {c.file}:{c.line} <{c.element}> {c.method} {c.scope} ({c.why})")
         for event in sorted(h.announces):
@@ -421,6 +450,6 @@ def format_map(m: Map, check_: bool = True) -> str:
 
 
 def print_map(m: Map, check_: bool = True, out=None) -> int:
-    """Write the map; one write, so Django's OutputWrapper adds no blank lines."""
+    """Write the map; one write, so a framework's output wrapper adds no blank lines."""
     (out or sys.stdout).write(format_map(m, check_))
     return 1 if (check_ and m.errors) else 0

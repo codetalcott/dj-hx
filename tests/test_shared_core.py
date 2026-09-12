@@ -1,6 +1,6 @@
 """
-The shared core is vendored, not forked: hxlint.py and hx_vocab.py are
-hx-flask's, urlconf.py is dj-fixi's. When the neighbours are checked out,
+The shared core is vendored, not forked: hxlint.py, hx_vocab.py and mapcore.py
+are hx-flask's, urlconf.py is dj-fixi's. When the neighbours are checked out,
 the copies must match what tools/sync_shared.py would write.
 """
 
@@ -19,6 +19,7 @@ import sync_shared  # noqa: E402
 def test_hxlint_and_vocab_match_hx_flask():
     assert (ROOT / "dj_hx" / "hxlint.py").read_text() == sync_shared.expected_hxlint()
     assert (ROOT / "dj_hx" / "hx_vocab.py").read_text() == sync_shared.expected_vocab()
+    assert (ROOT / "dj_hx" / "mapcore.py").read_text() == sync_shared.expected_mapcore()
 
 
 @pytest.mark.skipif(not sync_shared.DJ_FIXI.exists(), reason="dj-fixi is not checked out")

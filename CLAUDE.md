@@ -71,11 +71,11 @@ strings. [templates.py](dj_hx/templates.py) strips Django template syntax (line 
 **The map is split by framework.** [mapcore.py](dj_hx/mapcore.py) is framework-neutral: template scan,
 the AST visitor that finds verb calls, the control-vs-handler checks. [hxmap.py](dj_hx/hxmap.py) is the
 Django adapter: URLconf walk, `{% url %}` and `resolve()`. New map logic belongs in `mapcore` unless it
-is genuinely Django-specific, because hx-flask shares the core.
+is genuinely Django-specific; the core is vendored from hx-flask (see below).
 
 ## Vendored files: do not edit in place
 
-`dj_hx/hxlint.py` and `dj_hx/hx_vocab.py` are hx-flask's byte for byte apart from one import line, and
+`dj_hx/hxlint.py`, `dj_hx/hx_vocab.py` and `dj_hx/mapcore.py` are hx-flask's byte for byte apart from one or two import lines, and
 `dj_hx/urlconf.py` is dj-fixi's body under a local docstring. Fix them upstream and run
 `python tools/sync_shared.py` (`HX_FLASK` / `DJ_FIXI` env vars point at the checkouts).
 `tests/test_shared_core.py` pins the copies and fails when the neighbours are checked out and differ.
@@ -90,7 +90,7 @@ is genuinely Django-specific, because hx-flask shares the core.
   dispatches on `document` where a `from:body` listener cannot hear it.
 - Error messages name the handler (`who(request)`) and say what to change. Match that tone; the messages
   are the documentation for the failure catalogue in README.md.
-- Ruff: line length 120 but `E501` ignored, `N818` ignored (exception names mirror hx-flask), vendored
+- Ruff: line length 120 but `E501` ignored, `N818` ignored (exception names mirror hx-flask, except `HxUnknownPartial` for its `HxUnknownBlock` and `HxMessagesUnconfigured` for its `HxFlashUnconfigured`), vendored
   files excluded.
 - Every row of the README's "What is loud" table has a test. Adding a failure mode means adding a row and
   a test.

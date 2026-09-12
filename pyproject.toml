@@ -57,7 +57,7 @@ packages = ["dj_hx"]
 line-length = 120
 target-version = "py310"
 # Vendored from hx-flask verbatim; formatted there.
-exclude = ["dj_hx/hxlint.py", "dj_hx/hx_vocab.py"]
+exclude = ["dj_hx/hxlint.py", "dj_hx/hx_vocab.py", "dj_hx/mapcore.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "Q", "UP", "W"]

@@ -42,10 +42,12 @@ design for Flask is [hx-flask]; the sibling for Fixi.js is [dj-fixi].
    422 and a plain 303 out.
 2. **The HTML keeps the request-side controls and stays sufficient to predict
    the DOM effect.** Nothing here changes a target or a swap from a header, and
-   nothing here reads `HX-Source` or `HX-Target`: the handler never learns an
-   element id.
+   nothing here reads `HX-Source` or `HX-Target`: the handler never reads an
+   element id from the request. The only ids it names are partial names, and
+   the render checks each one.
 3. **One template per resource.** Fragments are `{% partialdef %}` regions of
-   the page template, named in the handler, so page and fragment cannot drift.
+   the page template, or a file the page includes, named in the handler; either
+   way page and fragment are one source and cannot drift.
    Django 6.0 has partials built in; on 4.2 to 5.x install
    `django-template-partials` and register its tags (see Install).
 
