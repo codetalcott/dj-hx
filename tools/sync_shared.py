@@ -1,9 +1,10 @@
 """
 Copy the shared core from its canonical homes.
 
-``hxlint.py`` and ``hx_vocab.py`` are hx-flask's (the linter is pure Python
-over HTML strings; the vocabulary is generated there from the htmx source
-tree by ``tools/gen_vocab.py``). ``urlconf.py`` is dj-fixi's. dj-hx vendors
+``hxlint.py``, ``hx_vocab.py`` and ``mapcore.py`` are hx-flask's (the linter
+and the map engine are pure Python over HTML strings and ASTs; the vocabulary
+is generated there from the htmx source tree by ``tools/gen_vocab.py``).
+``urlconf.py`` is dj-fixi's. dj-hx vendors
 them so it has no dependency on either; ``tests/test_shared_core.py`` pins
 the copies when the neighbours are checked out.
 
@@ -35,6 +36,21 @@ def expected_vocab() -> str:
     return (HX_FLASK / "hx_vocab.py").read_text()
 
 
+IMPORT_MAPCORE = (
+    ("import hx_vocab as vocab\n", "from . import hx_vocab as vocab\n"),
+    ("from hxlint import ", "from .hxlint import "),
+)
+
+
+def expected_mapcore() -> str:
+    src = (HX_FLASK / "mapcore.py").read_text()
+    for flask, django in IMPORT_MAPCORE:
+        if flask not in src:
+            sys.exit("mapcore.py no longer imports the way sync_shared expects")
+        src = src.replace(flask, django, 1)
+    return src
+
+
 def expected_urlconf() -> str:
     """dj-fixi's body under dj-hx's docstring (the docstring names the package)."""
     theirs = (DJ_FIXI / "dj_fixi" / "urlconf.py").read_text()
@@ -44,7 +60,7 @@ def expected_urlconf() -> str:
 
 
 def main() -> None:
-    for name, expected in (("hxlint.py", expected_hxlint), ("hx_vocab.py", expected_vocab), ("urlconf.py", expected_urlconf)):
+    for name, expected in (("hxlint.py", expected_hxlint), ("hx_vocab.py", expected_vocab), ("mapcore.py", expected_mapcore), ("urlconf.py", expected_urlconf)):
         (PKG / name).write_text(expected())
         print(f"synced dj_hx/{name}")
 
