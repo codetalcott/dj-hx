@@ -53,6 +53,55 @@ stance.
    Django 6.0 has partials built in; on 4.2 to 5.x install
    `django-template-partials` and register its tags (see Install).
 
+## Principles, stated so an agent can apply them
+
+The three rules have working consequences. Each is a sentence to check code
+against.
+
+- **Never return `HttpResponseRedirect`, `HttpResponse("")` or a 204 to an
+  htmx request.** Say what happened: `redirect`, `removed`, `text`.
+- **Never read `HX-Source` or `HX-Target`.** The real question is whether the
+  client asked for a page or a fragment: `wants_page(request)`.
+- **Announce facts; do not update regions.** Prefer `.trigger("contacts-changed")`
+  with `hx-trigger="contacts-changed from:body"` on the element that cares, and
+  `.partial()` only when the handler already holds the data. `.trigger()` always
+  names a target, so the event lands whether or not the swap removed the element
+  that asked.
+- **The template predicts the DOM effect; the handler predicts the resource
+  effect and the representation.** `.retarget()` and `.reswap()` exist and break
+  the first half; use them with a comment saying why.
+- **Every control says `{% url %}`.** Then a control names the view that answers
+  it, a search for the view finds every caller, and the trailing slash cannot
+  drift from the route.
+- **Every name is literal.** `render(request, "index.html", "rows")` is matched
+  by `{% partialdef rows %}` in that file; nothing is derived from a naming
+  scheme. The one convention, a partial's root `id` equals its name, is checked
+  at the render.
+
+Silent failure, not API surface, is the friction, for people and agents alike.
+Every row of the catalogue below lands on the first tier it can: delete the
+dependency (there is no `source` or `target` to read; `.trigger()` cannot omit
+a target), else fail at the first deterministic moment (the verbs raise, the
+guard records, `HxTestClient` raises), else check statically (the lint, the
+map, the system checks), else document.
+
+What was rejected, and why:
+
+- **Controls declared in Python**, an `hx_attrs(get=..., target=...)` helper or
+  control objects beside the view. It hides what the search box does from a
+  reader of `index.html`, it is a vocabulary agents have never seen, and it does
+  not enforce the agreement it seems to promise. `hx_map` does, from the HTML
+  people and agents already write.
+- **Server-side retargeting as a default.** `HX-Retarget`, `HX-Reswap` and
+  `HX-Location` make a control's DOM effect invisible from the template.
+- **htmx 2 compatibility.** Without `HX-Request-Type` the page-or-fragment
+  question is a guess.
+- **Decorators that render a returned dict.** A view that sometimes returns a
+  dict and sometimes a redirect has two return types, which is an agent trap.
+
+`HxMixin` is here because Django's generic views are; the base-order failure
+that made the Flask design refuse mixins is check `dj_hx.E007`.
+
 ## Install
 
 ```python
@@ -227,8 +276,8 @@ python tools/sync_shared.py                # refresh the vendored core from hx-f
 
 ## htmx 4 facts this depends on
 
-All verified against `src/htmx.js` at tag v4.0.0 (line numbers in the design
-review).
+All verified against `src/htmx.js` at tag v4.0.0; the line numbers are into
+that file.
 
 - `HX-Request-Type` is `full` when the target is the body or `hx-select` is set, else `partial` (L578).
 - `hx-push-url="true"` pushes the URL after redirects (L1675), so a plain 303 updates the location bar.
