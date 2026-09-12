@@ -9,6 +9,7 @@ partials of the page template. See README.md.
 __version__ = "0.1.0"
 
 from .errors import (
+    HxBareResponse,
     HxError,
     HxFragmentIntoPage,
     HxLintError,
@@ -30,5 +31,5 @@ __all__ = [
     "is_htmx", "request_type", "wants_page", "wants_fragment", "current_url", "vary_on_hx",
     "HxResponse", "HxRedirectResponse", "HxMixin",
     "HxError", "HxProtocolError", "HxPageIntoFragment", "HxFragmentIntoPage", "HxRedirectIntoFragment",
-    "HxNoSwap", "HxUnknownPartial", "HxPartialRootId", "HxMessagesUnconfigured", "HxLintError", "HxRedirectError",
+    "HxNoSwap", "HxBareResponse", "HxUnknownPartial", "HxPartialRootId", "HxMessagesUnconfigured", "HxLintError", "HxRedirectError",
 ]

@@ -161,5 +161,5 @@ def build_map(urlconf=None, sources: dict[str, str] | None = None) -> Map:
     return mapcore.check(handlers, controls, listeners, script_names)
 
 
-def print_map(check: bool = True, out=None, urlconf=None, sources=None) -> int:
-    return mapcore.print_map(build_map(urlconf, sources), check, out)
+def print_map(check: bool = True, out=None, urlconf=None, sources=None, by_template: bool = False) -> int:
+    return mapcore.print_map(build_map(urlconf, sources), check, out, by_template)

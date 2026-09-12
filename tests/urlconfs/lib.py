@@ -2,6 +2,8 @@
 
 from django.contrib import messages
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse, StreamingHttpResponse
+from django.shortcuts import render as django_render
+from django.template.response import TemplateResponse
 from django.urls import path
 
 from dj_hx import fragment, invalid, page, redirect, removed, render, text
@@ -96,7 +98,15 @@ def flash_stream(request):
 
 
 def plain(request):
-    return HttpResponse("plain")
+    return HttpResponse("plain")  # no verb built it
+
+
+def bare_page(request):
+    return django_render(request, "index.html", {"items": ITEMS})  # the whole page, into an element
+
+
+def bare_template_response(request):
+    return TemplateResponse(request, "index.html", {"items": ITEMS})  # what a generic view without HxMixin returns
 
 
 def escaped(request):
@@ -117,9 +127,11 @@ def as_json(request):
 
 def echo(request):
     body = request.POST.get("a") or request.GET.get("a") or ""
+    # text/plain: this echoes the protocol, and an htmx control never swaps it.
     return HttpResponse(
         f"{request.method} hx={request.headers.get('HX-Request')} type={request.headers.get('HX-Request-Type')} "
-        f"ct={request.content_type} a={body}"
+        f"ct={request.content_type} a={body}",
+        content_type="text/plain",
     )
 
 
@@ -145,6 +157,8 @@ urlpatterns = [
     path("lib/flash-file/", flash_file),
     path("lib/flash-stream/", flash_stream),
     path("lib/plain/", plain),
+    path("lib/bare-page/", bare_page),
+    path("lib/bare-template-response/", bare_template_response),
     path("lib/escaped/", escaped),
     path("lib/lint-bad/", lint_bad),
     path("lib/lint-warn/", lint_warn),
