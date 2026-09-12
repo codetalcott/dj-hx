@@ -28,11 +28,11 @@ def contacts_view(request, contact_id):
 </tbody>
 ```
 
-It is the Django expression of the design worked out for Flask in hx-flask,
+It is the Django expression of the design worked out for Flask in [hx-flask],
 built around three places where htmx 2 habits go wrong against htmx 4: a 204
 no longer swaps, an event fired without a target lands where a `from:body`
 listener cannot hear it, and django-htmx still writes headers htmx 4 removed.
-The sibling for Fixi.js is dj-fixi. Nothing here depends on django-htmx.
+The sibling for Fixi.js is [dj-fixi]. Nothing here depends on django-htmx.
 
 **Status:** 0.1.0, unreleased. 103 tests plus 7 in Chromium, green on Django
 4.2, 5.2 and 6.0 and Python 3.10 to 3.13. The name `dj-hx` was chosen because
@@ -198,9 +198,9 @@ attributed to that method. It also pairs `.trigger("x")` with
 
 ## The shared core
 
-`dj_hx/hxlint.py` and `dj_hx/hx_vocab.py` are hx-flask's, byte for byte
+`dj_hx/hxlint.py` and `dj_hx/hx_vocab.py` are [hx-flask]'s, byte for byte
 apart from one import line; the vocabulary is generated there from the htmx
-4.0.0 source tree. `dj_hx/urlconf.py` is dj-fixi's URLconf walk.
+4.0.0 source tree. `dj_hx/urlconf.py` is [dj-fixi]'s URLconf walk.
 `tools/sync_shared.py` refreshes them and `tests/test_shared_core.py` pins
 them. The map is split into `dj_hx/mapcore.py` (framework-neutral: template
 scanning, the handler visitor, the checks) and `dj_hx/hxmap.py` (Django:
@@ -241,3 +241,6 @@ review).
 ## License
 
 MIT
+
+[hx-flask]: https://github.com/codetalcott/hx-flask
+[dj-fixi]: https://github.com/codetalcott/dj-fixi

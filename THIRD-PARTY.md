@@ -2,10 +2,10 @@
 
 ## Vendored into the package
 
-- `dj_hx/hxlint.py`, `dj_hx/hx_vocab.py` — from hx-flask, the sibling project
+- `dj_hx/hxlint.py`, `dj_hx/hx_vocab.py` — from [hx-flask], the sibling project
   for Flask. The vocabulary is generated there from the htmx 4.0.0 source tree.
   Vendored so dj-hx has no dependency on it. MIT.
-- `dj_hx/urlconf.py` — from dj-fixi, the sibling project for Fixi.js. MIT.
+- `dj_hx/urlconf.py` — from [dj-fixi], the sibling project for Fixi.js. MIT.
 
 `tools/sync_shared.py` refreshes all three and `tests/test_shared_core.py`
 pins them when the neighbouring checkouts are present.
@@ -24,3 +24,6 @@ book's Flask original so the two can be compared line for line.
 - `example/contacts/contacts.json`, the routes and the templates — from
   *Hypermedia Systems* (Gross, Stepinski, Akşimşek), whose sample application
   is published under the BSD 2-Clause license.
+
+[hx-flask]: https://github.com/codetalcott/hx-flask
+[dj-fixi]: https://github.com/codetalcott/dj-fixi
