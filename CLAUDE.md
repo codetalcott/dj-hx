@@ -15,8 +15,8 @@ to a verb signature, a setting, an error, a check id or a lint rule must be mirr
 The checked-in `.venv` has Django 6.0, pytest, ruff and playwright.
 
 ```
-.venv/bin/python -m pytest                      # 110 tests, ~5s
-.venv/bin/python -m pytest -m "not browser"     # 103, skipping Chromium
+.venv/bin/python -m pytest                      # 117 tests, ~5s
+.venv/bin/python -m pytest -m "not browser"     # 110, skipping Chromium
 .venv/bin/python -m pytest -m browser           # the 7 Playwright tests alone
 .venv/bin/python -m pytest tests/test_verbs.py::test_text_escapes
 .venv/bin/ruff check .
@@ -47,7 +47,7 @@ three Django lines; `django.VERSION < (6, 0)` branches already exist in `verbs.p
 `HX-Source` and `HX-Target` are deliberately never read; do not add a code path that branches on an
 element id. Everything downstream asks `wants_page()` / `wants_fragment()`.
 
-**Response side are the verbs.** [verbs.py](dj_hx/verbs.py) holds the seven verbs plus `HxResponse`.
+**Response side are the verbs.** [verbs.py](dj_hx/verbs.py) holds the eight verbs plus `HxResponse`.
 Every response carries `hx_kind`, `hx_template`, `hx_page_template`, `hx_context`, `hx_request` and
 `hx_findings`; `.partial()` and the messages bridge re-render from those attributes, so a new verb must
 set them.

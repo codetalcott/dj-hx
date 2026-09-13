@@ -2,7 +2,7 @@
 
 from django.urls import path
 
-from dj_hx import fragment, page, redirect, removed
+from dj_hx import fragment, navigate, page, redirect, removed
 
 
 def page_view(request):
@@ -28,7 +28,19 @@ def go(request):
     return redirect(request, "/")
 
 
+def guarded(request):
+    if "user" not in request.session:
+        return navigate(request, "/login/")
+    return page(request, "detail.html")  # the login check must not hide this
+
+
+def gone(request):
+    return navigate(request, "/elsewhere/")  # right for a partial control and a boosted link alike
+
+
 urlpatterns = [
+    path("m/guarded/", guarded, name="m-guarded"),
+    path("m/gone/", gone, name="m-gone"),
     path("m/page/", page_view, name="m-page"),
     path("m/detail/", detail, name="m-detail"),
     path("m/rows/", rows, name="m-rows"),

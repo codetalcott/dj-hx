@@ -24,10 +24,10 @@ from .errors import (
 )
 from .mixins import HxMixin
 from .request import current_url, is_htmx, request_type, vary_on_hx, wants_fragment, wants_page
-from .verbs import HxRedirectResponse, HxResponse, fragment, invalid, page, redirect, removed, render, text
+from .verbs import HxRedirectResponse, HxResponse, fragment, invalid, navigate, page, redirect, removed, render, text
 
 __all__ = [
-    "render", "page", "fragment", "invalid", "redirect", "removed", "text",
+    "render", "page", "fragment", "invalid", "redirect", "navigate", "removed", "text",
     "is_htmx", "request_type", "wants_page", "wants_fragment", "current_url", "vary_on_hx",
     "HxResponse", "HxRedirectResponse", "HxMixin",
     "HxError", "HxProtocolError", "HxPageIntoFragment", "HxFragmentIntoPage", "HxRedirectIntoFragment",

@@ -3,7 +3,7 @@ The response verbs. A handler names the outcome; the verb speaks htmx 4.
 
 ::
 
-    from dj_hx import render, page, fragment, invalid, redirect, removed, text
+    from dj_hx import render, page, fragment, invalid, redirect, navigate, removed, text
 
     def contacts(request):
         return render(request, "index.html", "rows", {"contacts": Contact.all()})
@@ -18,7 +18,8 @@ Nothing here changes a target or a swap from a header, and nothing here reads
 ``HX-Source`` or ``HX-Target``. The three rules that cause most mistakes:
 
 1. Never ``return HttpResponseRedirect(...)``, ``HttpResponse("")`` or a 204
-   to an htmx request. Say what happened: ``redirect``, ``removed``, ``text``.
+   to an htmx request. Say what happened: ``redirect``, ``navigate``,
+   ``removed``, ``text``.
 2. Never read ``HX-Source`` or ``HX-Target``. The real question is whether the
    client asked for a page or a fragment: ``wants_page(request)``.
 3. A partial used as an ``<hx-partial>`` (``.partial("count")``, the messages
@@ -58,6 +59,7 @@ __all__ = [
     "fragment",
     "invalid",
     "redirect",
+    "navigate",
     "removed",
     "text",
     "render_partial",
@@ -74,7 +76,7 @@ logger = logging.getLogger("dj_hx")
 class _HxResponseMethods:
     """The handler-side vocabulary on a response."""
 
-    hx_kind: str = "page"  # page | fragment | text | removed | redirect
+    hx_kind: str = "page"  # page | fragment | text | removed | redirect | navigate
     hx_template: str | None = None  # where the body came from: "index.html" or "index.html#rows"
     hx_page_template: str | None = None  # the page template, for .partial()
     hx_context: dict[str, Any] | None = None
@@ -310,13 +312,33 @@ def redirect(request, to, *args, code: int = 303, **kwargs) -> HxRedirectRespons
         raise HxRedirectIntoFragment(
             f"{who(request)} redirects to {url}, but this htmx request targets an element, not the body; "
             'fetch would follow the redirect and swap the page into it. Give the control hx-target="body", '
-            "or return a fragment."
+            "call navigate() to leave the page, or return a fragment."
         )
     response = HxRedirectResponse(url)
     response.status_code = code
     response.hx_request = request
     response.hx_findings = []
     return vary_on_hx(response)
+
+
+def navigate(request, to, *args, **kwargs) -> HxResponse | HxRedirectResponse:
+    """
+    Leave this page for ``to``, whatever the control targets: a login check, an
+    expired session. ``to`` resolves like ``redirect``. A plain 303 when the
+    request wanted a page; ``HX-Redirect`` when it targets an element, so htmx
+    loads the URL as a full page instead of swapping it into the target.
+    """
+    url = resolve_url(to, *args, **kwargs)
+    if wants_page(request):
+        response = HxRedirectResponse(url)
+        response.hx_request = request
+        response.hx_findings = []
+        vary_on_hx(response)
+    else:
+        response = _response(request, "", kind="navigate", template=None, context=None)
+        response["HX-Redirect"] = url
+    response.hx_kind = "navigate"
+    return response
 
 
 def removed(request) -> HxResponse:

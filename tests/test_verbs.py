@@ -72,8 +72,23 @@ def test_redirect_is_a_plain_303_and_refuses_partial_requests(client):
         client.hx_post("/lib/save/")
 
 
+def test_navigate_leaves_the_page_whatever_the_control_targets(client):
+    for r in (client.get("/lib/leave/"), client.hx_get("/lib/leave/", full=True, follow=False)):
+        assert (r.status_code, r["Location"]) == (303, "/lib/") and "HX-Redirect" not in r
+    r = client.hx_get("/lib/leave/")  # fetch would follow a 303 into the target; HX-Redirect is a full load
+    assert (r.status_code, r.content, r["HX-Redirect"]) == (200, b"", "/lib/") and "Location" not in r
+    assert r.hx_kind == "navigate" and "HX-Request-Type" in r["Vary"]
+
+
+def test_navigate_leaves_the_messages_for_the_page_it_loads(client):
+    assert client.hx_get("/lib/flash-leave/").content == b""  # no <hx-partial>: that would consume them
+    assert b"Please log in" in client.get("/lib/").content
+
+
 def test_guard_catches_a_plain_django_redirect(client):
     with pytest.raises(HxRedirectIntoFragment, match="answered a request that targets an element with a 302"):
+        client.hx_post("/lib/plain-redirect/")
+    with pytest.raises(HxRedirectIntoFragment, match=r"navigate\(\) to leave the page"):
         client.hx_post("/lib/plain-redirect/")
 
 

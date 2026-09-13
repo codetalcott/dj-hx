@@ -51,6 +51,8 @@ def pending_messages(request) -> int:
 
 def bridge_messages(request, response) -> None:
     """Append pending messages to a fragment response; records a finding if it cannot."""
+    if getattr(response, "hx_kind", None) == "navigate":
+        return  # htmx swaps nothing and loads a page, which shows the messages
     if not pending_messages(request):
         return
     configured = messages_template()

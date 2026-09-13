@@ -13,9 +13,14 @@ event fired without a target lands on `document` after a delete swap, where a
 
 ### Added
 
-- The verbs: `render`, `page`, `fragment`, `invalid`, `redirect`, `removed`,
-  `text`, as functions taking `request`; `is_htmx`, `wants_page`,
+- The verbs: `render`, `page`, `fragment`, `invalid`, `redirect`, `navigate`,
+  `removed`, `text`, as functions taking `request`; `is_htmx`, `wants_page`,
   `wants_fragment` reading `HX-Request-Type` and nothing else.
+- `navigate(request, to)` (from hx-flask): leave the page whatever the control
+  targets, for a login check or an expired session. A plain 303 when the
+  request wants a page, `HX-Redirect` when it targets an element; messages
+  added before it wait for the page it loads, and the map treats it as saying
+  nothing about shape.
 - `HxResponse` with `.trigger()` (always JSON, always with a `target`,
   default `body`), `.partial()`, `.push_url()`, `.replace_url()`,
   `.with_status()`, and the escape hatches `.retarget()`/`.reswap()`.
@@ -59,7 +64,7 @@ event fired without a target lands on `document` after a delete swap, where a
   and checks the events in `hx-trigger` as well as `hx-on`.
 - Checks W001, E002, W003, W004, W005, W006, E007.
 - The example: contact.app on the ORM, same routes, templates and tests as
-  hx-flask; 103 tests plus 7 in Chromium, on Django 4.2, 5.2 and 6.0.
+  hx-flask; 110 tests plus 7 in Chromium, on Django 4.2, 5.2 and 6.0.
 - The shared core, vendored: `hxlint.py`, `hx_vocab.py` and `mapcore.py`, the
   framework-neutral map engine, from hx-flask (one or two import lines differ),
   `urlconf.py` from dj-fixi; `tools/sync_shared.py` and a pin test.

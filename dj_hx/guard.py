@@ -93,7 +93,8 @@ def guard(request, response) -> list[HxError]:
         found.append(
             HxRedirectIntoFragment(
                 f"{who(request)} answered a request that targets an element with a {status}; fetch will follow it "
-                "and swap the page into that element. Use redirect() on a body-targeted control, or return a fragment."
+                "and swap the page into that element. Use redirect() on a body-targeted control, navigate() to leave "
+                "the page (a login check, an expired session), or return a fragment."
             )
         )
     elif status == 204:
