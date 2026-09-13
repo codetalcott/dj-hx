@@ -1,7 +1,7 @@
 # dj-hx
 
 > Handler-first htmx 4 for Django. The view names the outcome with a verb (`render`, `page`, `fragment`,
-> `invalid`, `redirect`, `removed`, `text`); the template keeps every request-side control; fragments are
+> `invalid`, `redirect`, `navigate`, `removed`, `text`); the template keeps every request-side control; fragments are
 > `{% partialdef %}` regions of the page template. Nothing depends on django-htmx. Every way htmx 4 fails
 > silently is turned into a raised or recorded error with a message that says what to change.
 
@@ -72,6 +72,7 @@ Template context processors must include `django.template.context_processors.req
 | Always a fragment: a polling widget, a region never served as a page | `fragment(request, "archive_ui.html", context=ctx)` or `fragment(request, "index.html", "rows", ctx)` |
 | Form failed validation | `invalid(request, "new.html", "form", ctx)` (status 422; htmx 4 swaps it) |
 | Success; the browser or a body-targeted control should land elsewhere | `redirect(request, "contacts", pk=3)` (plain 303) |
+| Another page, whatever the control targets: a login check, an expired session | `navigate(request, "login")` (303, or `HX-Redirect` on a partial request) |
 | Resource deleted; the control says `hx-swap="delete"` | `removed(request)` (200, empty body) |
 | A short string into a span or an error slot | `text(request, "(3 total)")` (HTML-escaped) |
 | One URL reached by both a body-targeted control and an element-targeted one | branch on `wants_page(request)` |
@@ -79,6 +80,27 @@ Template context processors must include `django.template.context_processors.req
 Never return `HttpResponse(status=204)`, `HttpResponseRedirect`, `django.shortcuts.redirect`,
 `django.shortcuts.render` or `HttpResponse("")` to an htmx request. Say what happened with a verb: a
 response no verb built that answers an element-targeted request is recorded as `HxBareResponse`.
+
+Django's `login_required` answers with a 302, which the guard records when a control targets an element.
+Leave the page instead; on a partial request `request.get_full_path()` is the fragment's URL, so come back
+to the page, `current_url(request)`:
+
+```python
+from functools import wraps
+from django.contrib.auth.views import redirect_to_login
+from dj_hx import current_url, navigate
+
+def hx_login_required(view):
+    @wraps(view)
+    def wrapper(request, *args, **kwargs):
+        if request.user.is_authenticated:
+            return view(request, *args, **kwargs)
+        login = redirect_to_login(current_url(request) or request.get_full_path())
+        return navigate(request, login["Location"])
+    return wrapper
+```
+
+Messages added before `navigate` wait for the page it loads.
 
 ## API
 
@@ -118,6 +140,10 @@ invalid(request, template, partial, context=None) -> HxResponse
 redirect(request, to, *args, code=303, **kwargs) -> HxRedirectResponse
     # `to` resolves like django.shortcuts.redirect (URL name, model, or URL).
     # RAISES HxRedirectIntoFragment on a partial request (fetch would follow it into the element).
+
+navigate(request, to, *args, **kwargs) -> HxRedirectResponse | HxResponse
+    # `to` resolves like redirect(). Leave the page whatever the control targets: a plain 303 when the
+    # request wants a page; on a partial request a 200 with an empty body and HX-Redirect, a full page load.
 
 removed(request) -> HxResponse
     # 200 with an empty body. The control's hx-swap="delete" removes its own representation.
@@ -191,7 +217,7 @@ All subclass `HxError` except `HxRedirectError` (an `AssertionError` from the te
 | Error | Raised or recorded | Cause | Fix |
 |---|---|---|---|
 | `HxPageIntoFragment` | raised by `page()` | page answers an element-targeted request | `hx-target="body"` on the control, or `render(..., partial)` |
-| `HxRedirectIntoFragment` | raised by `redirect()` / `HxMixin.form_valid`; recorded by the guard for any other 3xx, including `APPEND_SLASH`'s 301 | 3xx answers an element-targeted request | target body, or return a fragment; match the route's trailing slash (`{% url %}` does) |
+| `HxRedirectIntoFragment` | raised by `redirect()` / `HxMixin.form_valid`; recorded by the guard for any other 3xx, including `APPEND_SLASH`'s 301 | 3xx answers an element-targeted request | target body, `navigate()` to leave the page, or return a fragment; match the route's trailing slash (`{% url %}` does) |
 | `HxFragmentIntoPage` | recorded by `fragment()` / `text()` | bare fragment answers a boosted or body-targeted request | target an element, or render a page |
 | `HxNoSwap` | recorded by the guard | 204 answers a partial request; htmx 4 does not swap | `removed()` + `hx-swap="delete"`, or a fragment |
 | `HxBareResponse` | recorded by the guard | a `text/html` 2xx no verb built answers an element-targeted request (`django.shortcuts.render`, `HttpResponse`, `TemplateResponse`) | use a verb, or `HxMixin` on a generic view |
@@ -258,6 +284,7 @@ htmx 4 rules the templates rely on (verified against htmx.js 4.0.0):
 - A `delete` swap runs regardless of response content and honors `swap:1s`.
 - Only 204 and 304 skip the swap. A 422 body swaps.
 - `hx-push-url="true"` pushes the URL after a redirect, so a plain 303 updates the location bar.
+- An `HX-Redirect` response header makes htmx load that URL as a full page and skip the swap.
 - Events are colon-separated (`hx-on::after:swap`, `htmx:after:swap`); modifiers are `from:body`,
   `delay:200ms`, `changed`, `once`, `throttle:1s`; swap styles are case-sensitive (`outerHTML`).
 
@@ -340,7 +367,8 @@ controls that reach them.
 
 `hx_map` classifies each control as full or partial by htmx 4's rule, resolves it through `{% url %}` or
 the literal path, and errors when a partial control reaches a view that only calls `page`, or a full
-control reaches one that only calls `fragment`/`text`/`removed`. `if request.method == "DELETE":` branches
+control reaches one that only calls `fragment`/`text`/`removed`; `navigate` says nothing about shape, so a
+view that calls it and `page` is still page-only. `if request.method == "DELETE":` branches
 are attributed to that method. It pairs `.trigger("x")` with `hx-trigger="x from:body"` both ways and warns
 on `hx-delete` controls that send no values to a handler that reads them. Whether or not a view calls a
 verb, it errors when the view reads the `HX-Trigger` request header (`request.headers`, `request.META`),

@@ -81,6 +81,25 @@ def test_map_reports_the_mismatches_a_dsl_could_not():
     assert m.handlers["m-items"].verbs_for("GET") == {"page"} and m.handlers["m-items"].verbs_for("DELETE") == {"removed"}
 
 
+@override_settings(ROOT_URLCONF="tests.urlconfs.mapping")
+def test_navigate_says_nothing_about_the_shape_a_view_answers_with():
+    sources = {
+        "layout.html": '<html><body hx-boost:inherited="true">{% block content %}{% endblock %}</body></html>',
+        "page.html": """{% extends "layout.html" %}{% block content %}
+            <button hx-get="{% url 'm-guarded' %}" hx-target="#panel">guarded</button>
+            <button hx-get="{% url 'm-gone' %}" hx-target="#panel">gone</button>
+            <a href="{% url 'm-gone' %}">gone, boosted</a>
+            <div id="panel"></div>{% endblock %}""",
+    }
+    m = build_map(sources=sources)
+    assert m.handlers["m-gone"].verbs == {"navigate"}
+    assert m.errors == [
+        "page.html:2 <button> targets an element (hx-target=#panel) but guarded() only calls page; the page would "
+        "land inside it. Target body, or give the handler a partial."
+    ]
+    assert [w for w in m.warnings if "nobody-listens" not in w] == []  # rows() in this urlconf announces one
+
+
 @override_settings(ROOT_URLCONF="tests.urlconfs.book")
 def test_map_reports_header_reads_and_a_body_read_on_delete_without_a_verb():
     sources = {

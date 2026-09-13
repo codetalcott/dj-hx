@@ -58,9 +58,10 @@ against.
 
 - **Never return `HttpResponseRedirect`, `HttpResponse("")`, a 204 or
   `django.shortcuts.render` to an htmx request.** Say what happened:
-  `redirect`, `removed`, `text`, `render(request, template, partial)`. A
-  response no verb built that answers a partial request is recorded
-  (`HxBareResponse`).
+  `redirect`, `removed`, `text`, `render(request, template, partial)`, and
+  `navigate` when the answer is another page whatever the control targets (a
+  login check). A response no verb built that answers a partial request is
+  recorded (`HxBareResponse`).
 - **Never read `HX-Source` or `HX-Target`.** The real question is whether the
   client asked for a page or a fragment: `wants_page(request)`.
 - **Announce facts; do not update regions.** Prefer `.trigger("contacts-changed")`
@@ -95,6 +96,9 @@ What was rejected, and why:
   people and agents already write.
 - **Server-side retargeting as a default.** `HX-Retarget`, `HX-Reswap` and
   `HX-Location` make a control's DOM effect invisible from the template.
+  `HX-Redirect` is not one of them: it replaces the page instead of changing
+  what the control swaps, and `navigate` sends it only where a 303 would land
+  inside the target.
 - **htmx 2 compatibility.** Without `HX-Request-Type` the page-or-fragment
   question is a guess.
 - **Decorators that render a returned dict.** A view that sometimes returns a
@@ -140,13 +144,14 @@ The layout loads htmx 4 and, because attributes reach descendants only with
 
 ```python
 from dj_hx import (is_htmx, wants_page, wants_fragment,                 # HX-Request-Type, nothing else
-                   render, page, fragment, invalid, redirect, removed, text)
+                   render, page, fragment, invalid, redirect, navigate, removed, text)
 
 render(request, "index.html", "rows", ctx)        # the page, or the partial, by request type
 page(request, "show.html", ctx)                   # always the page; raises on a partial request
 fragment(request, "archive_ui.html", context=ctx) # always a fragment; loud on a boosted request
 invalid(request, "new.html", "form", ctx)         # render, status 422
 redirect(request, "contacts", pk=3)               # a plain 303 (resolves like django.shortcuts.redirect); raises on a partial request
+navigate(request, "login")                        # leave the page: a 303, or HX-Redirect on a partial request
 removed(request)                                  # 200, empty; the control's hx-swap="delete" acts
 text(request, "(3 total)")                        # an escaped text fragment
 
@@ -199,7 +204,7 @@ by `HxTestClient`. Nothing is gated on `DEBUG` that a test needs.
 |---|---|
 | A page answers a request that targets an element | `page()` raises `HxPageIntoFragment` |
 | A fragment answers a boosted or body-targeted request | `fragment()` / `text()` record `HxFragmentIntoPage` |
-| Any 3xx answers a partial request, including `APPEND_SLASH`'s 301 | `redirect()` raises; the guard records `HxRedirectIntoFragment`, naming APPEND_SLASH when that is the cause |
+| Any 3xx answers a partial request, including `APPEND_SLASH`'s 301 and `login_required`'s 302 | `redirect()` raises; the guard records `HxRedirectIntoFragment`, naming APPEND_SLASH when that is the cause, and `navigate()` for leaving the page |
 | A 204 answers a partial request | `HxNoSwap`: htmx 4 leaves the target untouched |
 | A response no verb built answers a partial request | `HxBareResponse`: `django.shortcuts.render`, a plain `HttpResponse` or a `TemplateResponse` cannot be checked, and Django's `render` sends the whole page |
 | Messages added on a fragment with no messages template | `HxMessagesUnconfigured` |

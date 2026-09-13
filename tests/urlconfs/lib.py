@@ -6,7 +6,7 @@ from django.shortcuts import render as django_render
 from django.template.response import TemplateResponse
 from django.urls import path
 
-from dj_hx import fragment, invalid, page, redirect, removed, render, text
+from dj_hx import fragment, invalid, navigate, page, redirect, removed, render, text
 
 ITEMS = ["ada", "grace", "linus"]
 
@@ -37,6 +37,15 @@ def save(request):
 
 def plain_redirect(request):
     return HttpResponseRedirect("/lib/")  # bypassed the verbs
+
+
+def leave(request):
+    return navigate(request, "lib-index")  # a login check in front of a fragment view
+
+
+def flash_leave(request):
+    messages.info(request, "Please log in")
+    return navigate(request, "/lib/")
 
 
 def things(request):
@@ -143,6 +152,8 @@ urlpatterns = [
     path("lib/count/", count),
     path("lib/save/", save),
     path("lib/plain-redirect/", plain_redirect),
+    path("lib/leave/", leave),
+    path("lib/flash-leave/", flash_leave),
     path("lib/things/", things),
     path("lib/a/", a),
     path("lib/b/", b),
