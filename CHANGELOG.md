@@ -47,6 +47,13 @@ event fired without a target lands on `document` after a delete swap, where a
   on a control reaching a view that calls no verb, and on a view that calls
   `.retarget()` or `.reswap()`, naming the controls whose templates no longer
   predict the DOM effect. `--by-template` reads the map from the other end.
+  Whether or not a view calls a verb, it errors on a read of the `HX-Trigger`
+  request header, which htmx 4 does not send, and on `request.POST` read on
+  DELETE, which htmx 4 sends as query parameters; it warns on a read of
+  `HX-Target` or `HX-Source`.
+- Lint rule `boost-not-inherited` (error, from hx-flask): a plain `hx-boost` on
+  anything but `<a>`/`<form>`, including a layout's `<body>` whose links live in
+  child templates.
 - Checks W001, E002, W003, W004, W005, W006, E007.
 - The example: contact.app on the ORM, same routes, templates and tests as
   hx-flask; 103 tests plus 7 in Chromium, on Django 4.2, 5.2 and 6.0.

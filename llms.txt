@@ -269,7 +269,8 @@ Agents default to htmx 1/2. These are what the lint reports (`[error]` raises in
 |---|---|---|
 | `hx-ext="..."` | nothing; loading the extension script is enough | `htmx2-attribute` |
 | `hx-vars`, `hx-params`, `hx-disinherit`, `hx-inherit`, `hx-request`, `hx-history`, `hx-disabled-elt` | `hx-vals='js:...'`, `htmx:config:request`, `:inherited`, `hx-config`, `hx-disable` | `htmx2-attribute` |
-| `<body hx-boost="true">`, `<div hx-target="#x">` over children | `hx-boost:inherited="true"`, `hx-target:inherited="#x"` | `implicit-inheritance` (warning) |
+| `<body hx-boost="true">` (even when the links are in child templates) | `<body hx-boost:inherited="true">` | `boost-not-inherited` |
+| `<div hx-target="#x">` over children | `hx-target:inherited="#x"` | `implicit-inheritance` (warning) |
 | `hx-on::afterSwap`, `htmx:afterRequest`, `htmx:configRequest` | `hx-on::after:swap`, `htmx:after:request`, `htmx:config:request` | `htmx2-event-name` |
 | `hx-swap="outerhtml"` | `hx-swap="outerHTML"` | `swap-style-case` |
 | `hx-swap="innerHTML show:#x:top"` | `hx-swap="innerHTML show:top showTarget:#x"` | `swap-show-syntax` |
@@ -341,7 +342,10 @@ controls that reach them.
 the literal path, and errors when a partial control reaches a view that only calls `page`, or a full
 control reaches one that only calls `fragment`/`text`/`removed`. `if request.method == "DELETE":` branches
 are attributed to that method. It pairs `.trigger("x")` with `hx-trigger="x from:body"` both ways and warns
-on `hx-delete` controls that send no values to a handler that reads them.
+on `hx-delete` controls that send no values to a handler that reads them. Whether or not a view calls a
+verb, it errors when the view reads the `HX-Trigger` request header (`request.headers`, `request.META`),
+which htmx 4 does not send, or reads `request.POST` on DELETE, which htmx 4 sends as query parameters
+(`request.GET`); it warns when a view reads `HX-Target` or `HX-Source`.
 
 System checks (tag `dj_hx`):
 

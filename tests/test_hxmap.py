@@ -81,6 +81,26 @@ def test_map_reports_the_mismatches_a_dsl_could_not():
     assert m.handlers["m-items"].verbs_for("GET") == {"page"} and m.handlers["m-items"].verbs_for("DELETE") == {"removed"}
 
 
+@override_settings(ROOT_URLCONF="tests.urlconfs.book")
+def test_map_reports_header_reads_and_a_body_read_on_delete_without_a_verb():
+    sources = {
+        "index.html": """<form><button hx-delete="{% url 'b-delete' %}" hx-include="closest form" hx-target="body">bulk</button></form>""",
+    }
+    m = build_map(sources=sources)
+    assert m.errors == [
+        "contacts() reads the HX-Trigger request header, which htmx 4 does not send (the requesting element is "
+        "HX-Source), so the test is always false. To choose a page or a fragment, ask HX-Request-Type (wants_page).",
+        "delete_all() reads request.POST on DELETE, but htmx 4 sends DELETE values as query parameters, so it is "
+        'always empty; read the query string (request.args / request.GET), with hx-include="closest form" on the '
+        "control if the values are in a form.",
+    ]
+    assert [w for w in m.warnings if "request header" in w] == [
+        "panel() reads the HX-Target request header, so it depends on an element id the template can change. "
+        "To choose a page or a fragment, ask HX-Request-Type (wants_page)."
+    ]
+    assert m.handlers["b-delete"].body_reads_for("POST") == {"request.POST"}
+
+
 @override_settings(ROOT_URLCONF="tests.urlconfs.mapping")
 def test_map_treats_script_dispatched_events_as_announced():
     sources = {
