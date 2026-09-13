@@ -108,6 +108,9 @@ def test_htmx2_event_names_in_hx_on():
     assert rules(lint_html('<div hx-on::afterSwap="x()"></div>')) == ["htmx2-event-name"]
     assert rules(lint_html('<div hx-on:htmx:afterSwap="x()"></div>')) == ["htmx2-event-name"]
     assert rules(lint_html('<div hx-on="htmx:beforeRequest -> x()"></div>')) == ["htmx2-event-name"]
+    assert rules(lint_html('<form hx-post="/a" hx-on::after-request="this.reset()"></form>')) == ["htmx2-event-name"]
+    assert rules(lint_html('<div hx-get="/a" hx-trigger="htmx:after-swap from:body"></div>')) == ["htmx2-event-name"]
+    assert lint_html('<div hx-get="/a" hx-trigger="htmx:after:swap from:body"></div>') == []
 
 
 def test_implicit_inheritance_is_the_2e_todo():

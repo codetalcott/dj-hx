@@ -271,7 +271,7 @@ Agents default to htmx 1/2. These are what the lint reports (`[error]` raises in
 | `hx-vars`, `hx-params`, `hx-disinherit`, `hx-inherit`, `hx-request`, `hx-history`, `hx-disabled-elt` | `hx-vals='js:...'`, `htmx:config:request`, `:inherited`, `hx-config`, `hx-disable` | `htmx2-attribute` |
 | `<body hx-boost="true">` (even when the links are in child templates) | `<body hx-boost:inherited="true">` | `boost-not-inherited` |
 | `<div hx-target="#x">` over children | `hx-target:inherited="#x"` | `implicit-inheritance` (warning) |
-| `hx-on::afterSwap`, `htmx:afterRequest`, `htmx:configRequest` | `hx-on::after:swap`, `htmx:after:request`, `htmx:config:request` | `htmx2-event-name` |
+| `hx-on::afterSwap`, `hx-on::after-request`, `hx-trigger="htmx:afterSwap from:body"`, `htmx:configRequest` | `hx-on::after:swap`, `hx-on::after:request`, `hx-trigger="htmx:after:swap from:body"`, `htmx:config:request` | `htmx2-event-name` |
 | `hx-swap="outerhtml"` | `hx-swap="outerHTML"` | `swap-style-case` |
 | `hx-swap="innerHTML show:#x:top"` | `hx-swap="innerHTML show:top showTarget:#x"` | `swap-show-syntax` |
 | `hx-trigger="click queue:all"` | `hx-sync="this:queue all"` | `trigger-queue` |
