@@ -206,7 +206,7 @@ by `HxTestClient`. Nothing is gated on `DEBUG` that a test needs.
 | A partial used as `<hx-partial>` whose root is not `id="<name>"` | `HxPartialRootId` at the render |
 | `partial=` names a partial the template does not define | `HxUnknownPartial`, listing the partials it does |
 | An htmx request without `HX-Request-Type` | `HxProtocolError`: this needs htmx 4. `HX_REQUEST_TYPE_FALLBACK = "full"` answers with the page instead, for a proxy that strips the header; the guard still records it |
-| htmx 2 idioms in the HTML: `hx-ext`, implicit inheritance, camelCase events, `show:#x:top` | the lint, on every test-client response, in the middleware log under `DEBUG`, in `manage.py hx_lint`, and as check `dj_hx.W005` |
+| htmx 2 idioms in the HTML: `hx-ext`, implicit inheritance, htmx 2 event names in `hx-on` or `hx-trigger`, camelCase or kebab-case (`hx-on::after-request`), `show:#x:top` | the lint, on every test-client response, in the middleware log under `DEBUG`, in `manage.py hx_lint`, and as check `dj_hx.W005` |
 | A partial control pointing at a page-only view, or a boosted link at a fragment-only one | `manage.py hx_map` |
 | A control pointing at a view that calls no verb; a view that calls `.retarget()` or `.reswap()` | `manage.py hx_map`, as warnings |
 | `HxMiddleware` missing, listed before `MessageMiddleware`, `HX_MESSAGES_TEMPLATE` unset or unresolvable, no partials on Django < 6, `HxMixin` after a Django base | checks `dj_hx.W001`, `E002`, `W003`, `W004`, `W006`, `E007` |

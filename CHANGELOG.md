@@ -54,6 +54,9 @@ event fired without a target lands on `document` after a delete swap, where a
 - Lint rule `boost-not-inherited` (error, from hx-flask): a plain `hx-boost` on
   anything but `<a>`/`<form>`, including a layout's `<body>` whose links live in
   child templates.
+- Lint rule `htmx2-event-name` (from hx-flask) catches kebab-case event names
+  (`hx-on::after-request`), htmx 2's documented form, which htmx 4 never fires,
+  and checks the events in `hx-trigger` as well as `hx-on`.
 - Checks W001, E002, W003, W004, W005, W006, E007.
 - The example: contact.app on the ORM, same routes, templates and tests as
   hx-flask; 103 tests plus 7 in Chromium, on Django 4.2, 5.2 and 6.0.
