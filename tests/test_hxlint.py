@@ -117,7 +117,7 @@ def test_implicit_inheritance_is_the_2e_todo():
     assert "hx-target:inherited" in f[0].message
     body_1e = '<html><body hx-boost="true"><a href="/x">x</a></body></html>'
     f = lint_html(body_1e)
-    assert rules(f) == ["implicit-inheritance"] and "boosts nothing" in f[0].message
+    assert rules(f, "error") == ["boost-not-inherited"] and "does nothing" in f[0].message
     assert lint_html('<html><body hx-boost:inherited="true"><a href="/x">x</a></body></html>') == []
 
 
