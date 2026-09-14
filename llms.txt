@@ -207,7 +207,7 @@ answer a partial request; override it to return `render`/`fragment`/`removed` fo
 | `HX_MESSAGES_TEMPLATE = "layout.html#messages"` | Partial used to render pending `django.contrib.messages` into fragment responses. `#name` defaults to `messages`. Root element must be `id="<name>"`. |
 | `HX_REQUEST_TYPE_FALLBACK = "full"` | Answer htmx requests missing `HX-Request-Type` as this type instead of raising. Proxies only. |
 | `HX_LINT_IGNORE = ("implicit-inheritance",)` | Lint rules to silence everywhere (test client, middleware, `hx_lint`, W005). |
-| `HX_EXTENSIONS = ("hx-live",)` | Extensions the pages load, for the lint (also detected from `<script src>`). |
+| `HX_EXTENSIONS = ("hx-live", "sse")` | Extensions the pages load, for the lint (also detected from `<script src>`). The file name (`hx-sse`) or the name htmx registers (`sse`, as in `htmx.config.extensions`); W008 flags any other. |
 | `SILENCED_SYSTEM_CHECKS = ["dj_hx.W005"]` | Standard Django; the check ids are below. |
 
 ### Errors
@@ -386,6 +386,7 @@ System checks (tag `dj_hx`):
 | W005 | a project template fails the lint |
 | W006 | Django < 6 without django-template-partials |
 | E007 | a Django base class listed before `HxMixin` shadows its hooks |
+| W008 | `HX_EXTENSIONS` is a string, or names an extension htmx 4 does not ship |
 
 `HxMiddleware` also: adds `Vary` to every response, runs the guard, bridges pending messages onto partial
 2xx HTML responses (peeking before consuming), logs findings as warnings on the `dj_hx` logger, and under
@@ -467,7 +468,7 @@ as `HxRedirectIntoFragment`. Always build URLs with `{% url %}`.
 - [dj_hx/messages.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/messages.py): the messages bridge
 - [dj_hx/mixins.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/mixins.py): `HxMixin`
 - [dj_hx/testing.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/testing.py): `HxTestClient`, `assert_no_hx_check_issues`
-- [dj_hx/checks.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/checks.py): W001 to E007
+- [dj_hx/checks.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/checks.py): W001 to W008
 - [dj_hx/errors.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/errors.py): every exception
 - [dj_hx/hxlint.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/hxlint.py): the htmx 4 lint (vendored from hx-flask)
 - [dj_hx/hx_vocab.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/hx_vocab.py): the htmx 4.0.0 vocabulary, generated

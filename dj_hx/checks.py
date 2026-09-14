@@ -16,6 +16,7 @@ W004     Warning  HX_MESSAGES_TEMPLATE does not resolve to a template partial
 W005     Warning  A project template fails the htmx 4 lint (htmx 2 idioms, typos)
 W006     Warning  Django < 6 without django-template-partials installed
 E007     Error    A Django class before HxMixin in a routed view's bases shadows its hooks
+W008     Warning  HX_EXTENSIONS is a string, or names an extension htmx 4 does not ship
 =======  =======  ==========================================================
 """
 
@@ -165,6 +166,43 @@ def check_template_lint(app_configs=None, **kwargs):
                 + ". Run manage.py hx_lint for the full list; silence a rule with HX_LINT_IGNORE.",
                 obj=str(path),
                 id="dj_hx.W005",
+            )
+        )
+    return messages
+
+
+@register("dj_hx", Tags.templates)
+def check_extensions(app_configs=None, **kwargs):
+    """``HX_EXTENSIONS`` names the lint does not know match nothing, so every extension attribute warns."""
+    if not _should_run(app_configs):
+        return []
+    import difflib
+
+    from django.conf import settings
+
+    from .hx_vocab import EXTENSION_NAMES
+
+    configured = getattr(settings, "HX_EXTENSIONS", ())
+    if isinstance(configured, str):
+        return [
+            Warning(
+                f"HX_EXTENSIONS is the string {configured!r}, so the lint reads each character as an extension name.",
+                hint=f"Make it a tuple: HX_EXTENSIONS = {tuple(e.strip() for e in configured.split(',') if e.strip())!r}.",
+                id="dj_hx.W008",
+            )
+        ]
+    messages = []
+    for name in configured:
+        if name in EXTENSION_NAMES:
+            continue
+        close = difflib.get_close_matches(str(name), list(EXTENSION_NAMES), n=1, cutoff=0.6)
+        messages.append(
+            Warning(
+                f"HX_EXTENSIONS names {name!r}, which is not an htmx 4 extension, so it tells the lint nothing"
+                + (f" (did you mean {close[0]!r}?)." if close else "."),
+                hint="Use the file name (hx-sse) or the name htmx registers it under (sse). An extension of "
+                "your own has attributes the lint cannot know; leave it out of HX_EXTENSIONS.",
+                id="dj_hx.W008",
             )
         )
     return messages

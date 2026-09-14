@@ -61,6 +61,18 @@ def test_w006_only_below_django_6(monkeypatch, settings):
     assert checks.check_partials_available() == []
 
 
+def test_w008_for_an_extension_name_the_lint_does_not_know():
+    # htmx registers hx-sse.js as 'sse' and hx-live.js as 'hx-live'; either spelling is the extension
+    with override_settings(HX_EXTENSIONS=("sse", "hx-sse", "ws", "hx-live")):
+        assert ids() == []
+    with override_settings(HX_EXTENSIONS=("hx-see",)):
+        messages = hx_check_messages()
+    assert [m.id for m in messages] == ["dj_hx.W008"] and "did you mean 'hx-sse'?" in messages[0].msg
+    with override_settings(HX_EXTENSIONS="sse, ws"):
+        messages = hx_check_messages()
+    assert [m.id for m in messages] == ["dj_hx.W008"] and "('sse', 'ws')" in messages[0].hint
+
+
 def test_checks_stay_quiet_when_dj_hx_is_not_installed():
     with override_settings(INSTALLED_APPS=[a for a in settings.INSTALLED_APPS if a != "dj_hx"], HX_MESSAGES_TEMPLATE=None):
         assert ids() == []

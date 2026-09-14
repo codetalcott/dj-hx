@@ -62,7 +62,10 @@ event fired without a target lands on `document` after a delete swap, where a
 - Lint rule `htmx2-event-name` (from hx-flask) catches kebab-case event names
   (`hx-on::after-request`), htmx 2's documented form, which htmx 4 never fires,
   and checks the events in `hx-trigger` as well as `hx-on`.
-- Checks W001, E002, W003, W004, W005, W006, E007.
+- `HX_EXTENSIONS` takes the name htmx registers an extension under (`sse`,
+  `ws`, `upsert`) or its file name (`hx-sse`); check W008 names one that is
+  neither, and a string where a tuple belongs.
+- Checks W001, E002, W003, W004, W005, W006, E007, W008.
 - The example: contact.app on the ORM, same routes, templates and tests as
   hx-flask; 110 tests plus 7 in Chromium, on Django 4.2, 5.2 and 6.0.
 - The shared core, vendored: `hxlint.py`, `hx_vocab.py` and `mapcore.py`, the

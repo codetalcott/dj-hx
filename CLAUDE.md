@@ -15,8 +15,8 @@ to a verb signature, a setting, an error, a check id or a lint rule must be mirr
 The checked-in `.venv` has Django 6.0, pytest, ruff and playwright.
 
 ```
-.venv/bin/python -m pytest                      # 117 tests, ~5s
-.venv/bin/python -m pytest -m "not browser"     # 110, skipping Chromium
+.venv/bin/python -m pytest                      # 119 tests, ~5s
+.venv/bin/python -m pytest -m "not browser"     # 112, skipping Chromium
 .venv/bin/python -m pytest -m browser           # the 7 Playwright tests alone
 .venv/bin/python -m pytest tests/test_verbs.py::test_text_escapes
 .venv/bin/ruff check .
@@ -61,7 +61,7 @@ must not be able to 500 in production.
 
 **Ordering matters.** `HxMiddleware` must run its response phase before `MessageMiddleware` stores
 messages, which means it is listed *after* it. [checks.py](dj_hx/checks.py) enforces that as `dj_hx.E002`;
-the seven check ids W001-E007 are documented in that module's docstring.
+the eight check ids W001-W008 are documented in that module's docstring.
 
 **The lint has two surfaces over one rule set.** [hxlint.py](dj_hx/hxlint.py) works on rendered HTML
 strings. [templates.py](dj_hx/templates.py) strips Django template syntax (line numbers preserved,
