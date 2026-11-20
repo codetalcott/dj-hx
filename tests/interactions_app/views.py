@@ -1,9 +1,10 @@
 """
-A rota: a page of members to notify, and three interactions. dj-hx's ready() imports this module.
+A rota: a page of members to notify, and four interactions. dj-hx's ready() imports this module.
 The templates are in-memory, served by the ``rota`` fixture in tests/test_interactions.py.
 """
 
 from django.contrib.auth.decorators import login_required
+from django.http import HttpResponseForbidden
 
 from dj_hx import interaction, page
 
@@ -48,3 +49,24 @@ def sign_off_context(request, member):
 @interaction("POST", partial="reviewers.html#signoff", context=sign_off_context, route="reviewers/<int:member>/sign-off")
 def sign_off(request, member: int):
     return {"signed": True}
+
+
+def staff_only(view):
+    """A hand-written access check, deliberately without functools.wraps: routed as written all the same."""
+
+    def check(request, **kwargs):
+        if not request.user.is_staff:
+            return HttpResponseForbidden("Staff only.")
+        return view(request, **kwargs)
+
+    return check
+
+
+def approval_context(request, member):
+    return {"member": member, "approved": False}
+
+
+@staff_only
+@interaction("POST", partial="reviewers.html#approval", context=approval_context, route="reviewers/<int:member>/approve")
+def approve(request, member: int):
+    return {"approved": True}

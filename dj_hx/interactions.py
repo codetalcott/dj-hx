@@ -31,8 +31,9 @@ Interactions: one handler bound to one template partial, by name.
 - dj-hx's ``ready()`` imports each project app's ``views`` module, so every route exists before
   the URLconf is read.
 - ``@interaction`` returns the routed view, and ``dj_hx.urls`` routes each interaction to what its
-  module holds under the handler's name, so Django view decorators written above it
-  (``@login_required``) wrap the route, as on any view.
+  module holds under the handler's name, as written, so a decorator written above it
+  (``@login_required``) wraps the route, as on any view. Write such decorators with
+  ``functools.wraps``, so dj-hx's messages and ``hx_map`` see the handler through them.
 """
 
 from __future__ import annotations
@@ -200,19 +201,22 @@ def interaction(method: str, *, partial: str, context: Callable[..., dict], refu
 
 
 def _routed_view(it: Interaction):
-    """What the handler's module holds under its name, if that is the view or wraps it; else the view."""
+    """
+    What the handler's module holds under its name, as written, whenever it is callable: a decorator
+    above ``@interaction`` is routed even without ``functools.wraps``, because dropping one could drop
+    an access check. The view itself only when the module holds nothing callable under that name.
+    """
     held = getattr(sys.modules.get(it.view.__module__), it.name, None)
-    if held is not None and inspect.unwrap(held, stop=lambda f: f is it.view) is it.view:
-        return held
-    return it.view
+    return held if callable(held) else it.view
 
 
 def bind_routes() -> None:
     """
-    Route each interaction to what its module holds under the handler's name: the view
-    ``@interaction`` returned, wrapped by any Django view decorators written above it. ``dj_hx.urls``
-    calls this when it is first imported, after ``ready()`` has imported every views module. The list
-    is rebuilt in place, because an ``include()`` keeps the list object it was first given.
+    Route each interaction to what its module holds under the handler's name, as written: the view
+    ``@interaction`` returned, inside any decorators written above it. ``dj_hx.urls`` calls this when
+    it is first imported, after ``ready()`` has imported every views module. The list is rebuilt in
+    place because ``dj_hx.urls.urlpatterns`` is this same list object, and the resolver for
+    ``include("dj_hx.urls")`` reads it lazily and caches it, so a new list would never be seen.
     """
     urlpatterns[:] = [path(it.route, _routed_view(it), name=it.name) for it in registry.values()]
 

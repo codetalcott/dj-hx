@@ -15,8 +15,8 @@ to a verb signature, a setting, an error, a check id or a lint rule must be mirr
 The checked-in `.venv` has Django 6.0, pytest, ruff and playwright.
 
 ```
-.venv/bin/python -m pytest                      # 157 tests, ~5s
-.venv/bin/python -m pytest -m "not browser"     # 150, skipping Chromium
+.venv/bin/python -m pytest                      # 160 tests, ~5s
+.venv/bin/python -m pytest -m "not browser"     # 153, skipping Chromium
 .venv/bin/python -m pytest -m browser           # the 7 Playwright tests alone
 .venv/bin/python -m pytest tests/test_verbs.py::test_text_escapes
 .venv/bin/ruff check .
@@ -78,10 +78,13 @@ namespace `dj_hx`); [templatetags/hx.py](dj_hx/templatetags/hx.py) is `{% act %}
 from keyword arguments only. [apps.py](dj_hx/apps.py)'s `ready()` imports every project app's `views`
 module (`templates.in_site_packages` decides what is the project's), so every route is registered
 before the URLconf is read. The decorator returns the routed view; when `dj_hx/urls.py` is first
-imported, `bind_routes()` points each route at what the handler's module holds under its name, so a
-Django view decorator written above `@interaction` wraps the route. It rebuilds the list in place,
-because an `include()`'s resolver keeps the list object it was first given; an interaction registered
-after that keeps a route to its bare view.
+imported, `bind_routes()` points each route at whatever the handler's module holds under its name, as
+written, whenever it is callable, so any decorator written above `@interaction` wraps the route, with or
+without `functools.wraps` (falling back to the bare view would drop an access check). Only a missing or
+non-callable attribute routes the bare view. It rebuilds the list in place: `interactions.urlpatterns`,
+`dj_hx.urls.urlpatterns` and the `include("dj_hx.urls")` resolver's `url_patterns` are one list, which
+the resolver reads lazily and then caches. An interaction registered after that keeps a route to its
+bare view.
 
 **The map is split by framework.** [mapcore.py](dj_hx/mapcore.py) is framework-neutral: template scan,
 the AST visitor that finds verb calls, the control-vs-handler checks. [hxmap.py](dj_hx/hxmap.py) is the

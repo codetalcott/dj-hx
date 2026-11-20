@@ -81,10 +81,11 @@ event fired without a target lands on `document` after a delete swap, where a
   must already be in the context. dj-hx's `ready()` imports each project
   app's `views` module, so every route exists before the URLconf is read.
   `@interaction` returns the routed view, and `dj_hx.urls` routes each
-  interaction to what its module holds under the handler's name, so Django
-  view decorators written above it (`@login_required`) wrap the route.
+  interaction to what its module holds under the handler's name, as written,
+  so a decorator written above it (`@login_required`, or a hand-written check)
+  wraps the route.
 - The example: contact.app on the ORM, same routes, templates and tests as
-  hx-flask; 150 tests plus 7 in Chromium, on Django 4.2, 5.2, 6.0 and 6.1.
+  hx-flask; 153 tests plus 7 in Chromium, on Django 4.2, 5.2, 6.0 and 6.1.
 - The shared core, vendored: `hxlint.py`, `hx_vocab.py` and `mapcore.py`, the
   framework-neutral map engine, from hx-flask (one or two import lines differ),
   `urlconf.py` from dj-fixi; `tools/sync_shared.py` and a pin test.

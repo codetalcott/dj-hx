@@ -20,7 +20,7 @@ from django.utils.module_loading import module_has_submodule
 
 import dj_hx.urls  # noqa: F401  binds the routes now, after ready(), before any `scratch` snapshot of them
 from dj_hx import HxFragmentIntoPage, HxPartialRootId, HxRedirectIntoFragment, interaction
-from dj_hx.interactions import registry, urlpatterns
+from dj_hx.interactions import bind_routes, registry, urlpatterns
 from dj_hx.templates import in_site_packages
 from tests.conftest import locmem
 from tests.interactions_app import views
@@ -30,7 +30,8 @@ ROTA = """{% extends "layout.html" %}{% load hx %}{% block content %}<h1>{{ cont
 {% endblock %}"""
 
 REVIEWERS = """{% load hx %}{% partialdef reviewer inline %}<div id="reviewer"><button hx-post="{% act 'notify_reviewer' member=member %}" hx-target="#reviewer" hx-swap="outerHTML">Notify reviewer {{ member }}</button>{% if notified %}<p class="done">Reviewer notified</p>{% endif %}</div>{% endpartialdef %}
-{% partialdef signoff inline %}<div id="signoff">{% if signed %}Signed off by {{ request.user.username }}{% endif %}</div>{% endpartialdef %}"""
+{% partialdef signoff inline %}<div id="signoff">{% if signed %}Signed off by {{ request.user.username }}{% endif %}</div>{% endpartialdef %}
+{% partialdef approval inline %}<div id="approval">{% if approved %}Approved by {{ request.user.username }}{% endif %}</div>{% endpartialdef %}"""
 
 SCRATCH = """{% partialdef box inline %}<div id="box">{{ value }}{% if error %} {{ error }}{% endif %}</div>{% endpartialdef %}
 {% partialdef rootless inline %}<div class="box">{{ value }}</div>{% endpartialdef %}"""
@@ -291,6 +292,28 @@ def test_a_view_decorator_above_interaction_wraps_the_route(rota, client, db, dj
     assert (r.status_code, r.content.decode()) == (200, '<div id="signoff">Signed off by ada</div>')
 
 
+def test_a_decorator_above_interaction_without_wraps_is_routed_as_written(rota, client, db, django_user_model):
+    url = reverse("dj_hx:approve", kwargs={"member": 5})  # views.staff_only sets no __wrapped__
+    client.force_login(django_user_model.objects.create_user("bob"))
+    r = client.hx_post(url)
+    assert (r.status_code, r.content.decode()) == (403, "Staff only.")
+    client.force_login(django_user_model.objects.create_user("ada", is_staff=True))
+    r = client.hx_post(url)
+    assert (r.status_code, r.content.decode()) == (200, '<div id="approval">Approved by ada</div>')
+
+
+@pytest.mark.parametrize("held", [None, "not callable"], ids=["missing", "not-callable"])
+def test_bind_routes_routes_the_view_when_the_module_holds_nothing_callable(scratch, rota, client, monkeypatch, held):
+    @interaction("POST", partial="scratch.html#box", context=box_context, route="t/ghost")
+    def ghost(request):  # a local function: the module holds no `ghost` unless the test puts one there
+        return {"value": "the view itself"}
+
+    if held is not None:
+        monkeypatch.setattr(sys.modules[__name__], "ghost", held, raising=False)
+    bind_routes()
+    assert client.hx_post("/t/ghost").content.decode() == '<div id="box">the view itself</div>'
+
+
 def test_a_view_decorator_below_interaction_is_a_return_type_error(scratch, rota, client, db):
     @interaction("POST", partial="scratch.html#box", context=box_context, route="t/below")
     @login_required
@@ -351,7 +374,7 @@ def test_act_refuses_an_unknown_or_a_missing_keyword(rota):
 def test_act_lists_the_interactions_when_it_names_none(rota):
     with pytest.raises(
         TemplateSyntaxError,
-        match=r"\{% act 'notfy' %\} names no interaction; the interactions are: notify, notify_reviewer, sign_off\.",
+        match=r"\{% act 'notfy' %\} names no interaction; the interactions are: approve, notify, notify_reviewer, sign_off\.",
     ):
         render_act("{% act 'notfy' %}")
 

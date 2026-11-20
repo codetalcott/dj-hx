@@ -273,10 +273,13 @@ The rules:
 - **The partial's root element carries `id="<partial name>"`**, checked on every reply, so the
   element `hx-swap="outerHTML"` puts back keeps the id the next request targets.
 - **View decorators go above `@interaction`.** It returns the routed view, and `dj_hx.urls`
-  routes each interaction to what its module holds under the handler's name, so `@login_required`
-  written above it wraps the route, as on any Django view. A signed-out request then gets
-  `login_required`'s 302. On a control that targets an element the guard records that 302
-  (`HxRedirectIntoFragment`), as it does for any view, because fetch would follow it into the target.
+  routes each interaction to whatever its module holds under the handler's name, as written:
+  `@login_required` above it wraps the route, as on any Django view, and so does a hand-written
+  check. Write your own with `functools.wraps`, as Django's are, so dj-hx's messages and `hx_map`
+  name the handler rather than the decorator's inner function. A signed-out request to a
+  `@login_required` interaction gets its 302. On a control that targets an element the guard
+  records that 302 (`HxRedirectIntoFragment`), as it does for any view, because fetch would follow
+  it into the target.
 
 ## What is loud
 
