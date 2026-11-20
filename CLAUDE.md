@@ -15,8 +15,8 @@ to a verb signature, a setting, an error, a check id or a lint rule must be mirr
 The checked-in `.venv` has Django 6.0, pytest, ruff and playwright.
 
 ```
-.venv/bin/python -m pytest                      # 119 tests, ~5s
-.venv/bin/python -m pytest -m "not browser"     # 112, skipping Chromium
+.venv/bin/python -m pytest                      # 153 tests, ~5s
+.venv/bin/python -m pytest -m "not browser"     # 146, skipping Chromium
 .venv/bin/python -m pytest -m browser           # the 7 Playwright tests alone
 .venv/bin/python -m pytest tests/test_verbs.py::test_text_escapes
 .venv/bin/ruff check .
@@ -68,6 +68,18 @@ strings. [templates.py](dj_hx/templates.py) strips Django template syntax (line 
 `{{ }}` and value tags become a sentinel the rules skip) so the same rules run over source for
 `hx_lint` and check `dj_hx.W005`. Template discovery never walks site-packages.
 
+**Interactions are one handler bound to one partial.** [interactions.py](dj_hx/interactions.py) holds
+`@interaction`, the registry (by handler name) and the wrapper view (method guard, refusals as 422,
+the return-type and reply-key guards). Its 200 and 422 are built by `fragment()` and checked by
+`check_root_id()`, and its facts go out through `.trigger()`; only the 405 is a plain Django
+`HttpResponseNotAllowed`, which the guard does not judge (it reads 2xx, 3xx and 204). Each decorator appends its
+route to the module's `urlpatterns`, which [urls.py](dj_hx/urls.py) serves (`include("dj_hx.urls")`,
+namespace `dj_hx`); [templatetags/hx.py](dj_hx/templatetags/hx.py) is `{% act %}`, which reverses
+from keyword arguments only. [apps.py](dj_hx/apps.py)'s `ready()` imports every project app's `views`
+module (`templates.in_site_packages` decides what is the project's), so every route is registered
+before the URLconf is read. The decorator returns the handler unchanged and registers the view, so
+nothing above it reaches the route.
+
 **The map is split by framework.** [mapcore.py](dj_hx/mapcore.py) is framework-neutral: template scan,
 the AST visitor that finds verb calls, the control-vs-handler checks. [hxmap.py](dj_hx/hxmap.py) is the
 Django adapter: URLconf walk, `{% url %}` and `resolve()`. New map logic belongs in `mapcore` unless it
@@ -100,6 +112,9 @@ is genuinely Django-specific; the core is vendored from hx-flask (see below).
 - `tests/conftest.py` serves in-memory templates through a locmem loader (`lib` fixture, with the
   django-template-partials loader added below Django 6) and loads the contact fixtures (`contacts`).
 - `tests/urlconfs/` holds small URLconfs, one per area, that exercise the library directly.
+- `tests/interactions_app/` is an installed app (label `rota`, from its `apps.py`; installed by `tests/settings.py`), because a
+  minted route needs an app label; dj-hx's `ready()` imports its views. A test that defines its own
+  interactions takes the `scratch` fixture in `tests/test_interactions.py`, which restores the registry.
 - `tests/test_contact_app.py` and `tests/test_browser.py` run against `example/`, mirroring hx-flask's
   suite for a like-for-like comparison.
 - pytest does not run system checks, so check coverage goes through `assert_no_hx_check_issues()`.

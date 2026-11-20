@@ -200,6 +200,48 @@ class ContactCreate(HxMixin, CreateView):
 `page`), `form_invalid` (422), and `form_valid` (raises `HxRedirectIntoFragment` if Django's redirect would
 answer a partial request; override it to return `render`/`fragment`/`removed` for element-targeted forms).
 
+### Interactions
+
+One handler bound to one partial. The reply is always that partial.
+
+```python
+from dj_hx import interaction
+
+def assign_context(request, contest):     # the page view calls it too; every reply key has its default here
+    return {"contest": Contest.get(contest), "notified": False, "error": None}
+
+@interaction("POST", partial="contests/assign.html#notify", context=assign_context,
+             refuses=(DomainError,), triggers=("notified",), route=None)
+def notify(request, contest: str, member: int):
+    Contest.get(contest).notify(member)
+    return {"notified": True}             # a dict of context keys, or None; never a response
+```
+
+```python
+urlpatterns = [..., path("", include("dj_hx.urls"))]   # once, at the site root
+```
+
+```django
+{% load hx %}
+<button hx-post="{% act 'notify' contest=contest.slug member=member.id %}" hx-target="#notify" hx-swap="outerHTML">
+```
+
+- Route: `x/<app label>/<handler>/<param>/.../`, `<int:p>` for a parameter annotated `int` and `<str:p>`
+  otherwise, named after the handler in the `dj_hx` namespace. `route="reviewers/<int:member>/notify"` sets
+  the path instead and must name exactly the handler's parameters, `<int:...>` for each `int` one.
+- `{% act %}` takes keyword arguments only, one per handler parameter. A positional argument, an unknown or
+  a missing keyword, or an unknown interaction raises `TemplateSyntaxError` at render.
+- Put interactions in an installed app's `views.py`: dj-hx's `ready()` imports the `views` module of every
+  app outside site-packages. `@interaction` is the outermost decorator; one above it never reaches the route.
+- Reply: `fragment()` of the partial with `context(request, <the route parameters it names>)` and the
+  returned keys over it, status 200, then `.trigger(name)` for each of `triggers`. Its root element must
+  carry `id="<partial name>"` (`HxPartialRootId`).
+- Refusal: an exception in `refuses` re-renders the partial with `error=str(exc)`, status 422, no triggers.
+  Any other exception is a 500. Any other method is a 405.
+- `ImproperlyConfigured` at import: a duplicate name, a minted route for a handler in no installed app, a
+  `route=` that does not match, `partial=` not `page.html#name`, `triggers=` a string. At the reply: a return
+  that is not a dict or `None`, or a returned key (a refusal's `error` included) the context lacks.
+
 ### Settings
 
 | Setting | Meaning |
@@ -224,7 +266,7 @@ All subclass `HxError` except `HxRedirectError` (an `AssertionError` from the te
 | `HxMessagesUnconfigured` | recorded by the middleware | messages added on a fragment response, `HX_MESSAGES_TEMPLATE` unset | set it |
 | `HxProtocolError` | raised by `request_type()`; recorded by the guard | `HX-Request` without `HX-Request-Type` | use htmx 4; `HX_REQUEST_TYPE_FALLBACK` for proxies |
 | `HxUnknownPartial` | raised at render | `partial=` names no partial of the template; message lists the ones it defines | write `{% partialdef name inline %}` around the region |
-| `HxPartialRootId` | raised at render | a partial used as `<hx-partial>` does not start with one element carrying `id="<name>"` | wrap the region in `<div id="name">` |
+| `HxPartialRootId` | raised at render | a partial used as `<hx-partial>`, or an interaction's reply, does not start with one element carrying `id="<name>"` | wrap the region in `<div id="name">` |
 | `HxLintError` | raised by `HxTestClient` | an error-level lint finding in a `text/html` response | fix the HTML; `lint_ignore=` / `HX_LINT_IGNORE` to silence a rule |
 | `HxRedirectError` | raised by `HxTestClient` | 3xx to a `full=True` request without `follow=` | pass `follow=True` (what the browser shows) or `follow=False` (assert on the 3xx) |
 
@@ -455,7 +497,7 @@ urlpatterns = [
 ```
 
 Trailing slashes matter: a control whose URL misses one gets `APPEND_SLASH`'s 301, which the guard reports
-as `HxRedirectIntoFragment`. Always build URLs with `{% url %}`.
+as `HxRedirectIntoFragment`. Always build URLs with `{% url %}`, or `{% act %}` for an interaction.
 
 ## Files
 
@@ -467,6 +509,9 @@ as `HxRedirectIntoFragment`. Always build URLs with `{% url %}`.
 - [dj_hx/middleware.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/middleware.py): `HxMiddleware`
 - [dj_hx/messages.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/messages.py): the messages bridge
 - [dj_hx/mixins.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/mixins.py): `HxMixin`
+- [dj_hx/interactions.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/interactions.py): `@interaction`, its registry and the wrapper view
+- [dj_hx/urls.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/urls.py): the URLconf that serves every interaction
+- [dj_hx/templatetags/hx.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/templatetags/hx.py): `{% act %}`
 - [dj_hx/testing.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/testing.py): `HxTestClient`, `assert_no_hx_check_issues`
 - [dj_hx/checks.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/checks.py): W001 to W008
 - [dj_hx/errors.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/errors.py): every exception

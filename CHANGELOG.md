@@ -68,8 +68,20 @@ event fired without a target lands on `document` after a delete swap, where a
   `ws`, `upsert`) or its file name (`hx-sse`); check W008 names one that is
   neither, and a string where a tuple belongs.
 - Checks W001, E002, W003, W004, W005, W006, E007, W008.
+- Interactions: `@interaction(method, partial=, context=, refuses=, triggers=,
+  route=)` binds a handler to one partial, and the reply is always that
+  partial, through `fragment()`, from the context function the page uses too.
+  The route is minted as `x/<app label>/<handler>/<param>/.../` (`<int:...>`
+  for an `int` annotation), or chosen with `route=`, which must name the
+  handler's parameters. `dj_hx.urls` serves every route under the `dj_hx`
+  namespace, and `{% act 'notify' contest=... member=... %}` (`{% load hx %}`)
+  writes one into a control, from keyword arguments only. A declared refusal
+  is a 422 with `error`; success a 200 with the declared triggers; another
+  method a 405. A handler returns a dict or `None`, and every key it returns
+  must already be in the context. dj-hx's `ready()` imports each project
+  app's `views` module, so every route exists before the URLconf is read.
 - The example: contact.app on the ORM, same routes, templates and tests as
-  hx-flask; 110 tests plus 7 in Chromium, on Django 4.2, 5.2, 6.0 and 6.1.
+  hx-flask; 146 tests plus 7 in Chromium, on Django 4.2, 5.2, 6.0 and 6.1.
 - The shared core, vendored: `hxlint.py`, `hx_vocab.py` and `mapcore.py`, the
   framework-neutral map engine, from hx-flask (one or two import lines differ),
   `urlconf.py` from dj-fixi; `tools/sync_shared.py` and a pin test.

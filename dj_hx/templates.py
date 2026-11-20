@@ -19,6 +19,7 @@ from .hxlint import JINJA, Finding
 
 __all__ = [
     "URLFOR",
+    "in_site_packages",
     "template_directories",
     "iter_template_files",
     "template_sources",
@@ -72,17 +73,22 @@ def lint_template_source(source: str, file: str | None = None, extensions=()) ->
     )
 
 
+def in_site_packages(path) -> bool:
+    """True for a path inside the interpreter's site-packages (``purelib`` or ``platlib``): not the project's."""
+    import sysconfig
+
+    path = Path(path).resolve()
+    return any(path.is_relative_to(Path(sysconfig.get_paths()[k]).resolve()) for k in ("purelib", "platlib"))
+
+
 def template_directories() -> list[Path]:
     """
     Every directory a DjangoTemplates engine reads project templates from:
     ``DIRS`` plus app template directories, never site-packages.
     """
-    import sysconfig
-
     from django.template import engines
     from django.template.backends.django import DjangoTemplates
 
-    site = {Path(sysconfig.get_paths()[k]).resolve() for k in ("purelib", "platlib")}
     seen: list[Path] = []
     try:
         backends = list(engines.all())
@@ -96,7 +102,7 @@ def template_directories() -> list[Path]:
             dirs += getattr(loader, "get_dirs", lambda: [])()
         for d in dirs:
             path = Path(d).resolve()
-            if path in seen or any(path.is_relative_to(s) for s in site):
+            if path in seen or in_site_packages(path):
                 continue
             seen.append(path)
     return seen

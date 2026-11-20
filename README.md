@@ -72,9 +72,9 @@ against.
 - **The template predicts the DOM effect; the handler predicts the resource
   effect and the representation.** `.retarget()` and `.reswap()` exist and break
   the first half; use them with a comment saying why.
-- **Every control says `{% url %}`.** Then a control names the view that answers
-  it, a search for the view finds every caller, and the trailing slash cannot
-  drift from the route.
+- **Every control says `{% url %}`, or `{% act %}` for an interaction.** Then a
+  control names the view that answers it, a search for the view finds every
+  caller, and the trailing slash cannot drift from the route.
 - **Every name is literal.** `render(request, "index.html", "rows")` is matched
   by `{% partialdef rows %}` in that file; nothing is derived from a naming
   scheme. The one convention, a partial's root `id` equals its name, is checked
@@ -193,6 +193,87 @@ consumes. The partial's root is `id="messages"` and it iterates `messages`:
 {% endpartialdef %}
 ```
 
+## Interactions
+
+An interaction is a handler bound to one partial. It returns the context keys it changed, and the
+reply is always that partial, rendered from the same context function the page uses.
+
+```python
+from dj_hx import interaction, page
+
+def assign_context(request, contest):            # the page's context, and every reply's
+    return {"contest": Contest.get(contest), "notified": False, "error": None}
+
+def assign(request, contest):                    # the page is a plain view
+    return page(request, "contests/assign.html", assign_context(request, contest))
+
+@interaction("POST", partial="contests/assign.html#notify", context=assign_context,
+             refuses=(DomainError,), triggers=("notified",))
+def notify(request, contest: str, member: int):
+    Contest.get(contest).notify(member)          # a DomainError raised here becomes the reply's error
+    return {"notified": True}
+```
+
+```django
+{% load hx %}
+{% partialdef notify inline %}
+<div id="notify">
+  {% for member in contest.members %}
+    <button hx-post="{% act 'notify' contest=contest.slug member=member.id %}"
+            hx-target="#notify" hx-swap="outerHTML">Notify {{ member }}</button>
+  {% endfor %}
+  {% if notified %}<p>Notified.</p>{% endif %}
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+</div>
+{% endpartialdef %}
+```
+
+One URLconf serves every interaction. Include it once, at the site root:
+
+```python
+urlpatterns = [
+    ...,
+    path("", include("dj_hx.urls")),
+]
+```
+
+The rules:
+
+- **The route is minted from the handler:** `x/<app label>/<handler>/<param>/.../`, one segment
+  per parameter after `request`. An `int` annotation gives `<int:member>`; anything else gives
+  `<str:contest>`. In an app labelled `contests`, `notify` above is
+  `/x/contests/notify/<str:contest>/<int:member>/`. The app label comes from the installed app that
+  contains the handler's module.
+- **`route="reviewers/<int:member>/notify"` chooses the path instead.** It is used as given, so it
+  is relative to where `dj_hx.urls` is included. It must name exactly the handler's parameters, with
+  `<int:...>` for each one annotated `int`.
+- **Every route is named after its handler, in the `dj_hx` namespace**, so two interactions cannot
+  share a name.
+- **`{% act %}` takes keyword arguments only**, one for each parameter of the handler
+  (`{% load hx %}`). A positional argument, a name the handler does not take, or a missing one
+  raises `TemplateSyntaxError` at render, naming the parameters.
+- **Interactions live in an app's `views.py`.** dj-hx's `ready()` imports the `views` module of
+  every installed app outside site-packages, so every route exists before the URLconf is read. An
+  interaction defined anywhere else has to be imported before then, and one in a pip-installed app
+  is not registered until something imports its views.
+- **The reply is always the partial**, through `fragment()`. `context` is called on every reply
+  with the route parameters it names, and the handler's keys are laid over it. A key the handler
+  returns must already be in the context: define each there with its default (`notified: False`,
+  `error: None`), so the page renders the same names as the reply.
+- **One return type:** a `dict` or `None`. Anything else, an `HttpResponse` included, raises. An
+  interaction always re-renders its partial; to leave the page, write a view that returns
+  `navigate()`.
+- **A declared refusal is a 422.** An exception listed in `refuses` re-renders the partial with
+  `error=str(exc)` and status 422, which htmx 4 swaps, and sends no triggers. The handler writes no
+  `try`. Any other exception is a 500.
+- **Success is a 200**, with `.trigger(name)` for each name in `triggers`.
+- **Any other method gets a 405** with `Allow`. The guard records nothing for it.
+- **The partial's root element carries `id="<partial name>"`**, checked on every reply, so the
+  element `hx-swap="outerHTML"` puts back keeps the id the next request targets.
+- **`@interaction` goes outermost.** It registers the function it decorates, so a decorator listed
+  above it, such as `@login_required`, wraps the module's name and never reaches the route. Check
+  access in the handler; Django answers `PermissionDenied` with a 403.
+
 ## What is loud
 
 Every row of the design's silent-failure catalogue has a test in `tests/`.
@@ -208,7 +289,7 @@ by `HxTestClient`. Nothing is gated on `DEBUG` that a test needs.
 | A 204 answers a partial request | `HxNoSwap`: htmx 4 leaves the target untouched |
 | A response no verb built answers a partial request | `HxBareResponse`: `django.shortcuts.render`, a plain `HttpResponse` or a `TemplateResponse` cannot be checked, and Django's `render` sends the whole page |
 | Messages added on a fragment with no messages template | `HxMessagesUnconfigured` |
-| A partial used as `<hx-partial>` whose root is not `id="<name>"` | `HxPartialRootId` at the render |
+| A partial used as `<hx-partial>`, or an interaction's reply, whose root is not `id="<name>"` | `HxPartialRootId` at the render |
 | `partial=` names a partial the template does not define | `HxUnknownPartial`, listing the partials it does |
 | An htmx request without `HX-Request-Type` | `HxProtocolError`: this needs htmx 4. `HX_REQUEST_TYPE_FALLBACK = "full"` answers with the page instead, for a proxy that strips the header; the guard still records it |
 | htmx 2 idioms in the HTML: `hx-ext`, implicit inheritance, htmx 2 event names in `hx-on` or `hx-trigger`, camelCase or kebab-case (`hx-on::after-request`), `show:#x:top` | the lint, on every test-client response, in the middleware log under `DEBUG`, in `manage.py hx_lint`, and as check `dj_hx.W005` |
@@ -216,6 +297,10 @@ by `HxTestClient`. Nothing is gated on `DEBUG` that a test needs.
 | A control pointing at a view that calls no verb; a view that calls `.retarget()` or `.reswap()` | `manage.py hx_map`, as warnings |
 | `HxMiddleware` missing, listed before `MessageMiddleware`, `HX_MESSAGES_TEMPLATE` unset or unresolvable, no partials on Django < 6, `HxMixin` after a Django base | checks `dj_hx.W001`, `E002`, `W003`, `W004`, `W006`, `E007` |
 | `HX_EXTENSIONS` names an extension htmx 4 does not ship, or is a string | check `dj_hx.W008`; htmx's registered name (`sse`) and the file name (`hx-sse`) both count |
+| An `@interaction` that cannot work: two with one name, a minted route for a handler in no installed app, `route=` parameters that are not the handler's (or `<str:...>` for one annotated `int`), a `partial=` that is not `page.html#name`, `triggers=` given as a string | `ImproperlyConfigured` when the views module is imported, so at start-up, naming the handler |
+| An interaction returns anything but a `dict` or `None`, an `HttpResponse` included | `ImproperlyConfigured`: an interaction always re-renders its partial; leave the page from a view that returns `navigate()` |
+| An interaction's reply sets a key its context does not define, a refusal's `error` included | `ImproperlyConfigured`, naming the key and the context function: define each there with its default |
+| `{% act %}` with a positional argument, a keyword the handler does not take, a missing one, or a name no interaction has | `TemplateSyntaxError` at render, naming the handler's parameters, or listing the interactions there are |
 
 ## Testing
 

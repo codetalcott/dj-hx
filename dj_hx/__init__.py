@@ -22,6 +22,7 @@ from .errors import (
     HxRedirectIntoFragment,
     HxUnknownPartial,
 )
+from .interactions import interaction
 from .mixins import HxMixin
 from .request import current_url, is_htmx, request_type, vary_on_hx, wants_fragment, wants_page
 from .verbs import HxRedirectResponse, HxResponse, fragment, invalid, navigate, page, redirect, removed, render, text
@@ -29,7 +30,7 @@ from .verbs import HxRedirectResponse, HxResponse, fragment, invalid, navigate, 
 __all__ = [
     "render", "page", "fragment", "invalid", "redirect", "navigate", "removed", "text",
     "is_htmx", "request_type", "wants_page", "wants_fragment", "current_url", "vary_on_hx",
-    "HxResponse", "HxRedirectResponse", "HxMixin",
+    "HxResponse", "HxRedirectResponse", "HxMixin", "interaction",
     "HxError", "HxProtocolError", "HxPageIntoFragment", "HxFragmentIntoPage", "HxRedirectIntoFragment",
     "HxNoSwap", "HxBareResponse", "HxUnknownPartial", "HxPartialRootId", "HxMessagesUnconfigured", "HxLintError", "HxRedirectError",
 ]
