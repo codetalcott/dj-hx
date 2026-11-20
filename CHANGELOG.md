@@ -103,7 +103,9 @@ event fired without a target lands on `document` after a delete swap, where a
   with the partial's id (E012: `#<partial>`, or no `hx-target` or
   `hx-target="this"` on that element) and uses an outer swap, `outerHTML`,
   `outerMorph` or `outerSync` as read in htmx 4.0.2's swap code (E013), reading
-  htmx 4's `:inherited` on ancestors; every interaction has an `{% act %}` control (E014;
+  htmx 4's `:inherited` on ancestors, and judging a templated id or `hx-target`
+  by its literal parts (`id="row-{{ pk }}"` cannot be `#notify`;
+  `id="{{ name }}"` is skipped); every interaction has an `{% act %}` control (E014;
   a `{% url %}` or hand-written path is not counted), a partial
   that loads (E015) and whose root carries its id (E016); `dj_hx.urls` routes
   each interaction to what its module holds (E017) and is included (E020).

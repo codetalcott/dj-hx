@@ -267,8 +267,10 @@ urlpatterns = [..., path("", include("dj_hx.urls"))]   # once, at the site root
   element with the partial's id: `hx-target="#<partial>"`, or no `hx-target` / `hx-target="this"` on the
   element carrying the id (`this` is the element that declares it). `hx-swap` must be an outer swap
   (`outerHTML`, `outerMorph` or `outerSync`). Each attribute is the control's own or an ancestor's
-  `:inherited` one; a plain attribute on an ancestor does not count. Computed values are not judged; an
-  `{% act %}` outside a verb attribute gets Info I021. The ids are in the checks table below.
+  `:inherited` one; a plain attribute on an ancestor does not count. A computed `hx-swap` or `hx-method` is
+  not judged; a templated id or `hx-target` is judged by its literal parts and skipped only when it could
+  equal the expected value (`id="{{ name }}"` is skipped, `id="row-{{ pk }}"` is an Error). An `{% act %}`
+  outside a verb attribute gets Info I021. The ids are in the checks table below.
 
 ### Settings
 

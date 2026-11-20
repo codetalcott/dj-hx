@@ -33,7 +33,10 @@ I021     Info     An {% act %} the checks cannot tie to a control's attributes
 =======  =======  ==========================================================
 
 E009 to E016 and I021 read the project's template files as hx_lint does, never
-site-packages; a computed hx-target, hx-swap, hx-method or root id is not judged.
+site-packages. A computed hx-swap or hx-method is not judged. A templated id or
+hx-target is judged by its literal parts (``_could_equal``): skipped only when it
+could equal the expected value (id="{{ name }}"), an Error otherwise
+(id="row-{{ pk }}").
 E013's outer swaps, read from htmx 4.0.2's swap code: outerHTML replaces the
 target, outerMorph morphs the target itself, and outerSync copies the reply
 root's attributes onto it and takes the root's children, so each leaves one
@@ -460,9 +463,28 @@ def _plain_on_ancestor(node, attr: str) -> str:
     return f"; the plain {attr} on <{plain.tag}> above it does not reach it in htmx 4" if plain is not None else ""
 
 
+def _could_equal(value: str, literal: str) -> bool:
+    """
+    Whether ``value`` could render as ``literal``. strip_template_syntax leaves one JINJA marker per
+    computed part, after any newlines that part spanned, so ``value`` is judged by its literal parts,
+    in order, with anything between them. A value with no computed part could only be itself.
+    """
+    from .hxlint import JINJA
+
+    parts = re.sub(rf"\n+(?={re.escape(JINJA)})", "", value).split(JINJA)
+    return re.fullmatch(".*".join(map(re.escape, parts)), literal, re.S) is not None
+
+
+def _shown(value: str) -> str:
+    """A stripped value as a message shows it, each computed part as {{…}}."""
+    from .hxlint import JINJA
+
+    return re.sub(rf"\n*{re.escape(JINJA)}", "{{…}}", value)
+
+
 def _described(element) -> str:
     found = element.attrs.get("id")
-    return f'a <{element.tag}> with id="{found}"' if found else f"a <{element.tag}> with no id"
+    return f'a <{element.tag}> with id="{_shown(found)}"' if found else f"a <{element.tag}> with no id"
 
 
 def _control_messages(it, node, attr: str, where: str) -> list:
@@ -489,8 +511,11 @@ def _control_messages(it, node, attr: str, where: str) -> list:
     target = node.resolved("hx-target")
     value = (target or "").strip()
     targeted = node if target is None else node.resolving("hx-target") if value == "this" else None
-    computed = JINJA in value or (targeted is not None and JINJA in (targeted.attrs.get("id") or ""))
-    if not computed and value != f"#{partial}" and (targeted is None or targeted.attrs.get("id") != partial):
+    if targeted is not None:
+        right = _could_equal(targeted.attrs.get("id") or "", partial)
+    else:
+        right = _could_equal(value, f"#{partial}")
+    if not right:
         if target is None:
             says = (
                 f"it has no hx-target, so htmx 4 targets the control itself, {_described(node)}, which would need "
@@ -502,7 +527,7 @@ def _control_messages(it, node, attr: str, where: str) -> list:
                 f'which would need id="{partial}"'
             )
         else:
-            says = f"its hx-target is {target!r}"
+            says = f"its hx-target is {_shown(target)!r}"
         messages.append(
             Error(
                 f"{tag}: {it.name}() replies with its partial, #{partial}, but {says}.",
@@ -584,13 +609,14 @@ def _root_messages(it, line: int, body: str) -> list:
     if content.startswith(JINJA) or _ELSEWHERE.search(body[: first_element.start()] if first_element else body):
         return []  # computed output, or another template or partial, comes first
     root = next(iter(parse(html)[0].children), None)
-    if content.startswith("<") and root is not None and JINJA in (root.attrs.get("id") or ""):
-        return []  # a computed id
+    root_id = (root.attrs.get("id") or "") if root is not None else ""
+    if content.startswith("<") and JINJA in root_id and _could_equal(root_id, it.partial):
+        return []  # a templated id that could be the partial's
     try:
         check_root_id(
             html, it.partial, f"{it.template}#{it.partial}", role=f"the reply of {it.name}(), which replaces #{it.partial}"
         )
     except HxPartialRootId as exc:
         at = line + html.count("\n", 0, len(html) - len(content))
-        return [Error(str(exc), obj=f"{it.template}:{at}", id="dj_hx.E016")]
+        return [Error(_shown(str(exc)), obj=f"{it.template}:{at}", id="dj_hx.E016")]
     return []

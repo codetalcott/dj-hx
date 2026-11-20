@@ -834,6 +834,46 @@ def test_e011_to_e013_do_not_judge_a_computed_value(startup, verb, rest):
     assert found(startup(**{"extra.html": control(NOTIFY, verb, rest)})) == []
 
 
+@pytest.mark.parametrize(
+    "template, says",
+    [
+        (
+            '{% load hx %}\n<button id="row-{{ pk }}" hx-post="' + NOTIFY + '" hx-swap="outerHTML">Go</button>',
+            'it has no hx-target, so htmx 4 targets the control itself, a <button> with id="row-{{…}}", which would need '
+            'id="notify"',
+        ),
+        (
+            '{% load hx %}\n<li id="item-{{ pk }}" hx-target:inherited="this" hx-swap:inherited="outerHTML"><button hx-post="'
+            + NOTIFY + '">Go</button></li>',
+            "its hx-target is 'this', so htmx 4 targets the element that declares it, a <li> with id=\"item-{{…}}\", which "
+            'would need id="notify"',
+        ),
+        (control(NOTIFY, rest='hx-target="#row-{{ pk }}" hx-swap="outerHTML"'), "its hx-target is '#row-{{…}}'"),
+    ],
+    ids=["row-id-no-target", "item-id-click-to-edit", "row-selector"],
+)
+def test_e012_judges_a_templated_id_or_selector_by_its_literal_parts(startup, template, says):
+    messages = startup(**{"extra.html": template})
+    assert found(messages) == [("dj_hx.E012", "extra.html:2")] and says in the(messages, "dj_hx.E012").msg
+
+
+@pytest.mark.parametrize(
+    "template",
+    [
+        '{% load hx %}\n<div id="{{ region }}" hx-post="' + NOTIFY + '" hx-swap="outerHTML">Go</div>',
+        '{% load hx %}\n<li id="{{ region }}" hx-target:inherited="this" hx-swap:inherited="outerHTML"><button hx-post="'
+        + NOTIFY + '">Go</button></li>',
+        control(NOTIFY, rest='hx-target="#{{ name }}" hx-swap="outerHTML"'),
+        '{% load hx %}\n<div id="{{ prefix }}notify" hx-post="' + NOTIFY + '" hx-swap="outerHTML">Go</div>',
+        '{% load hx %}\n<div id="{{\n region }}" hx-post="' + NOTIFY + '" hx-swap="outerHTML">Go</div>',
+    ],
+    ids=["id", "click-to-edit-id", "selector", "literal-suffix", "expression-across-lines"],
+)
+def test_e012_skips_a_templated_value_that_could_be_the_partials_id(startup, template):
+    assert found(startup(**{"extra.html": template})) == []
+
+
+
 @pytest.mark.parametrize("url", ["{% url 'dj_hx:sign_off' member=member %}", "/reviewers/{{ member }}/sign-off"], ids=["url-tag", "path"])
 def test_e014_an_interaction_no_template_writes_an_act_for(startup, url):
     # a control that reaches sign_off() by {% url %} or a hand-written path is not counted: E011-E013 cannot check it
@@ -872,8 +912,9 @@ def test_e015_an_interaction_whose_partial_does_not_exist(scratch, startup, part
         ('<div class="notify">', ', so its root <div> must carry id="notify"; it has no id'),
         ('<div id="notice">', ', so its root <div> must carry id="notify"; it has id="notice"'),
         ('Notify: <div id="notify">', ' but does not start with an element; it must be one element with id="notify"'),
+        ('<div id="item-{{ pk }}">', ', so its root <div> must carry id="notify"; it has id="item-{{…}}"'),
     ],
-    ids=["no-id", "another-id", "text-first"],
+    ids=["no-id", "another-id", "text-first", "templated-id"],
 )
 def test_e016_a_partial_whose_root_is_not_its_name(startup, root, says):
     messages = startup(**{"rota.html": ROTA.replace('<div id="notify">', root)})
@@ -885,13 +926,14 @@ def test_e016_a_partial_whose_root_is_not_its_name(startup, root, says):
     "templates",
     [
         {"rota.html": ROTA.replace('<div id="notify">', '<div id="{{ region }}">')},
+        {"rota.html": ROTA.replace('<div id="notify">', '<div id="{{ prefix }}notify">')},
         {"rota.html": ROTA.replace('<div id="notify">', '{{ banner }}<div id="notify">')},
         {"rota.html": ROTA.replace(NOTIFY_BODY, '{% include "region.html" %}'), "region.html": "{% load hx %}" + NOTIFY_BODY},
         {"rota.html": ROTA.replace("{% partialdef notify inline %}", "{# {% partialdef notify inline %}<p>{% endpartialdef %} #}{% partialdef notify inline %}")},
         {"rota.html": ROTA.replace(NOTIFY_BODY, "{% if members %}" + NOTIFY_BODY + "{% endif %}")},
         {"rota.html": ROTA.replace('<div id="notify">', '<div id="notify"{% if notified %} class="done"{% endif %}>')},
     ],
-    ids=["computed-id", "computed-first", "include", "commented-out", "block-tag-first", "tag-in-start-tag"],
+    ids=["computed-id", "id-with-literal-suffix", "computed-first", "include", "commented-out", "block-tag-first", "tag-in-start-tag"],
 )
 def test_e016_judges_only_a_root_the_source_shows(startup, templates):
     assert found(startup(**templates)) == []

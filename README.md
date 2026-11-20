@@ -314,9 +314,11 @@ The rules:
 
   It also checks that every interaction has an `{% act %}` control (a `{% url 'dj_hx:…' %}` or
   hand-written path is not counted, because its control cannot be checked), and that its partial
-  loads and starts with its id. A computed `hx-target`, `hx-swap`, `hx-method` or root `id` is not
-  judged, and an `{% act %}` it cannot tie to one element's verb attribute gets an Info
-  (`dj_hx.I021`) saying so. The ids are in "What is loud" below.
+  loads and starts with its id. A computed `hx-swap` or `hx-method` is not judged. A templated id or
+  `hx-target` is judged by its literal parts, and skipped only when it could equal the expected
+  value: `id="{{ name }}"` and `hx-target="#{{ name }}"` are skipped, while `id="row-{{ pk }}"` and
+  `hx-target="#row-{{ pk }}"` cannot be `notify` and are Errors. An `{% act %}` it cannot tie to
+  one element's verb attribute gets an Info (`dj_hx.I021`) saying so. The ids are in "What is loud" below.
 
 ## What is loud
 
