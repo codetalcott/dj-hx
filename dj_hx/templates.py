@@ -12,6 +12,7 @@ whitespace; comments go. Line numbers survive.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 from . import hxlint
@@ -19,20 +20,27 @@ from .hxlint import JINJA, Finding
 
 __all__ = [
     "URLFOR",
+    "ACT_MARK",
+    "ActTag",
     "in_site_packages",
     "template_directories",
     "iter_template_files",
     "template_sources",
     "strip_template_syntax",
+    "partial_sources",
     "lint_template_source",
 ]
 
 URLFOR = "URLFOR:"
+ACT_MARK = re.compile(r"__ACT(\d+)__")  # what strip_template_syntax(acts=...) leaves for the n-th {% act %}
 
 _COMMENT = re.compile(r"\{#.*?#\}|\{%\s*comment\b.*?%\}.*?\{%\s*endcomment\s*%\}", re.S)
 _EXPR = re.compile(r"\{\{.*?\}\}", re.S)
 _TAG = re.compile(r"\{%.*?%\}", re.S)
 _URL_TAG = re.compile(r"\{%\s*url\s+(['\"])([\w:.-]+)\1(.*?)%\}", re.S)
+_ACT_TAG = re.compile(r"\{%\s*act\s+(.*?)%\}", re.S)
+_KEYWORD = re.compile(r"^\w+=")  # as Django's token_kwargs reads a tag argument
+_PARTIALDEF = re.compile(r"\{%\s*(partialdef|endpartialdef)\b(.*?)%\}", re.S)
 _BLOCK_TAGS = re.compile(
     r"^(?:if|elif|else|endif|for|empty|endfor|block|endblock|extends|load|with|endwith|"
     r"spaceless|endspaceless|autoescape|endautoescape|verbatim|endverbatim|include|"
@@ -42,21 +50,51 @@ _BLOCK_TAGS = re.compile(
 )
 
 
+@dataclass(frozen=True)
+class ActTag:
+    """One ``{% act %}`` tag of a template's source, as the start-up checks read it."""
+
+    line: int
+    name: str | None  # None when a variable names the interaction
+    keywords: tuple[str, ...]
+    positional: int
+    stored_as: str | None  # the variable of ``{% act ... as url %}``, which writes nothing where it stands
+
+
 def _keep_lines(match, filler: str) -> str:
     return "\n" * match.group(0).count("\n") + filler
 
 
-def strip_template_syntax(source: str, *, url_marker: bool = False) -> str:
+def _act_tag(match, acts: list[ActTag]) -> str:
+    from django.utils.text import smart_split
+
+    bits = list(smart_split(match.group(1).strip()))
+    stored_as = None
+    if len(bits) >= 2 and bits[-2] == "as":
+        stored_as, bits = bits[-1], bits[:-2]
+    head, arguments = (bits[0], bits[1:]) if bits else ("", [])
+    quoted = len(head) >= 2 and head[0] == head[-1] and head[0] in "'\""
+    keywords = tuple(bit.split("=", 1)[0] for bit in arguments if _KEYWORD.match(bit))
+    line = match.string.count("\n", 0, match.start()) + 1
+    acts.append(ActTag(line, head[1:-1] if quoted else None, keywords, len(arguments) - len(keywords), stored_as))
+    return _keep_lines(match, f"__ACT{len(acts) - 1}__")
+
+
+def strip_template_syntax(source: str, *, url_marker: bool = False, acts: list[ActTag] | None = None) -> str:
     """Django template source as HTML the parser can read, line numbers intact.
 
     With ``url_marker``, ``{% url 'name' ... %}`` becomes ``URLFOR:name`` so the
-    map can resolve the control to its view.
+    map can resolve the control to its view. With ``acts``, the n-th
+    ``{% act %}`` becomes ``__ACT<n>__`` (``ACT_MARK``) and its ``ActTag`` is
+    appended to ``acts``, so a check can tell which element's attribute holds it.
     """
     source = _COMMENT.sub(lambda m: _keep_lines(m, ""), source)
     if url_marker:
         source = _URL_TAG.sub(
             lambda m: _keep_lines(m, JINJA if " as " in f" {m.group(3)} " else URLFOR + m.group(2)), source
         )
+    if acts is not None:
+        source = _ACT_TAG.sub(lambda m: _act_tag(m, acts), source)
     source = _EXPR.sub(lambda m: _keep_lines(m, JINJA), source)
 
     def tag(m):
@@ -64,6 +102,23 @@ def strip_template_syntax(source: str, *, url_marker: bool = False) -> str:
         return _keep_lines(m, " " if _BLOCK_TAGS.match(body) else JINJA)
 
     return _TAG.sub(tag, source)
+
+
+def partial_sources(source: str) -> dict[str, tuple[int, str]]:
+    """
+    ``{"notify": (line, body)}`` for each ``{% partialdef %}`` in a template's source: the source
+    between its tags, comments dropped, and the line that source starts on.
+    """
+    source = _COMMENT.sub(lambda m: _keep_lines(m, ""), source)
+    found: dict[str, tuple[int, str]] = {}
+    opened: list[tuple[str, int]] = []
+    for m in _PARTIALDEF.finditer(source):
+        if m.group(1) == "partialdef":
+            opened.append(((m.group(2).split() or [""])[0], m.end()))
+        elif opened:
+            name, start = opened.pop()
+            found.setdefault(name, (source.count("\n", 0, start) + 1, source[start : m.start()]))
+    return found
 
 
 def lint_template_source(source: str, file: str | None = None, extensions=()) -> list[Finding]:

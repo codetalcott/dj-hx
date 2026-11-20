@@ -15,8 +15,8 @@ to a verb signature, a setting, an error, a check id or a lint rule must be mirr
 The checked-in `.venv` has Django 6.0, pytest, ruff and playwright.
 
 ```
-.venv/bin/python -m pytest                      # 163 tests, ~5s
-.venv/bin/python -m pytest -m "not browser"     # 156, skipping Chromium
+.venv/bin/python -m pytest                      # 224 tests, ~5s
+.venv/bin/python -m pytest -m "not browser"     # 217, skipping Chromium
 .venv/bin/python -m pytest -m browser           # the 7 Playwright tests alone
 .venv/bin/python -m pytest tests/test_verbs.py::test_text_escapes
 .venv/bin/ruff check .
@@ -61,7 +61,7 @@ must not be able to 500 in production.
 
 **Ordering matters.** `HxMiddleware` must run its response phase before `MessageMiddleware` stores
 messages, which means it is listed *after* it. [checks.py](dj_hx/checks.py) enforces that as `dj_hx.E002`;
-the eight check ids W001-W008 are documented in that module's docstring.
+the check ids W001-I021 are documented in that module's docstring.
 
 **The lint has two surfaces over one rule set.** [hxlint.py](dj_hx/hxlint.py) works on rendered HTML
 strings. [templates.py](dj_hx/templates.py) strips Django template syntax (line numbers preserved,
@@ -78,16 +78,24 @@ namespace `dj_hx`); [templatetags/hx.py](dj_hx/templatetags/hx.py) is `{% act %}
 from keyword arguments only. [apps.py](dj_hx/apps.py)'s `ready()` imports every project app's `views`
 module (`templates.in_site_packages` decides what is the project's), so every route is registered
 before the URLconf is read. The decorator returns the routed view; when `dj_hx/urls.py` is first
-imported, `bind_routes()` points each route at whatever the handler's module holds under its name, as
-written, whenever it is callable, so any decorator written above `@interaction` wraps the route, with or
+imported, `bind_routes()` points each route at whatever the module that defines the handler holds under
+its name, as written, whenever it is callable, so any decorator written above `@interaction` wraps the route, with or
 without `functools.wraps` (falling back to the bare view would drop an access check). Only a missing or
 non-callable attribute routes the bare view. The raw handler, or a decorator that unwraps to it before
 the view (the call form `remind_view = interaction(...)(remind)`), raises `ImproperlyConfigured` from
 `bind_routes()`, so from the first URLconf read (first request, `manage.py check`): routing it would
-skip the method guard. It rebuilds the list in place: `interactions.urlpatterns`,
-`dj_hx.urls.urlpatterns` and the `include("dj_hx.urls")` resolver's `url_patterns` are one list, which
-the resolver reads lazily and then caches. An interaction registered after that keeps a route to its
-bare view.
+skip the method guard. It rebuilds the list in place: `interactions.urlpatterns` and
+`dj_hx.urls.urlpatterns` are one list object, and `include("dj_hx.urls")` imports the module at once
+but its resolver reads `urlpatterns` only on its first resolve or reverse, then caches that same list.
+An interaction registered after `dj_hx/urls.py` was imported keeps a route to its bare view, which
+check `dj_hx.E017` reports.
+
+**The interaction checks reuse the runtime's own pieces.** `{% act %}` and checks E009/E010 take their
+messages from `act_unknown()` and `act_mismatch()` in interactions.py, and E015/E016 from
+`_get_partial()` and `check_root_id()`, so the start-up and render-time wording cannot drift. The
+template checks read each `{% act %}` through `strip_template_syntax(source, acts=[...])`, which marks
+the n-th tag `__ACT<n>__` so its holding element is found in hxlint's tree, and `partial_sources()`
+for `{% partialdef %}` bodies.
 
 **The map is split by framework.** [mapcore.py](dj_hx/mapcore.py) is framework-neutral: template scan,
 the AST visitor that finds verb calls, the control-vs-handler checks. [hxmap.py](dj_hx/hxmap.py) is the
@@ -120,10 +128,16 @@ is genuinely Django-specific; the core is vendored from hx-flask (see below).
 
 - `tests/conftest.py` serves in-memory templates through a locmem loader (`lib` fixture, with the
   django-template-partials loader added below Django 6) and loads the contact fixtures (`contacts`).
+  `on_disk(directory)` is the same setting over a directory, for the template checks, which read
+  files and so see nothing through locmem. `no_interactions` empties the registry for a test of the
+  example project or a per-area URLconf, which have none; without it the rota app's four trip the
+  interaction checks.
 - `tests/urlconfs/` holds small URLconfs, one per area, that exercise the library directly.
 - `tests/interactions_app/` is an installed app (label `rota`, from its `apps.py`; installed by `tests/settings.py`), because a
   minted route needs an app label; dj-hx's `ready()` imports its views. A test that defines its own
   interactions takes the `scratch` fixture in `tests/test_interactions.py`, which restores the registry.
+  Its `startup` fixture writes the rota app's templates to disk and returns the check messages; the
+  W018 on `approve()` is there on purpose (`views.staff_only` has no `functools.wraps`).
   `tests/settings.py` also adds `django.contrib.auth` and `AuthenticationMiddleware` (the example has
   neither) for the `@login_required` test.
 - `tests/test_contact_app.py` and `tests/test_browser.py` run against `example/`, mirroring hx-flask's

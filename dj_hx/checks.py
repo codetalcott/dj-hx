@@ -1,8 +1,8 @@
 """
 dj-hx's Django system checks. Registered by ``dj_hx.apps.DjHxConfig.ready()``.
 
-Every check here names a defect that lives in the project's settings, URLconf
-or template files, which is what a boot-time check is for. Silence any with::
+Every check here names a defect that lives in the project's settings, URLconf,
+views or template files, which is what a boot-time check is for. Silence any with::
 
     SILENCED_SYSTEM_CHECKS = ["dj_hx.W005"]
 
@@ -17,15 +17,36 @@ W005     Warning  A project template fails the htmx 4 lint (htmx 2 idioms, typos
 W006     Warning  Django < 6 without django-template-partials installed
 E007     Error    A Django class before HxMixin in a routed view's bases shadows its hooks
 W008     Warning  HX_EXTENSIONS is a string, or names an extension htmx 4 does not ship
+E009     Error    {% act %} names no interaction
+E010     Error    {% act %}'s keywords are not its handler's parameters
+E011     Error    An {% act %} control sends another method than its interaction answers
+E012     Error    An {% act %} control's hx-target (own or :inherited) is not #<partial>
+E013     Error    An {% act %} control's hx-swap (own or :inherited) is not outerHTML
+E014     Error    An interaction has no control: no template writes its {% act %}
+E015     Error    An interaction's partial does not load
+E016     Error    An interaction's partial's root element is not id="<partial>"
+E017     Error    dj_hx.urls routes an interaction to other than what its module holds
+W018     Warning  The module attribute routed does not unwrap to its interaction
+W019     Warning  A decorator sits below @interaction
+E020     Error    Interactions are registered but dj_hx.urls is not included
+I021     Info     An {% act %} the checks cannot tie to a control's attributes
 =======  =======  ==========================================================
+
+E009 to E016 and I021 read the project's template files as hx_lint does, never
+site-packages; a computed hx-target, hx-swap, hx-method or root id is not judged.
 """
 
 from __future__ import annotations
 
+import re
+
 import django
-from django.core.checks import Error, Tags, Warning, register
+from django.core.checks import Error, Info, Tags, Warning, register
 
 HOOKS = ("render_to_response", "form_invalid", "form_valid")
+_ELEMENT = re.compile(r"<[a-zA-Z]")
+_ELSEWHERE = re.compile(r"\{%\s*(?:include|partial)\b")  # a tag that renders another template or partial in place
+_KEEPS_THE_TARGET = {"innerHTML", "afterbegin", "beforeend", "beforebegin", "afterend"}  # the reply lands in or beside it
 
 
 def _should_run(app_configs) -> bool:
@@ -257,3 +278,292 @@ def check_mixin_order(app_configs=None, **kwargs):
                     )
                     break
     return messages
+
+
+@register("dj_hx", Tags.urls)
+def check_interaction_routes(app_configs=None, **kwargs):
+    """Each interaction routed, through dj_hx.urls, to what its module holds (W018, W019, E020, E017)."""
+    if not _should_run(app_configs):
+        return []
+    from django.conf import settings
+    from django.core.exceptions import ImproperlyConfigured
+    from django.urls import NoReverseMatch, reverse
+
+    from .interactions import (
+        INCLUDE,
+        _routed_view,
+        module_attribute,
+        namespace_missing,
+        registry,
+        unwraps_to,
+        urlpatterns,
+    )
+
+    messages = []
+    for it in registry.values():
+        where = f"{it.view.__module__}.{it.name}"
+        held = module_attribute(it)
+        if callable(held) and unwraps_to(it, held) not in (it.view, it.func):  # the raw handler is bind_routes()' to refuse
+            messages.append(
+                Warning(
+                    f"{it.name}() is routed to {where}, which does not unwrap to the view @interaction returned, so "
+                    "dj-hx cannot tell that it wraps the interaction.",
+                    hint="Use functools.wraps in decorators above @interaction, as Django's own do. A wrapper of the raw "
+                    "handler written without it is routed as it is, past the method guard.",
+                    obj=where,
+                    id="dj_hx.W018",
+                )
+            )
+        if hasattr(it.func, "__wrapped__"):
+            messages.append(
+                Warning(
+                    f"{it.name}() is wrapped by a decorator below @interaction, which runs inside the interaction.",
+                    hint="View decorators belong above @interaction, where they wrap the routed view; below it, one "
+                    "that answers with a response is the return-type error. One that returns the handler's dict, such as "
+                    "transaction.atomic, belongs there: silence dj_hx.W019.",
+                    obj=where,
+                    id="dj_hx.W019",
+                )
+            )
+    if not registry or not getattr(settings, "ROOT_URLCONF", None):
+        return messages
+    try:
+        reverse(f"dj_hx:{next(iter(registry))}")  # reads the URLconf, so dj_hx.urls has bound the routes it includes
+    except NoReverseMatch as exc:
+        if namespace_missing(exc):
+            messages.append(
+                Error(
+                    f"Interactions are registered ({', '.join(sorted(registry))}), but dj_hx.urls is not included, so "
+                    "none of them has a route and every {% act %} raises.",
+                    hint=f"Include it once, at the site root of ROOT_URLCONF: {INCLUDE}.",
+                    id="dj_hx.E020",
+                )
+            )
+            return messages
+    routed = {}
+    for pattern in urlpatterns:  # dj_hx.urls.urlpatterns, which the include reads
+        routed.setdefault(pattern.name, pattern.callback)
+    for it in registry.values():
+        module, where = it.view.__module__, f"{it.view.__module__}.{it.name}"
+        late = (
+            f"{it.name}() was registered after dj_hx.urls was first read, or {module} rebound {it.name} since. Import "
+            f"{module} before the URLconf is loaded: from the app's ready(), or from its views module, which dj-hx "
+            "imports at start-up."
+        )
+        try:
+            expected = _routed_view(it)
+        except ImproperlyConfigured as exc:  # the module holds the raw handler: binding the routes now would raise
+            messages.append(Error(str(exc), hint=late, obj=where, id="dj_hx.E017"))
+            continue
+        callback = routed.get(it.name)
+        if callback is expected:
+            continue
+        to = "the view @interaction returned" if callback is it.view else "another object"
+        messages.append(
+            Error(
+                f"dj_hx.urls routes {it.name}() to {to}, not to what {module} holds under its name, so the decorators "
+                "written above @interaction do not apply to the route.",
+                hint=late,
+                obj=where,
+                id="dj_hx.E017",
+            )
+        )
+    return messages
+
+
+@register("dj_hx", Tags.templates)
+def check_interaction_controls(app_configs=None, **kwargs):
+    """
+    Every ``{% act %}`` in the project's templates against the registry and the control holding it, and
+    each interaction's control and partial (E009 to E016, I021).
+    """
+    if not _should_run(app_configs):
+        return []
+    from .hxlint import parse
+    from .interactions import registry
+    from .templates import ACT_MARK, strip_template_syntax, template_sources
+
+    sources = template_sources()
+    messages, controlled = [], set()
+    for template, source in sources.items():
+        acts = []
+        html = strip_template_syntax(source, acts=acts)
+        if not acts:
+            continue
+        holders = {}
+        for node in parse(html)[0].descendants():
+            for attr, value in node.attrs.items():
+                for index in ACT_MARK.findall(value or ""):
+                    holders.setdefault(int(index), (node, attr))
+        for index, act in enumerate(acts):
+            if act.name is not None:
+                controlled.add(act.name)
+            messages += _act_messages(act, f"{template}:{act.line}", *holders.get(index, (None, None)))
+    for it in registry.values():
+        messages += _interaction_messages(it, controlled, sources)
+    return messages
+
+
+_UNTIED = (
+    "Write the {% act %}, with the interaction's name quoted, into the verb attribute (hx-post, hx-get, ...) of the "
+    "control that sends it to have that control checked, or silence dj_hx.I021 in SILENCED_SYSTEM_CHECKS."
+)
+
+
+def _act_messages(act, where: str, node, attr: str | None) -> list:
+    from .hx_vocab import REQUEST_ATTRIBUTES
+    from .interactions import act_mismatch, act_unknown, registry
+
+    if act.name is None:
+        return [
+            Info(
+                "{% act %} names its interaction with a variable, so the checks cannot tell which interaction it is.",
+                hint=_UNTIED,
+                obj=where,
+                id="dj_hx.I021",
+            )
+        ]
+    it = registry.get(act.name)
+    if it is None:
+        return [Error(act_unknown(act.name), obj=where, id="dj_hx.E009")]
+    messages = []
+    problem = act_mismatch(it, act.positional, act.keywords)
+    if problem:
+        messages.append(Error(problem, obj=where, id="dj_hx.E010"))
+    if act.stored_as:
+        untied = f"stores its URL in {act.stored_as}"
+    elif node is None:
+        untied = "is outside an attribute value"
+    elif attr not in REQUEST_ATTRIBUTES:
+        untied = f"is in {attr}, which is not a verb attribute"
+    else:
+        return messages + _control_messages(it, node, attr, where)
+    messages.append(
+        Info(
+            f"{{% act '{it.name}' %}} {untied}, so the checks cannot tie it to a control: no method, hx-target or "
+            "hx-swap is checked for it.",
+            hint=_UNTIED,
+            obj=where,
+            id="dj_hx.I021",
+        )
+    )
+    return messages
+
+
+def _plain_on_ancestor(node, attr: str) -> str:
+    plain = next((a for a in node.ancestors() if a.attrs.get(attr) is not None), None)
+    return f"; the plain {attr} on <{plain.tag}> above it does not reach it in htmx 4" if plain is not None else ""
+
+
+def _control_messages(it, node, attr: str, where: str) -> list:
+    """E011 to E013: the control that ``{% act %}`` writes the URL of, against what its interaction replies."""
+    from .hxlint import JINJA, parse_swap_spec
+    from .interactions import act_form
+
+    tag, partial, messages = f"{{% act '{it.name}' %}}", it.partial, []
+    sends = (node.own("hx-method") or "GET").upper() if attr == "hx-action" else attr[len("hx-") :].upper()
+    if JINJA not in sends and sends != it.method:
+        messages.append(
+            Error(
+                f"{tag} is in {attr}, so its control sends {sends}, but {it.name}() answers {it.method}: a {sends} gets "
+                "a 405.",
+                hint=f'Write hx-{it.method.lower()}="{act_form(it)}" on the control, or give {it.name}() the method '
+                "the control sends.",
+                obj=where,
+                id="dj_hx.E011",
+            )
+        )
+    target = node.resolved("hx-target")
+    if (target is None or JINJA not in target) and (target or "").strip() != f"#{partial}":
+        says = (
+            "it has no hx-target, so htmx 4 swaps the reply into the control itself" + _plain_on_ancestor(node, "hx-target")
+            if target is None
+            else f"its hx-target is {target!r}"
+        )
+        messages.append(
+            Error(
+                f"{tag}: {it.name}() replies with its partial, #{partial}, but {says}.",
+                hint=f'Write hx-target="#{partial}" on the control, or hx-target:inherited="#{partial}" on an ancestor.',
+                obj=where,
+                id="dj_hx.E012",
+            )
+        )
+    swap = node.resolved("hx-swap")
+    style = parse_swap_spec(swap or "")["style"]  # htmx 4's default, innerHTML, when there is none
+    if (swap is None or JINJA not in swap) and style != "outerHTML":
+        says = (
+            "it has no hx-swap, so htmx 4 swaps innerHTML" + _plain_on_ancestor(node, "hx-swap")
+            if swap is None
+            else f"its hx-swap is {swap!r}"
+        )
+        keeps = f' That leaves two elements with id="{partial}".' if style in _KEEPS_THE_TARGET else ""
+        messages.append(
+            Error(
+                f"{tag}: {it.name}() replies with its whole partial, root and all, so the control must swap outerHTML, "
+                f"but {says}.{keeps}",
+                hint='Write hx-swap="outerHTML" on the control, or hx-swap:inherited="outerHTML" on an ancestor.',
+                obj=where,
+                id="dj_hx.E013",
+            )
+        )
+    return messages
+
+
+def _interaction_messages(it, controlled: set, sources: dict) -> list:
+    """E014 to E016: the interaction has a control, and its partial loads and starts with its id."""
+    from .errors import HxUnknownPartial
+    from .interactions import act_form
+    from .templates import partial_sources
+    from .verbs import _get_partial
+
+    where, messages = f"{it.view.__module__}.{it.name}", []
+    if it.name not in controlled:
+        messages.append(
+            Error(
+                f"{it.name}() has no control: no project template writes {{% act '{it.name}' %}}.",
+                hint=f'Write it into the control that sends the request: hx-{it.method.lower()}="{act_form(it)}" '
+                f'hx-target="#{it.partial}" hx-swap="outerHTML". Or delete the interaction.',
+                obj=where,
+                id="dj_hx.E014",
+            )
+        )
+    try:
+        _get_partial(it.template, it.partial)
+    except HxUnknownPartial as exc:
+        messages.append(
+            Error(
+                f"{it.name}() replies with {it.template}#{it.partial}, which does not load: {exc}",
+                obj=where,
+                id="dj_hx.E015",
+            )
+        )
+        return messages
+    region = partial_sources(sources[it.template]).get(it.partial) if it.template in sources else None
+    if region is not None:
+        messages += _root_messages(it, *region)
+    return messages
+
+
+def _root_messages(it, line: int, body: str) -> list:
+    """E016, the start-up twin of HxPartialRootId: judged only where the source shows the root."""
+    from .errors import HxPartialRootId
+    from .hxlint import JINJA, parse
+    from .templates import strip_template_syntax
+    from .verbs import check_root_id
+
+    html = strip_template_syntax(body)
+    content = html.lstrip()
+    first_element = _ELEMENT.search(body)
+    if content.startswith(JINJA) or _ELSEWHERE.search(body[: first_element.start()] if first_element else body):
+        return []  # computed output, or another template or partial, comes first
+    root = next(iter(parse(html)[0].children), None)
+    if content.startswith("<") and root is not None and JINJA in (root.attrs.get("id") or ""):
+        return []  # a computed id
+    try:
+        check_root_id(
+            html, it.partial, f"{it.template}#{it.partial}", role=f"the reply of {it.name}(), which replaces #{it.partial}"
+        )
+    except HxPartialRootId as exc:
+        at = line + html.count("\n", 0, len(html) - len(content))
+        return [Error(str(exc), obj=f"{it.template}:{at}", id="dj_hx.E016")]
+    return []

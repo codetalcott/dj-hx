@@ -251,16 +251,19 @@ The rules:
   share a name.
 - **`{% act %}` takes keyword arguments only**, one for each parameter of the handler
   (`{% load hx %}`). A positional argument, a name the handler does not take, or a missing one
-  raises `TemplateSyntaxError` at render, naming the parameters.
+  raises `TemplateSyntaxError` at render, naming the parameters. Without `dj_hx.urls` included it
+  raises `ImproperlyConfigured`, naming the include.
 - **Interactions live in an app's `views.py`.** dj-hx's `ready()` imports the `views` module of
   every installed app outside site-packages, so every route exists before the URLconf is read. An
   interaction defined anywhere else has to be imported before then, and one in a pip-installed app
   is not registered until something imports its views. One registered after the URLconf was read
-  is routed to its view alone, without the view decorators above it.
+  is routed to its view alone, without the view decorators above it; check `dj_hx.E017` says so.
 - **The reply is always the partial**, through `fragment()`. `context` is called on every reply
-  with the route parameters it names, and the handler's keys are laid over it. A key the handler
-  returns must already be in the context: define each there with its default (`notified: False`,
-  `error: None`), so the page renders the same names as the reply.
+  with the route parameters it names, and the handler's keys are laid over it. A parameter of
+  `context` that the route lacks takes its default; one without a default, or `*args` or
+  `**kwargs`, raises at import. A key the handler returns must already be in the context: define
+  each there with its default (`notified: False`, `error: None`), so the page renders the same
+  names as the reply.
 - **One return type:** a `dict` or `None`. Anything else, an `HttpResponse` included, raises. An
   interaction always re-renders its partial; to leave the page, write a view that returns
   `navigate()`. A view decorator written below `@interaction` that answers with a response, such
@@ -273,21 +276,35 @@ The rules:
 - **The partial's root element carries `id="<partial name>"`**, checked on every reply, so the
   element `hx-swap="outerHTML"` puts back keeps the id the next request targets.
 - **View decorators go above `@interaction`, and the module holds what it returned.**
-  `@interaction` returns the routed view, and `dj_hx.urls` routes each interaction to whatever its
-  module holds under the handler's name, as written:
+  `@interaction` returns the routed view, and `dj_hx.urls` routes each interaction to whatever the
+  module that defines the handler holds under the handler's name, as written:
   - `@login_required` above it wraps the route, as on any Django view, and so does a hand-written
     check. Write your own with `functools.wraps`, as Django's are, so dj-hx's messages and `hx_map`
-    name the handler rather than the decorator's inner function.
+    name the handler rather than the decorator's inner function. Check `dj_hx.W018` warns on one
+    written without it, because nothing can then see that it wraps the interaction. A decorator
+    below `@interaction` gets `dj_hx.W019`.
   - That name must hold the view `@interaction` returned, or a decorator of it, and never the raw
     handler. The call form `remind_view = interaction(...)(remind)` leaves `remind` itself there,
     which would skip the method guard, so reading the URLconf raises `ImproperlyConfigured`. Write
-    `remind = interaction(...)(remind)`; the handler stays reachable as `remind.__wrapped__`.
+    `remind = interaction(...)(remind)`, in the module that defines `remind`; the handler stays
+    reachable as `inspect.unwrap(remind)`. A decorator of the raw handler raises the same way only
+    when it is written with `functools.wraps`; one written without it is routed as it is, past the
+    method guard, and only `dj_hx.W018` warns.
   - An interaction its module does not hold under its name, or holds as something not callable,
     such as one defined inside a function, is routed to the bare view, and any decorator applied to
     it is dropped.
   - A signed-out request to a `@login_required` interaction gets its 302. On a control that targets
     an element the guard records that 302 (`HxRedirectIntoFragment`), as it does for any view,
     because fetch would follow it into the target.
+- **`manage.py check` reads every `{% act %}` in the project's templates**, as `hx_lint` does,
+  never site-packages, and checks the control it writes the URL of against its interaction: the
+  verb attribute sends the interaction's method, `hx-target` is `#<partial name>` and `hx-swap` is
+  `outerHTML`, each the control's own or an ancestor's `:inherited` one (a plain attribute on an
+  ancestor does not reach it in htmx 4). Without `hx-swap`, htmx 4 swaps `innerHTML` and nests a
+  second element with the partial's id inside the first. It also checks that every interaction has
+  a control, and that its partial loads and starts with its id. A computed `hx-target`, `hx-swap`,
+  `hx-method` or root `id` is not judged, and an `{% act %}` it cannot tie to one element's verb
+  attribute gets an Info (`dj_hx.I021`) saying so. The ids are in "What is loud" below.
 
 ## What is loud
 
@@ -312,11 +329,17 @@ by `HxTestClient`. Nothing is gated on `DEBUG` that a test needs.
 | A control pointing at a view that calls no verb; a view that calls `.retarget()` or `.reswap()` | `manage.py hx_map`, as warnings |
 | `HxMiddleware` missing, listed before `MessageMiddleware`, `HX_MESSAGES_TEMPLATE` unset or unresolvable, no partials on Django < 6, `HxMixin` after a Django base | checks `dj_hx.W001`, `E002`, `W003`, `W004`, `W006`, `E007` |
 | `HX_EXTENSIONS` names an extension htmx 4 does not ship, or is a string | check `dj_hx.W008`; htmx's registered name (`sse`) and the file name (`hx-sse`) both count |
-| An interaction's module holds the raw handler under its name (`remind_view = interaction(...)(remind)`), or a decorator of the raw handler, so its route would skip the method guard | `ImproperlyConfigured` when the URLconf is first read (the first request, or `manage.py check`), naming the module attribute and the fix |
-| An `@interaction` that cannot work: two with one name, a minted route for a handler in no installed app, `route=` parameters that are not the handler's (or `<str:...>` for one annotated `int`), a `partial=` that is not `page.html#name`, `triggers=` given as a string | `ImproperlyConfigured` when the views module is imported, so at start-up, naming the handler |
+| The module that defines the handler holds the raw handler under its name (`remind_view = interaction(...)(remind)`, or `remind = interaction(...)(handlers.remind)` in another module), or a decorator of it written with `functools.wraps`, so its route would skip the method guard | `ImproperlyConfigured` when the URLconf is first read (the first request, or `manage.py check`), naming the module attribute and the fix. A decorator of the raw handler written without `functools.wraps` is routed as it is, past the method guard: only check `dj_hx.W018` warns |
+| An `@interaction` that cannot work: two with one name, a minted route for a handler in no installed app, `route=` parameters that are not the handler's (or `<str:...>` for one annotated `int`), a `partial=` that is not `page.html#name`, `triggers=` given as a string, a `method` that is not GET, POST, PUT, PATCH or DELETE, a `refuses` holding anything but exception classes (`refuses=("DomainError",)`), a handler or a `context=` taking `*args` or `**kwargs`, a `context=` parameter without a default that the route does not have | `ImproperlyConfigured` when the views module is imported, so at start-up, naming the handler |
 | An interaction returns anything but a `dict` or `None`, an `HttpResponse` included, or a view decorator below `@interaction` answers with one | `ImproperlyConfigured`: an interaction always re-renders its partial; leave the page from a view that returns `navigate()`, and put Django view decorators above `@interaction` |
 | An interaction's reply sets a key its context does not define, a refusal's `error` included | `ImproperlyConfigured`, naming the key and the context function: define each there with its default |
-| `{% act %}` with a positional argument, a keyword the handler does not take, a missing one, or a name no interaction has | `TemplateSyntaxError` at render, naming the handler's parameters, or listing the interactions there are |
+| `{% act %}` with a positional argument, a keyword the handler does not take, a missing one, or a name no interaction has | `TemplateSyntaxError` at render, naming the handler's parameters, or listing the interactions there are; at start-up, checks `dj_hx.E009` (no such interaction) and `E010` (the arguments), naming template:line |
+| An `{% act %}` control that sends another method than its interaction answers, whose `hx-target` (its own, or an ancestor's `hx-target:inherited`) is not `#<partial name>`, or whose `hx-swap` (likewise) is not `outerHTML` | checks `dj_hx.E011`, `E012` and `E013`, naming template:line and the attribute to write; a plain `hx-target` or `hx-swap` on an ancestor is named as not reaching the control |
+| An interaction no project template writes an `{% act %}` for, whose partial does not load, or whose partial's root element is not `id="<partial name>"` | checks `dj_hx.E014`, `E015` (with `HxUnknownPartial`'s reason) and `E016` (the start-up twin of `HxPartialRootId`, judged where the source shows the root) |
+| An interaction registered after `dj_hx.urls` was first read, so its route is the bare view and the decorators above it do not apply | check `dj_hx.E017`, naming the module to import before the URLconf is loaded |
+| Interactions registered, but `dj_hx.urls` not included | check `dj_hx.E020`; `{% act %}` raises `ImproperlyConfigured`; both name `path("", include("dj_hx.urls"))` |
+| A decorator above `@interaction` written without `functools.wraps`, so nothing can see that it wraps the interaction; a decorator below `@interaction` (the handler has `__wrapped__`) | checks `dj_hx.W018` (use `functools.wraps`) and `W019` (view decorators belong above `@interaction`) |
+| An `{% act %}` the checks cannot tie to one element's verb attribute: in a `<script>` or text, in another attribute, stored with `as`, or naming its interaction with a variable | check `dj_hx.I021`, an Info naming template:line; a quoted name and its keywords are still checked. `assert_no_hx_check_issues()` counts it, so silence it by id where it is deliberate |
 
 ## Testing
 

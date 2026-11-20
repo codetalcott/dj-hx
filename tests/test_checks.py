@@ -1,10 +1,15 @@
-"""The system checks: quiet on the example project, and each one on its own defect."""
+"""
+The system checks: quiet on the example project, and each one on its own defect. The example project
+has no interactions, so the rota app's are set aside here; tests/test_interactions.py checks those.
+"""
 
 import pytest
 from django.conf import settings
 from django.test import override_settings
 
 from dj_hx.testing import assert_no_hx_check_issues, hx_check_messages
+
+pytestmark = pytest.mark.usefixtures("no_interactions")
 
 
 def ids():

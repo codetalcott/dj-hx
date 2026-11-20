@@ -44,7 +44,7 @@ def test_the_map_knows_a_mixin_view_renders_or_pages():
     assert len(m.errors) == 1 and "Show() only calls page" in m.errors[0]
 
 
-def test_e007_names_the_backwards_view():
+def test_e007_names_the_backwards_view(no_interactions):
     assert [m.id for m in hx_check_messages() if m.id.startswith("dj_hx.E")] == []
     with override_settings(ROOT_URLCONF="tests.urlconfs.backwards"):
         errors = [m for m in hx_check_messages() if m.id == "dj_hx.E007"]

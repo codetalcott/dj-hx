@@ -67,7 +67,8 @@ event fired without a target lands on `document` after a delete swap, where a
 - `HX_EXTENSIONS` takes the name htmx registers an extension under (`sse`,
   `ws`, `upsert`) or its file name (`hx-sse`); check W008 names one that is
   neither, and a string where a tuple belongs.
-- Checks W001, E002, W003, W004, W005, W006, E007, W008.
+- Checks W001, E002, W003, W004, W005, W006, E007, W008, and the interaction
+  checks E009 to I021 below.
 - Interactions: `@interaction(method, partial=, context=, refuses=, triggers=,
   route=)` binds a handler to one partial, and the reply is always that
   partial, through `fragment()`, from the context function the page uses too.
@@ -86,7 +87,25 @@ event fired without a target lands on `document` after a delete swap, where a
   wraps the route. A module that holds the raw handler under that name, as
   `remind_view = interaction(...)(remind)` leaves it, raises
   `ImproperlyConfigured` when the URLconf is read, instead of routing a
-  handler past the method guard.
+  handler past the method guard; the message says the binding belongs in the
+  module that defines the handler. A wrapper of the raw handler written
+  without `functools.wraps` is still routed as it is (W018 warns).
+- `@interaction` refuses at import a `method` other than GET, POST, PUT, PATCH
+  or DELETE, a `refuses` holding anything but exception classes (one class is
+  taken as well as a tuple), and `*args` or `**kwargs` on the handler or on
+  `context=`. A `context=` parameter the route lacks takes its default; one
+  without a default raises at import. `{% act %}` without `dj_hx.urls`
+  included raises `ImproperlyConfigured`, naming the include.
+- Interaction checks, from `manage.py check`: every `{% act %}` in the
+  project's templates names an interaction (E009) with its handler's
+  parameters (E010), and its control sends the interaction's method (E011),
+  targets `#<partial>` (E012) and swaps `outerHTML` (E013), reading htmx 4's
+  `:inherited` on ancestors; every interaction has a control (E014), a partial
+  that loads (E015) and whose root carries its id (E016); `dj_hx.urls` routes
+  each interaction to what its module holds (E017) and is included (E020).
+  Warnings for a decorator above `@interaction` without `functools.wraps`
+  (W018) and for one below it (W019); an Info for an `{% act %}` no element's
+  verb attribute holds (I021).
 - The example: contact.app on the ORM, same routes, templates and tests as
   hx-flask; 156 tests plus 7 in Chromium, on Django 4.2, 5.2, 6.0 and 6.1.
 - The shared core, vendored: `hxlint.py`, `hx_vocab.py` and `mapcore.py`, the

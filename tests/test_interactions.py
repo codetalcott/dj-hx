@@ -5,7 +5,11 @@ what a request gets. The rota app (tests/interactions_app) is registered by dj-h
 that defines its own interactions takes ``scratch``, which puts the registry back afterwards.
 """
 
+import functools
+import inspect
+import itertools
 import json
+import re
 import sys
 import types
 
@@ -20,10 +24,11 @@ from django.urls import Resolver404, clear_url_caches, resolve, reverse
 from django.utils.module_loading import module_has_submodule
 
 import dj_hx.urls  # noqa: F401  binds the routes now, after ready(), before any `scratch` snapshot of them
-from dj_hx import HxFragmentIntoPage, HxPartialRootId, HxRedirectIntoFragment, interaction
+from dj_hx import HxFragmentIntoPage, HxPartialRootId, HxRedirectIntoFragment, checks, interaction
 from dj_hx.interactions import bind_routes, registry, urlpatterns
 from dj_hx.templates import in_site_packages
-from tests.conftest import locmem
+from dj_hx.testing import hx_check_messages
+from tests.conftest import locmem, on_disk
 from tests.interactions_app import views
 
 ROTA = """{% extends "layout.html" %}{% load hx %}{% block content %}<h1>{{ contest }}</h1>
@@ -71,6 +76,7 @@ def render_act(source, **context):
 # A views module that applies @interaction as a call, not as a decorator. Its last line is the test's.
 FUNCTIONAL_VIEWS = """
 import functools
+import sys
 
 from dj_hx import interaction
 
@@ -186,6 +192,123 @@ def test_triggers_is_a_tuple_of_names_not_a_string(scratch):
 
     with pytest.raises(ImproperlyConfigured, match=r"save\(\): triggers='saved' is a string.*Write triggers=\('saved',\)"):
         interaction("POST", partial="scratch.html#box", context=nothing, triggers="saved", route="save/")(save)
+
+
+@pytest.mark.parametrize("method", ["FETCH", "QUERY", "", None])
+def test_method_is_one_an_interaction_answers(scratch, method):
+    def save(request):
+        return None
+
+    with pytest.raises(
+        ImproperlyConfigured,
+        match=rf"save\(\): method={re.escape(repr(method))} is not a method an interaction answers; write GET, POST, PUT, "
+        r"PATCH or DELETE\.",
+    ):
+        interaction(method, partial="scratch.html#box", context=nothing, route="save/")(save)
+    assert "save" not in registry
+    interaction("post", partial="scratch.html#box", context=nothing, route="save/")(save)  # any case
+    assert registry["save"].method == "POST"
+
+
+@pytest.mark.parametrize(
+    "refuses, holds",
+    [(("DomainError",), "'DomainError'"), ("DomainError", "'DomainError'"), ((LookupError, 3), "3"), ([KeyError, str], "<class 'str'>")],
+    ids=["name-in-tuple", "name", "number", "not-an-exception"],
+)
+def test_refuses_holds_exception_classes(scratch, refuses, holds):
+    def save(request):
+        return None
+
+    with pytest.raises(
+        ImproperlyConfigured,
+        match=rf"save\(\): refuses={re.escape(repr(refuses))} holds {re.escape(holds)}, which is not an exception class\. "
+        r"Name the classes themselves: refuses=\(DomainError,\)\.",
+    ):
+        interaction("POST", partial="scratch.html#box", context=nothing, refuses=refuses, route="save/")(save)
+    assert "save" not in registry
+
+
+def test_refuses_takes_one_exception_class_as_well_as_a_tuple(scratch, rota, client):
+    @interaction("POST", partial="scratch.html#box", context=box_context, refuses=LookupError, route="t/lookup")
+    def lookup(request):
+        raise LookupError("not here")
+
+    r = client.hx_post("/t/lookup")
+    assert (r.status_code, r.content.decode()) == (422, '<div id="box">nothing yet not here</div>')
+
+
+def star(request, *extra):
+    return None
+
+
+def double_star(request, **extra):
+    return None
+
+
+@pytest.mark.parametrize("handler, takes", [(star, r"\*extra"), (double_star, r"\*\*extra")], ids=["args", "kwargs"])
+def test_a_handler_takes_named_parameters_only(scratch, monkeypatch, handler, takes):
+    monkeypatch.setattr(handler, "__module__", views.__name__)  # as if written in the rota app's views.py: a minted route
+    with pytest.raises(
+        ImproperlyConfigured,
+        match=rf"{handler.__name__}\(\) takes {takes}, which would mint a route segment like <str:extra>\. An interaction "
+        r"takes named parameters only, one for each segment of its route\.",
+    ):
+        interaction("POST", partial="scratch.html#box", context=nothing)(handler)
+    assert handler.__name__ not in registry
+
+
+def test_a_context_parameter_the_route_lacks_takes_its_default(scratch, rota, client):
+    def paged_context(request, page=1):
+        return {"value": f"page {page}", "error": None}
+
+    @interaction("POST", partial="scratch.html#box", context=paged_context, route="t/first")
+    def first(request):
+        return None
+
+    @interaction("POST", partial="scratch.html#box", context=paged_context, route="t/paged/<int:page>")
+    def paged(request, page: int):
+        return None
+
+    assert client.hx_post("/t/first").content.decode() == '<div id="box">page 1</div>'
+    assert client.hx_post("/t/paged/3").content.decode() == '<div id="box">page 3</div>'
+
+
+def test_a_required_context_parameter_the_route_lacks_raises_at_import(scratch):
+    def contest_context(request, contest, page=1):
+        return {}
+
+    def tally(request, member: int):
+        return None
+
+    with pytest.raises(
+        ImproperlyConfigured,
+        match=r"tally\(\): context=contest_context\(\) takes contest, which the route of tally\(\) does not have \(it has "
+        r"member\)\. Give contest a default there, or make it a parameter of tally\(\) too\.",
+    ):
+        interaction("POST", partial="scratch.html#box", context=contest_context, route="t/<int:member>")(tally)
+    assert "tally" not in registry
+
+
+def spread_context(request, *args):
+    return {}
+
+
+def keyed_context(request, **kwargs):
+    return {}
+
+
+@pytest.mark.parametrize("context, takes", [(spread_context, r"\*args"), (keyed_context, r"\*\*kwargs")], ids=["args", "kwargs"])
+def test_context_takes_named_parameters_only(scratch, context, takes):
+    def show(request):
+        return None
+
+    with pytest.raises(
+        ImproperlyConfigured,
+        match=rf"show\(\): context={context.__name__}\(\) takes {takes}; context= takes named parameters only: request, "
+        r"then any of the route's parameters it needs\.",
+    ):
+        interaction("GET", partial="scratch.html#box", context=context, route="show/")(show)
+    assert "show" not in registry
 
 
 def test_ready_imports_each_project_apps_views_and_no_app_in_site_packages(scratch, monkeypatch):
@@ -359,7 +482,8 @@ def test_a_module_holding_the_raw_handler_raises_when_the_routes_are_bound(scrat
         ImproperlyConfigured,
         match=r"tests\.functional_views\.remind holds remind\(\) itself, not the view @interaction returned, so its route "
         r"would skip the method guard, the declared refusals and the return-type guard\. Apply @interaction as a "
-        r"decorator, or bind its result to the handler's own name: remind = interaction\(\.\.\.\)\(remind\)\.",
+        r"decorator, or bind its result to the handler's own name in the module that defines it, tests\.functional_views: "
+        r"remind = interaction\(\.\.\.\)\(remind\)\. The handler stays reachable as inspect\.unwrap\(remind\)\.",
     ):
         bind_routes()
     assert urlpatterns == bound  # nothing was rebound
@@ -373,12 +497,25 @@ def test_a_decorator_that_skips_the_view_raises_when_the_routes_are_bound(scratc
         bind_routes()
 
 
+def test_the_call_form_in_another_module_says_to_bind_it_in_the_handlers_own(scratch, monkeypatch):
+    handlers = types.ModuleType("tests.functional_handlers")
+    monkeypatch.setitem(sys.modules, handlers.__name__, handlers)
+    exec("def nudge(request):\n    return {'value': 'nudged'}\n", handlers.__dict__)
+    functional_views(monkeypatch, 'nudge = interaction("POST", **REMIND)(sys.modules["tests.functional_handlers"].nudge)\n')
+    with pytest.raises(
+        ImproperlyConfigured,
+        match=r"tests\.functional_handlers\.nudge holds nudge\(\) itself, .* bind its result to the handler's own name in "
+        r"the module that defines it, tests\.functional_handlers: nudge = interaction\(\.\.\.\)\(nudge\)\.",
+    ):
+        bind_routes()
+
+
 def test_the_functional_form_bound_to_the_handlers_name_routes_the_view(scratch, rota, client, monkeypatch):
     module = functional_views(monkeypatch, 'remind = interaction("POST", **REMIND)(remind)\n')
     bind_routes()
     assert client.hx_get("/t/remind").status_code == 405  # the method guard is on the route
     assert client.hx_post("/t/remind").content.decode() == '<div id="box">reminded</div>'
-    assert module.remind.__wrapped__(None) == {"value": "reminded"}  # the handler, as the message says
+    assert inspect.unwrap(module.remind)(None) == {"value": "reminded"}  # the handler, as the message says
 
 
 def test_a_view_decorator_below_interaction_is_a_return_type_error(scratch, rota, client, db):
@@ -393,16 +530,6 @@ def test_a_view_decorator_below_interaction_is_a_return_type_error(scratch, rota
         r"decorators \(@login_required, @permission_required\) go above @interaction, where they wrap the routed view\.",
     ):
         client.hx_post("/t/below")  # signed out
-
-
-def test_an_interaction_registered_after_the_urlconf_was_read_is_routed_to_its_view_alone(scratch, rota, client, db):
-    # The `scratch` interactions are all registered late; README says a decorator above one is not bound.
-    @login_required
-    @interaction("POST", partial="scratch.html#box", context=box_context, route="t/late")
-    def late(request):
-        return {"value": "routed undecorated"}
-
-    assert client.hx_post("/t/late").content.decode() == '<div id="box">routed undecorated</div>'  # signed out
 
 
 def test_findings_name_the_handler(rota, client):
@@ -458,3 +585,381 @@ def test_act_reverses_a_handler_parameter_called_name(scratch, rota):
 def test_act_refuses_an_unknown_keyword_called_name(rota):
     with pytest.raises(TemplateSyntaxError, match=r"\{% act 'notify' %\}: notify\(\) takes no name\. notify\(\) takes contest, member"):
         render_act("{% act 'notify' contest='spring' member=3 name='x' %}")
+
+
+def test_act_names_the_include_when_dj_hx_urls_is_not_included():
+    # tests/settings.py routes the example project's URLconf, which does not include dj_hx.urls
+    with pytest.raises(
+        ImproperlyConfigured,
+        match=r"\{% act 'notify' %\} reverses notify\(\)'s route in the dj_hx namespace, which no URLconf registers: "
+        r"dj_hx\.urls is not included\. Include it once, at the site root: path\(\"\", include\(\"dj_hx\.urls\"\)\)\.",
+    ):
+        render_act("{% act 'notify' contest='spring' member=3 %}")
+
+
+# ------------------------------------------------------------ the start-up checks
+
+# The rota app's templates on disk, which the template checks read. Every interaction has a control;
+# approve()'s takes its target and swap from an ancestor's :inherited ones.
+CHECKED = {
+    "layout.html": '{% partialdef messages inline %}<div id="messages">{% for m in messages %}<p>{{ m }}</p>{% endfor %}</div>{% endpartialdef %}',
+    "rota.html": ROTA,
+    "reviewers.html": """{% load hx %}{% partialdef reviewer inline %}<div id="reviewer"><button hx-post="{% act 'notify_reviewer' member=member %}" hx-target="#reviewer" hx-swap="outerHTML">Notify</button></div>{% endpartialdef %}
+{% partialdef signoff inline %}<div id="signoff"><button hx-post="{% act 'sign_off' member=member %}" hx-target="#signoff" hx-swap="outerHTML">Sign off</button></div>{% endpartialdef %}
+{% partialdef approval inline %}<div id="approval" hx-target:inherited="#approval" hx-swap:inherited="outerHTML"><button hx-post="{% act 'approve' member=member %}">Approve</button></div>{% endpartialdef %}""",
+}
+# views.staff_only wraps approve() without functools.wraps, on purpose, so W018 cannot see the interaction through it.
+APPROVE_UNVERIFIED = ("dj_hx.W018", "tests.interactions_app.views.approve")
+NOTIFY = "{% act 'notify' contest='spring' member=3 %}"
+NOTIFY_BODY = ROTA.split("{% partialdef notify inline %}")[1].split("{% endpartialdef %}")[0]
+
+
+@pytest.fixture
+def startup(tmp_path):
+    """dj-hx's check messages for the rota app, its templates on disk: CHECKED, with the test's laid over it."""
+    runs = itertools.count()
+
+    def run(**templates):
+        directory = tmp_path / str(next(runs))
+        directory.mkdir()
+        for name, source in {**CHECKED, **templates}.items():
+            (directory / name).write_text(source)
+        with override_settings(ROOT_URLCONF="tests.urlconfs.interactions", TEMPLATES=on_disk(directory)):
+            return hx_check_messages()
+
+    return run
+
+
+def found(messages):
+    """(id, where) for each message but the W018 the rota app carries on purpose."""
+    return [(m.id, m.obj) for m in messages if (m.id, m.obj) != APPROVE_UNVERIFIED]
+
+
+def the(messages, check_id):
+    [message] = [m for m in messages if m.id == check_id]
+    return message
+
+
+def control(act, verb="hx-post", rest='hx-target="#notify" hx-swap="outerHTML"'):
+    """A template whose one control, on line 2, takes its URL from ``act``."""
+    return f'{{% load hx %}}\n<button {verb}="{act}" {rest}>Go</button>'
+
+
+def routing_messages():
+    """The routing checks alone, which need no templates."""
+    return [m for m in checks.check_interaction_routes() if (m.id, m.obj) != APPROVE_UNVERIFIED]
+
+
+def test_the_rota_app_passes_every_check_but_the_warning_it_carries_on_purpose(startup):
+    assert [(m.id, m.obj) for m in startup()] == [APPROVE_UNVERIFIED]
+
+
+def test_e009_an_act_that_names_no_interaction(startup):
+    messages = startup(**{"extra.html": control("{% act 'notfy' contest='spring' member=3 %}")})
+    assert found(messages) == [("dj_hx.E009", "extra.html:2")]
+    assert the(messages, "dj_hx.E009").msg.startswith(
+        "{% act 'notfy' %} names no interaction; the interactions are: approve, notify, notify_reviewer, sign_off."
+    )
+
+
+@pytest.mark.parametrize(
+    "act, says",
+    [
+        (
+            "{% act 'notify' contest='spring' who=3 %}",
+            "{% act 'notify' %}: notify() takes no who; member is missing. notify() takes contest, member; write "
+            "{% act 'notify' contest=... member=... %}.",
+        ),
+        (
+            "{% act 'notify' 'spring' 3 %}",
+            "{% act 'notify' %} takes keyword arguments only, one for each parameter of notify() (contest, member), and "
+            "was given 2 positional.",
+        ),
+    ],
+    ids=["keywords", "positional"],
+)
+def test_e010_act_arguments_that_are_not_the_handlers_parameters(startup, act, says):
+    messages = startup(**{"extra.html": control(act)})
+    assert found(messages) == [("dj_hx.E010", "extra.html:2")] and says in the(messages, "dj_hx.E010").msg
+
+
+@pytest.mark.parametrize(
+    "verb, rest, sends",
+    [
+        ("hx-get", 'hx-target="#notify" hx-swap="outerHTML"', "GET"),
+        ("hx-put", 'hx-target="#notify" hx-swap="outerHTML"', "PUT"),
+        ("hx-action", 'hx-method="get" hx-target="#notify" hx-swap="outerHTML"', "GET"),
+        ("hx-action", 'hx-target="#notify" hx-swap="outerHTML"', "GET"),  # hx-method defaults to GET
+    ],
+    ids=["hx-get", "hx-put", "hx-action-get", "hx-action-default"],
+)
+def test_e011_a_control_that_sends_another_method(startup, verb, rest, sends):
+    messages = startup(**{"extra.html": control(NOTIFY, verb, rest)})
+    assert found(messages) == [("dj_hx.E011", "extra.html:2")]
+    message = the(messages, "dj_hx.E011")
+    assert f"{{% act 'notify' %}} is in {verb}, so its control sends {sends}, but notify() answers POST" in message.msg
+    assert f"a {sends} gets a 405" in message.msg and "hx-post=" in message.hint
+
+
+def test_e011_reads_hx_method_beside_hx_action(startup):
+    assert found(startup(**{"extra.html": control(NOTIFY, "hx-action", 'hx-method="post" hx-target="#notify" hx-swap="outerHTML"')})) == []
+
+
+@pytest.mark.parametrize(
+    "template, says",
+    [
+        (control(NOTIFY, rest='hx-target="#rota" hx-swap="outerHTML"'), "its hx-target is '#rota'"),
+        (control(NOTIFY, rest='hx-swap="outerHTML"'), "it has no hx-target, so htmx 4 swaps the reply into the control itself"),
+        (
+            '{% load hx %}\n<div hx-target="#notify"><button hx-post="' + NOTIFY + '" hx-swap="outerHTML">Go</button></div>',
+            "it has no hx-target, so htmx 4 swaps the reply into the control itself; the plain hx-target on <div> above "
+            "it does not reach it in htmx 4",
+        ),
+    ],
+    ids=["another", "none", "plain-ancestor"],
+)
+def test_e012_a_control_whose_target_is_not_the_partial(startup, template, says):
+    messages = startup(**{"extra.html": template})
+    assert found(messages) == [("dj_hx.E012", "extra.html:2")]
+    message = the(messages, "dj_hx.E012")
+    assert "notify() replies with its partial, #notify" in message.msg and says in message.msg
+    assert 'hx-target="#notify"' in message.hint and 'hx-target:inherited="#notify"' in message.hint
+
+
+@pytest.mark.parametrize(
+    "template, says",
+    [
+        (control(NOTIFY, rest='hx-target="#notify"'), "it has no hx-swap, so htmx 4 swaps innerHTML"),
+        (control(NOTIFY, rest='hx-target="#notify" hx-swap="innerHTML"'), "its hx-swap is 'innerHTML'"),
+        (
+            '{% load hx %}\n<div hx-swap="outerHTML"><button hx-post="' + NOTIFY + '" hx-target="#notify">Go</button></div>',
+            "the plain hx-swap on <div> above it does not reach it in htmx 4",
+        ),
+    ],
+    ids=["none", "another", "plain-ancestor"],
+)
+def test_e013_a_control_that_does_not_swap_outer_html(startup, template, says):
+    messages = startup(**{"extra.html": template})
+    assert found(messages) == [("dj_hx.E013", "extra.html:2")]
+    message = the(messages, "dj_hx.E013")
+    assert says in message.msg and 'two elements with id="notify"' in message.msg
+    assert 'hx-swap="outerHTML"' in message.hint
+
+
+def test_e012_and_e013_read_an_ancestors_inherited_target_and_swap(startup):
+    template = '{% load hx %}\n<div hx-target:inherited="#notify" hx-swap:inherited="outerHTML swap:100ms"><button hx-post="' + NOTIFY + '">Go</button></div>'
+    assert found(startup(**{"extra.html": template})) == []
+
+
+@pytest.mark.parametrize(
+    "verb, rest",
+    [
+        ("hx-post", 'hx-target="#{{ region }}" hx-swap="outerHTML"'),
+        ("hx-post", 'hx-target="#notify" hx-swap="{{ swap }}"'),
+        ("hx-action", 'hx-method="{{ method }}" hx-target="#notify" hx-swap="outerHTML"'),
+    ],
+    ids=["hx-target", "hx-swap", "hx-method"],
+)
+def test_e011_to_e013_do_not_judge_a_computed_value(startup, verb, rest):
+    assert found(startup(**{"extra.html": control(NOTIFY, verb, rest)})) == []
+
+
+def test_e014_an_interaction_no_template_writes_a_control_for(startup):
+    reviewers = CHECKED["reviewers.html"].replace("{% act 'sign_off' member=member %}", "/elsewhere/")
+    messages = startup(**{"reviewers.html": reviewers})
+    assert found(messages) == [("dj_hx.E014", "tests.interactions_app.views.sign_off")]
+    message = the(messages, "dj_hx.E014")
+    assert "sign_off() has no control: no project template writes {% act 'sign_off' %}." in message.msg
+    assert """hx-post="{% act 'sign_off' member=... %}" hx-target="#signoff" hx-swap="outerHTML\"""" in message.hint
+
+
+@pytest.mark.parametrize(
+    "partial, says",
+    [
+        ("rota.html#gone", "rota.html defines no partial 'gone'; it defines: notify."),
+        ("nowhere.html#gone", "nowhere.html#gone: the template 'nowhere.html' does not exist"),
+    ],
+    ids=["partial", "template"],
+)
+def test_e015_an_interaction_whose_partial_does_not_exist(scratch, startup, partial, says):
+    def gone(request):
+        return None
+
+    interaction("POST", partial=partial, context=nothing, route="t/gone")(gone)
+    messages = startup(**{"extra.html": control("{% act 'gone' %}", rest='hx-target="#gone" hx-swap="outerHTML"')})
+    assert found(messages) == [("dj_hx.E015", "tests.test_interactions.gone")]
+    assert the(messages, "dj_hx.E015").msg.startswith(f"gone() replies with {partial}, which does not load: {says}")
+
+
+@pytest.mark.parametrize(
+    "root, says",
+    [
+        ('<div class="notify">', ', so its root <div> must carry id="notify"; it has no id'),
+        ('<div id="notice">', ', so its root <div> must carry id="notify"; it has id="notice"'),
+        ('Notify: <div id="notify">', ' but does not start with an element; it must be one element with id="notify"'),
+    ],
+    ids=["no-id", "another-id", "text-first"],
+)
+def test_e016_a_partial_whose_root_is_not_its_name(startup, root, says):
+    messages = startup(**{"rota.html": ROTA.replace('<div id="notify">', root)})
+    assert found(messages) == [("dj_hx.E016", "rota.html:2")]
+    assert the(messages, "dj_hx.E016").msg == f"rota.html#notify is the reply of notify(), which replaces #notify{says}"
+
+
+@pytest.mark.parametrize(
+    "templates",
+    [
+        {"rota.html": ROTA.replace('<div id="notify">', '<div id="{{ region }}">')},
+        {"rota.html": ROTA.replace('<div id="notify">', '{{ banner }}<div id="notify">')},
+        {"rota.html": ROTA.replace(NOTIFY_BODY, '{% include "region.html" %}'), "region.html": "{% load hx %}" + NOTIFY_BODY},
+        {"rota.html": ROTA.replace("{% partialdef notify inline %}", "{# {% partialdef notify inline %}<p>{% endpartialdef %} #}{% partialdef notify inline %}")},
+        {"rota.html": ROTA.replace(NOTIFY_BODY, "{% if members %}" + NOTIFY_BODY + "{% endif %}")},
+        {"rota.html": ROTA.replace('<div id="notify">', '<div id="notify"{% if notified %} class="done"{% endif %}>')},
+    ],
+    ids=["computed-id", "computed-first", "include", "commented-out", "block-tag-first", "tag-in-start-tag"],
+)
+def test_e016_judges_only_a_root_the_source_shows(startup, templates):
+    assert found(startup(**templates)) == []
+
+
+LATE_LOGIN = 'from django.contrib.auth.decorators import login_required\nremind = login_required(interaction("POST", **REMIND)(remind))\n'
+
+
+def test_e017_an_interaction_registered_after_the_urlconf_was_read(scratch, rota, client, db, monkeypatch):
+    # dj_hx.urls bound the routes when this test module imported it. This views module comes later, as one
+    # imported by a URLconf listed below the include would, so its route is the bare view, without the login check.
+    functional_views(monkeypatch, LATE_LOGIN)
+    error = the(routing_messages(), "dj_hx.E017")
+    assert error.obj == "tests.functional_views.remind"
+    assert error.msg == (
+        "dj_hx.urls routes remind() to the view @interaction returned, not to what tests.functional_views holds under "
+        "its name, so the decorators written above @interaction do not apply to the route."
+    )
+    assert error.hint == (
+        "remind() was registered after dj_hx.urls was first read, or tests.functional_views rebound remind since. Import "
+        "tests.functional_views before the URLconf is loaded: from the app's ready(), or from its views module, which "
+        "dj-hx imports at start-up."
+    )
+    assert client.hx_post("/t/remind").content.decode() == '<div id="box">reminded</div>'  # signed out, and answered
+    bind_routes()  # the binding a URLconf read after the import makes
+    assert [m.id for m in routing_messages()] == []
+    assert client.post("/t/remind").status_code == 302  # now @login_required answers
+
+
+def test_e017_a_module_that_rebinds_the_name_after_the_urlconf_was_read(rota, monkeypatch):
+    def audited(view):
+        @functools.wraps(view)
+        def wrapper(request, **kwargs):
+            return view(request, **kwargs)
+
+        return wrapper
+
+    monkeypatch.setattr(views, "sign_off", audited(views.sign_off))  # the route keeps the object it was bound to
+    error = the(routing_messages(), "dj_hx.E017")
+    assert error.obj == "tests.interactions_app.views.sign_off"
+    assert error.msg.startswith("dj_hx.urls routes sign_off() to another object, not to what tests.interactions_app.views holds")
+    assert "or tests.interactions_app.views rebound sign_off since" in error.hint
+
+
+def test_e017_names_a_late_module_that_holds_the_raw_handler(scratch, rota, monkeypatch):
+    functional_views(monkeypatch, 'remind_view = interaction("POST", **REMIND)(remind)\n')
+    error = the(routing_messages(), "dj_hx.E017")
+    assert error.obj == "tests.functional_views.remind"
+    assert error.msg.startswith("tests.functional_views.remind holds remind() itself, not the view @interaction returned")
+
+
+def test_w018_a_routed_attribute_that_does_not_unwrap_to_its_interaction(rota):
+    [warning] = [m for m in checks.check_interaction_routes() if m.id == "dj_hx.W018"]
+    assert warning.obj == "tests.interactions_app.views.approve"
+    assert warning.msg == (
+        "approve() is routed to tests.interactions_app.views.approve, which does not unwrap to the view @interaction "
+        "returned, so dj-hx cannot tell that it wraps the interaction."
+    )
+    assert "Use functools.wraps in decorators above @interaction" in warning.hint
+
+
+PLAIN_CHECK = """
+CALLS = []
+
+def nudge(request):  # answers POST only
+    CALLS.append(request.method)
+    return {"value": "nudged"}
+
+def plain_check(view):  # a decorator without functools.wraps
+    def check(request, **kwargs):
+        return view(request, **kwargs)
+    return check
+
+nudge_view = interaction("POST", **REMIND)(nudge)
+nudge = plain_check(nudge)
+"""
+
+
+def test_w018_warns_on_a_decorator_of_the_raw_handler_written_without_wraps(scratch, rota, client, monkeypatch):
+    module = functional_views(monkeypatch, PLAIN_CHECK)
+    bind_routes()  # nothing it can see says the wrapper holds the raw handler, so it routes it
+    with pytest.raises(AttributeError, match="'dict' object has no attribute"):
+        client.hx_get("/t/remind")  # the handler's dict is no response
+    assert module.CALLS == ["GET"]  # a GET ran the POST-only handler: the route skips the method guard
+    assert [m.obj for m in routing_messages() if m.id == "dj_hx.W018"] == ["tests.functional_views.nudge"]
+
+
+def test_w019_a_handler_wrapped_below_interaction(scratch, rota):
+    def audited(view):
+        @functools.wraps(view)
+        def wrapper(request, **kwargs):
+            return view(request, **kwargs)
+
+        return wrapper
+
+    @interaction("POST", partial="scratch.html#box", context=box_context, route="t/logged")
+    @audited
+    def logged(request):
+        return None
+
+    warning = the(routing_messages(), "dj_hx.W019")
+    assert warning.obj == "tests.test_interactions.logged"
+    assert warning.msg == "logged() is wrapped by a decorator below @interaction, which runs inside the interaction."
+    assert warning.hint.startswith("View decorators belong above @interaction")
+
+
+def test_e020_when_dj_hx_urls_is_not_included():
+    # tests/settings.py routes the example project's URLconf, which does not include dj_hx.urls
+    messages = routing_messages()
+    assert [m.id for m in messages] == ["dj_hx.E020"]
+    assert messages[0].msg == (
+        "Interactions are registered (approve, notify, notify_reviewer, sign_off), but dj_hx.urls is not included, "
+        "so none of them has a route and every {% act %} raises."
+    )
+    assert messages[0].hint == 'Include it once, at the site root of ROOT_URLCONF: path("", include("dj_hx.urls")).'
+
+
+@pytest.mark.parametrize(
+    "template, says",
+    [
+        ("{% load hx %}\n<script>htmx.ajax('POST', '" + NOTIFY + "', '#notify')</script>", "is outside an attribute value"),
+        ("{% load hx %}\n<p>" + NOTIFY + "</p>", "is outside an attribute value"),
+        ('{% load hx %}\n<div data-url="' + NOTIFY + '"></div>', "is in data-url, which is not a verb attribute"),
+        (
+            "{% load hx %}\n{% act 'notify' contest='spring' member=3 as url %}"
+            '<button hx-post="{{ url }}" hx-target="#notify" hx-swap="outerHTML">Go</button>',
+            "stores its URL in url",
+        ),
+        (control("{% act which contest='spring' member=3 %}"), "names its interaction with a variable"),
+    ],
+    ids=["script", "text", "other-attribute", "as", "variable"],
+)
+def test_i021_an_act_the_checks_cannot_tie_to_a_control(startup, template, says):
+    messages = startup(**{"extra.html": template})
+    assert found(messages) == [("dj_hx.I021", "extra.html:2")]
+    assert says in the(messages, "dj_hx.I021").msg and "SILENCED_SYSTEM_CHECKS" in the(messages, "dj_hx.I021").hint
+
+
+@pytest.mark.parametrize(
+    "act, ids",
+    [("{% act 'notify' who=3 %}", ["dj_hx.E010", "dj_hx.I021"]), ("{% act 'notfy' %}", ["dj_hx.E009"])],
+    ids=["keywords", "name"],
+)
+def test_an_act_the_checks_cannot_tie_still_has_its_name_and_arguments_checked(startup, act, ids):
+    messages = startup(**{"extra.html": f"{{% load hx %}}\n<script>htmx.ajax('POST', \"{act}\", '#notify')</script>"})
+    assert sorted(found(messages)) == [(check_id, "extra.html:2") for check_id in ids]

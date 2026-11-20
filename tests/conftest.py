@@ -43,7 +43,15 @@ TEMPLATES_IN_MEMORY = {"layout.html": LAYOUT, "index.html": INDEX, "form.html": 
 
 def locmem(templates=None, **options):
     """A TEMPLATES setting serving in-memory templates, for exercising the library directly."""
-    loaders = [("django.template.loaders.locmem.Loader", {**TEMPLATES_IN_MEMORY, **(templates or {})})]
+    return _templates([("django.template.loaders.locmem.Loader", {**TEMPLATES_IN_MEMORY, **(templates or {})})], **options)
+
+
+def on_disk(directory, **options):
+    """A TEMPLATES setting reading ``directory``: the start-up checks read template files, which locmem has none of."""
+    return _templates(["django.template.loaders.filesystem.Loader"], dirs=[directory], **options)
+
+
+def _templates(loaders, dirs=(), **options):
     builtins = []
     if django.VERSION < (6, 0):
         # django-template-partials wraps settings.TEMPLATES at startup only, so an
@@ -53,6 +61,7 @@ def locmem(templates=None, **options):
     return [
         {
             "BACKEND": "django.template.backends.django.DjangoTemplates",
+            "DIRS": list(dirs),
             "OPTIONS": {
                 "loaders": loaders,
                 "builtins": builtins,
@@ -71,6 +80,17 @@ def lib(request):
     """Library tests: the tests.urlconfs.lib URLconf and in-memory templates."""
     with override_settings(ROOT_URLCONF="tests.urlconfs.lib", TEMPLATES=locmem()):
         yield
+
+
+@pytest.fixture
+def no_interactions():
+    """No interactions, as in the example project and the per-area URLconfs; the rota app's are put back after."""
+    from dj_hx.interactions import registry
+
+    saved = dict(registry)
+    registry.clear()
+    yield
+    registry.update(saved)
 
 
 @pytest.fixture

@@ -21,9 +21,10 @@ Interactions: one handler bound to one template partial, by name.
   namespace, and ``{% act 'notify' contest=contest.slug member=member.id %}`` (``{% load hx %}``)
   writes one into a control.
 - The reply is always the partial, rendered by ``fragment()`` from ``context(request, ...)``,
-  called with the route parameters it names, plus the keys the handler returns. A returned key the
-  context does not define raises, so the page and the reply render the same names. The handler
-  returns a dict or ``None``; anything else raises.
+  called with the route parameters it names, plus the keys the handler returns. A parameter of
+  ``context`` that the route lacks takes its default; one without a default raises at import. A
+  returned key the context does not define raises, so the page and the reply render the same
+  names. The handler returns a dict or ``None``; anything else raises.
 - A declared refusal, an exception in ``refuses``, re-renders the partial with
   ``error=str(exc)`` and status 422, so the handler writes no ``try``. Any other exception is a 500.
 - ``triggers`` names the facts a successful reply announces, ``.trigger(name)`` for each.
@@ -51,7 +52,7 @@ from typing import Any
 from django.apps import apps
 from django.core.exceptions import ImproperlyConfigured
 from django.http import HttpResponseNotAllowed
-from django.urls import path
+from django.urls import NoReverseMatch, path
 from django.urls.converters import IntConverter
 
 from .verbs import HxResponse, check_root_id, fragment
@@ -60,6 +61,10 @@ __all__ = ["interaction"]
 
 registry: dict[str, Interaction] = {}
 urlpatterns: list = []  # served by dj_hx.urls; filled as each app's views module is imported, bound by bind_routes()
+
+METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
+INCLUDE = 'path("", include("dj_hx.urls"))'
+_VARIADIC = (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
 
 
 @dataclass(frozen=True)
@@ -71,7 +76,7 @@ class Interaction:
     template: str
     partial: str
     context: Callable[..., dict]
-    context_params: tuple[str, ...]
+    context_params: tuple[str, ...]  # the route's parameters that context= takes; any other it takes has a default
     refuses: tuple[type[BaseException], ...]
     triggers: tuple[str, ...]
     params: tuple[str, ...]
@@ -124,6 +129,54 @@ def _is_int(parameter: inspect.Parameter) -> bool:
     return parameter.annotation is int or parameter.annotation == "int"
 
 
+def _starred(parameter: inspect.Parameter) -> str:
+    return ("*" if parameter.kind is inspect.Parameter.VAR_POSITIONAL else "**") + parameter.name
+
+
+def _check_arguments(name: str, method, refuses, params: list[inspect.Parameter]) -> None:
+    if not isinstance(method, str) or method.upper() not in METHODS:
+        raise ImproperlyConfigured(
+            f"{name}(): method={method!r} is not a method an interaction answers; write GET, POST, PUT, PATCH or DELETE."
+        )
+    bad = [r for r in _refusals(refuses) if not (isinstance(r, type) and issubclass(r, BaseException))]
+    if bad:
+        raise ImproperlyConfigured(
+            f"{name}(): refuses={refuses!r} holds {', '.join(map(repr, bad))}, which {'is' if len(bad) == 1 else 'are'} "
+            "not an exception class. Name the classes themselves: refuses=(DomainError,)."
+        )
+    variadic = [p for p in params if p.kind in _VARIADIC]
+    if variadic:
+        raise ImproperlyConfigured(
+            f"{name}() takes {', '.join(map(_starred, variadic))}, which would mint a route segment like "
+            f"<str:{variadic[0].name}>. An interaction takes named parameters only, one for each segment of its route."
+        )
+
+
+def _refusals(refuses) -> tuple:
+    return tuple(refuses) if isinstance(refuses, (tuple, list)) else (refuses,)
+
+
+def _context_params(name: str, context, params: list[inspect.Parameter]) -> tuple[str, ...]:
+    """The route parameters ``context`` is called with; raises for one it needs that the route lacks."""
+    context_name = getattr(context, "__name__", repr(context))
+    takes = list(inspect.signature(context).parameters.values())
+    variadic = [p for p in takes if p.kind in _VARIADIC]
+    if variadic:
+        raise ImproperlyConfigured(
+            f"{name}(): context={context_name}() takes {', '.join(map(_starred, variadic))}; context= takes named "
+            "parameters only: request, then any of the route's parameters it needs."
+        )
+    route = [p.name for p in params]
+    missing = [p.name for p in takes[1:] if p.name not in route and p.default is inspect.Parameter.empty]
+    if missing:
+        raise ImproperlyConfigured(
+            f"{name}(): context={context_name}() takes {', '.join(missing)}, which the route of {name}() does not have "
+            f"(it has {', '.join(route) or 'none'}). Give {', '.join(missing)} a default there, or make "
+            f"{'it' if len(missing) == 1 else 'them'} a parameter of {name}() too."
+        )
+    return tuple(p.name for p in takes[1:] if p.name in route)
+
+
 def _check_route(name: str, route: str, pattern, params: list[inspect.Parameter]) -> None:
     converters = pattern.pattern.converters
     takes = [p.name for p in params]
@@ -162,7 +215,9 @@ def interaction(method: str, *, partial: str, context: Callable[..., dict], refu
                 f"{name}(): triggers={triggers!r} is a string, which would announce each of its letters. "
                 f"Write triggers=({triggers!r},)."
             )
-        params = list(inspect.signature(func).parameters.values())[1:]
+        signature = list(inspect.signature(func).parameters.values())
+        _check_arguments(name, method, refuses, signature)
+        params = signature[1:]
 
         def view(request, **kwargs):
             return it.respond(request, **kwargs)
@@ -181,14 +236,15 @@ def interaction(method: str, *, partial: str, context: Callable[..., dict], refu
         else:
             pattern = path(route, view, name=name)
             _check_route(name, route, pattern, params)
+        context_params = _context_params(name, context, params)  # params are the route's, now that it is checked
         it = Interaction(
             name=name,
             method=method.upper(),
             template=template,
             partial=part,
             context=context,
-            context_params=tuple(list(inspect.signature(context).parameters)[1:]),
-            refuses=tuple(refuses),
+            context_params=context_params,
+            refuses=_refusals(refuses),
             triggers=tuple(triggers),
             params=tuple(p.name for p in params),
             func=func,
@@ -202,6 +258,55 @@ def interaction(method: str, *, partial: str, context: Callable[..., dict], refu
     return decorate
 
 
+def act_form(it: Interaction) -> str:
+    """``{% act 'notify' contest=... member=... %}``: how a template writes the route of ``it``."""
+    return f"{{% act '{it.name}'{''.join(f' {p}=...' for p in it.params)} %}}"
+
+
+def act_unknown(name) -> str:
+    """What ``{% act %}`` and check E009 say of a name no interaction has."""
+    known = ", ".join(sorted(registry)) or "none"
+    return (
+        f"{{% act {name!r} %}} names no interaction; the interactions are: {known}. An interaction is registered "
+        "when its module is imported, and dj-hx imports each project app's views module at start-up."
+    )
+
+
+def act_mismatch(it: Interaction, positional: int, keywords) -> str | None:
+    """What ``{% act %}`` and check E010 say of arguments that are not ``it``'s parameters; None when they are."""
+    name, takes = it.name, ", ".join(it.params) or "no parameters"
+    if positional:
+        return (
+            f"{{% act '{name}' %}} takes keyword arguments only, one for each parameter of {name}() ({takes}), and "
+            f"was given {positional} positional. Write {act_form(it)}."
+        )
+    problems = []
+    unknown = sorted(set(keywords) - set(it.params))
+    if unknown:
+        problems.append(f"{name}() takes no {', '.join(unknown)}")
+    missing = [p for p in it.params if p not in keywords]
+    if missing:
+        problems.append(f"{', '.join(missing)} {'is' if len(missing) == 1 else 'are'} missing")
+    if problems:
+        return f"{{% act '{name}' %}}: {'; '.join(problems)}. {name}() takes {takes}; write {act_form(it)}."
+    return None
+
+
+def namespace_missing(exc: NoReverseMatch) -> bool:
+    """True when ``exc`` says no URLconf registers the ``dj_hx`` namespace: ``dj_hx.urls`` is not included."""
+    return "'dj_hx' is not a registered namespace" in str(exc)
+
+
+def module_attribute(it: Interaction):
+    """What the module that defines the handler holds under the handler's name, or None."""
+    return getattr(sys.modules.get(it.view.__module__), it.name, None)
+
+
+def unwraps_to(it: Interaction, held):
+    """Where ``inspect.unwrap`` from ``held`` stops: the view, the raw handler, or the last object it can see."""
+    return inspect.unwrap(held, stop=lambda link: link is it.view or link is it.func)
+
+
 def _routed_view(it: Interaction):
     """
     What the handler's module holds under its name, routed as written when it is callable: the view
@@ -212,17 +317,16 @@ def _routed_view(it: Interaction):
     routing it would skip the method guard, the refusals and the return-type guard.
     """
     module = it.view.__module__
-    held = getattr(sys.modules.get(module), it.name, None)
+    held = module_attribute(it)
     if not callable(held):
         return it.view
-    reached = inspect.unwrap(held, stop=lambda link: link is it.view or link is it.func)
-    if reached is it.func:
+    if unwraps_to(it, held) is it.func:
         what = f"{it.name}() itself" if held is it.func else f"a decorator of {it.name}() itself"
         raise ImproperlyConfigured(
             f"{module}.{it.name} holds {what}, not the view @interaction returned, so its route would skip the "
             "method guard, the declared refusals and the return-type guard. Apply @interaction as a decorator, "
-            f"or bind its result to the handler's own name: {it.name} = interaction(...)({it.name}). The handler "
-            f"stays reachable as {it.name}.__wrapped__."
+            f"or bind its result to the handler's own name in the module that defines it, {module}: "
+            f"{it.name} = interaction(...)({it.name}). The handler stays reachable as inspect.unwrap({it.name})."
         )
     return held
 
