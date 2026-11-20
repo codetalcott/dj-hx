@@ -262,7 +262,8 @@ urlpatterns = [..., path("", include("dj_hx.urls"))]   # once, at the site root
   response included), or a returned key (a refusal's `error` included) the context lacks.
 - `manage.py check` reads each `{% act %}` in the project's templates (never site-packages) and the control
   whose verb attribute holds it: the verb must send the interaction's method, and `hx-target` must be
-  `#<partial>` and `hx-swap` `outerHTML`, the control's own or an ancestor's `:inherited` one (a plain
+  `#<partial>` and `hx-swap` an outer swap (`outerHTML`, `outerMorph` or `outerSync`; htmx 4.0.2's swap
+  code), the control's own or an ancestor's `:inherited` one (a plain
   attribute on an ancestor does not count). Computed values are not judged; an `{% act %}` outside a verb
   attribute gets Info I021. The ids are in the checks table below.
 
@@ -397,6 +398,9 @@ def test_dj_hx_is_configured():
     assert_no_hx_check_issues()               # pytest never runs system checks; this does
 ```
 
+`assert_no_hx_check_issues()` fails on any dj-hx check message, Infos (I021) included;
+`include_warnings=False` keeps Errors only.
+
 What the client enforces on every request, including plain `client.get`:
 
 - Recorded findings (the verbs' and the guard's) raise the first one. `HxTestClient(strict=False)` records
@@ -457,8 +461,8 @@ System checks (tag `dj_hx`):
 | E010 | `{% act %}`'s arguments are not its handler's parameters (positional, unknown or missing) |
 | E011 | an `{% act %}` control's verb (`hx-get` ... `hx-delete`, or `hx-action` with `hx-method`, default GET) is not the interaction's method |
 | E012 | an `{% act %}` control's `hx-target` (own, or an ancestor's `hx-target:inherited`) is not `#<partial>` |
-| E013 | an `{% act %}` control's `hx-swap` (own or `:inherited`) is not `outerHTML`; htmx 4's default `innerHTML` nests a second element with the id |
-| E014 | an interaction has no control: no project template writes its `{% act %}` |
+| E013 | an `{% act %}` control's `hx-swap` (own or `:inherited`) is not an outer swap (`outerHTML`, `outerMorph`, `outerSync`, per htmx 4.0.2's swap code); htmx 4's default `innerHTML`, and `innerMorph`, nest a second element with the id |
+| E014 | an interaction has no control: no project template writes its `{% act %}` (a `{% url 'dj_hx:…' %}` or hand-written path is not counted: E011-E013 cannot check it) |
 | E015 | an interaction's partial does not load (`HxUnknownPartial`'s reason) |
 | E016 | an interaction's partial does not start with an element carrying `id="<partial>"`, where the source shows its root |
 | E017 | `dj_hx.urls` routes an interaction to other than what its module holds: it was registered after `dj_hx.urls` was first read, or the module rebound the name since |

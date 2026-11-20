@@ -21,7 +21,7 @@ E009     Error    {% act %} names no interaction
 E010     Error    {% act %}'s keywords are not its handler's parameters
 E011     Error    An {% act %} control sends another method than its interaction answers
 E012     Error    An {% act %} control's hx-target (own or :inherited) is not #<partial>
-E013     Error    An {% act %} control's hx-swap (own or :inherited) is not outerHTML
+E013     Error    An {% act %} control's hx-swap (own or :inherited) is not an outer swap
 E014     Error    An interaction has no control: no template writes its {% act %}
 E015     Error    An interaction's partial does not load
 E016     Error    An interaction's partial's root element is not id="<partial>"
@@ -34,6 +34,10 @@ I021     Info     An {% act %} the checks cannot tie to a control's attributes
 
 E009 to E016 and I021 read the project's template files as hx_lint does, never
 site-packages; a computed hx-target, hx-swap, hx-method or root id is not judged.
+E013's outer swaps, read from htmx 4.0.2's swap code: outerHTML replaces the
+target, outerMorph morphs the target itself, and outerSync copies the reply
+root's attributes onto it and takes the root's children, so each leaves one
+element with the id. innerMorph morphs the reply, root and all, into the target.
 """
 
 from __future__ import annotations
@@ -46,7 +50,8 @@ from django.core.checks import Error, Info, Tags, Warning, register
 HOOKS = ("render_to_response", "form_invalid", "form_valid")
 _ELEMENT = re.compile(r"<[a-zA-Z]")
 _ELSEWHERE = re.compile(r"\{%\s*(?:include|partial)\b")  # a tag that renders another template or partial in place
-_KEEPS_THE_TARGET = {"innerHTML", "afterbegin", "beforeend", "beforebegin", "afterend"}  # the reply lands in or beside it
+_OUTER_SWAPS = {"outerHTML", "outerMorph", "outerSync"}  # one element carries the id after the swap (htmx 4.0.2)
+_KEEPS_THE_TARGET = {"innerHTML", "innerMorph", "afterbegin", "beforeend", "beforebegin", "afterend"}  # reply in or beside it
 
 
 def _should_run(app_configs) -> bool:
@@ -490,7 +495,7 @@ def _control_messages(it, node, attr: str, where: str) -> list:
         )
     swap = node.resolved("hx-swap")
     style = parse_swap_spec(swap or "")["style"]  # htmx 4's default, innerHTML, when there is none
-    if (swap is None or JINJA not in swap) and style != "outerHTML":
+    if (swap is None or JINJA not in swap) and style not in _OUTER_SWAPS:
         says = (
             "it has no hx-swap, so htmx 4 swaps innerHTML" + _plain_on_ancestor(node, "hx-swap")
             if swap is None
@@ -499,9 +504,10 @@ def _control_messages(it, node, attr: str, where: str) -> list:
         keeps = f' That leaves two elements with id="{partial}".' if style in _KEEPS_THE_TARGET else ""
         messages.append(
             Error(
-                f"{tag}: {it.name}() replies with its whole partial, root and all, so the control must swap outerHTML, "
-                f"but {says}.{keeps}",
-                hint='Write hx-swap="outerHTML" on the control, or hx-swap:inherited="outerHTML" on an ancestor.',
+                f"{tag}: {it.name}() replies with its whole partial, root and all, so the control must use an outer "
+                f"swap (outerHTML, outerMorph or outerSync), but {says}.{keeps}",
+                hint='Write hx-swap="outerHTML" on the control, or hx-swap:inherited="outerHTML" on an ancestor; '
+                "outerMorph and outerSync are outer swaps too.",
                 obj=where,
                 id="dj_hx.E013",
             )
@@ -520,7 +526,9 @@ def _interaction_messages(it, controlled: set, sources: dict) -> list:
     if it.name not in controlled:
         messages.append(
             Error(
-                f"{it.name}() has no control: no project template writes {{% act '{it.name}' %}}.",
+                f"{it.name}() has no control: no project template writes {{% act '{it.name}' %}}. A "
+                f"{{% url 'dj_hx:{it.name}' %}} or a hand-written path is not counted, because E011 to E013 cannot "
+                "check it.",
                 hint=f'Write it into the control that sends the request: hx-{it.method.lower()}="{act_form(it)}" '
                 f'hx-target="#{it.partial}" hx-swap="outerHTML". Or delete the interaction.',
                 obj=where,

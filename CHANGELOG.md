@@ -99,13 +99,15 @@ event fired without a target lands on `document` after a delete swap, where a
 - Interaction checks, from `manage.py check`: every `{% act %}` in the
   project's templates names an interaction (E009) with its handler's
   parameters (E010), and its control sends the interaction's method (E011),
-  targets `#<partial>` (E012) and swaps `outerHTML` (E013), reading htmx 4's
-  `:inherited` on ancestors; every interaction has a control (E014), a partial
+  targets `#<partial>` (E012) and uses an outer swap, `outerHTML`, `outerMorph`
+  or `outerSync` as read in htmx 4.0.2's swap code (E013), reading htmx 4's
+  `:inherited` on ancestors; every interaction has an `{% act %}` control (E014;
+  a `{% url %}` or hand-written path is not counted), a partial
   that loads (E015) and whose root carries its id (E016); `dj_hx.urls` routes
   each interaction to what its module holds (E017) and is included (E020).
   Warnings for a decorator above `@interaction` without `functools.wraps`
   (W018) and for one below it (W019); an Info for an `{% act %}` no element's
-  verb attribute holds (I021).
+  verb attribute holds (I021), which `assert_no_hx_check_issues()` counts.
 - The example: contact.app on the ORM, same routes, templates and tests as
   hx-flask; 156 tests plus 7 in Chromium, on Django 4.2, 5.2, 6.0 and 6.1.
 - The shared core, vendored: `hxlint.py`, `hx_vocab.py` and `mapcore.py`, the

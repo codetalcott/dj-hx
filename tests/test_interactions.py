@@ -27,7 +27,7 @@ import dj_hx.urls  # noqa: F401  binds the routes now, after ready(), before any
 from dj_hx import HxFragmentIntoPage, HxPartialRootId, HxRedirectIntoFragment, checks, interaction
 from dj_hx.interactions import bind_routes, registry, urlpatterns
 from dj_hx.templates import in_site_packages
-from dj_hx.testing import hx_check_messages
+from dj_hx.testing import assert_no_hx_check_issues, hx_check_messages
 from tests.conftest import locmem, on_disk
 from tests.interactions_app import views
 
@@ -622,12 +622,17 @@ def startup(tmp_path):
     def run(**templates):
         directory = tmp_path / str(next(runs))
         directory.mkdir()
-        for name, source in {**CHECKED, **templates}.items():
-            (directory / name).write_text(source)
-        with override_settings(ROOT_URLCONF="tests.urlconfs.interactions", TEMPLATES=on_disk(directory)):
+        with checked_on_disk(directory, templates):
             return hx_check_messages()
 
     return run
+
+
+def checked_on_disk(directory, templates, **settings):
+    """The rota app's settings, CHECKED with ``templates`` laid over it written to ``directory``."""
+    for name, source in {**CHECKED, **templates}.items():
+        (directory / name).write_text(source)
+    return override_settings(ROOT_URLCONF="tests.urlconfs.interactions", TEMPLATES=on_disk(directory), **settings)
 
 
 def found(messages):
@@ -726,24 +731,43 @@ def test_e012_a_control_whose_target_is_not_the_partial(startup, template, says)
     assert 'hx-target="#notify"' in message.hint and 'hx-target:inherited="#notify"' in message.hint
 
 
+def swapping(swap):
+    return control(NOTIFY, rest=f'hx-target="#notify" hx-swap="{swap}"')
+
+
 @pytest.mark.parametrize(
-    "template, says",
+    "template, says, two_ids",
     [
-        (control(NOTIFY, rest='hx-target="#notify"'), "it has no hx-swap, so htmx 4 swaps innerHTML"),
-        (control(NOTIFY, rest='hx-target="#notify" hx-swap="innerHTML"'), "its hx-swap is 'innerHTML'"),
+        (control(NOTIFY, rest='hx-target="#notify"'), "it has no hx-swap, so htmx 4 swaps innerHTML", True),
+        (swapping("innerHTML"), "its hx-swap is 'innerHTML'", True),
+        (swapping("innerMorph"), "its hx-swap is 'innerMorph'", True),  # morphs the reply, root and all, into the target
         (
             '{% load hx %}\n<div hx-swap="outerHTML"><button hx-post="' + NOTIFY + '" hx-target="#notify">Go</button></div>',
             "the plain hx-swap on <div> above it does not reach it in htmx 4",
+            True,
         ),
+        (swapping("none"), "its hx-swap is 'none'", False),
+        (swapping("delete"), "its hx-swap is 'delete'", False),
+        (swapping("textContent"), "its hx-swap is 'textContent'", False),
     ],
-    ids=["none", "another", "plain-ancestor"],
+    ids=["none", "innerHTML", "innerMorph", "plain-ancestor", "style-none", "delete", "textContent"],
 )
-def test_e013_a_control_that_does_not_swap_outer_html(startup, template, says):
+def test_e013_a_control_that_does_not_swap_outer(startup, template, says, two_ids):
     messages = startup(**{"extra.html": template})
     assert found(messages) == [("dj_hx.E013", "extra.html:2")]
     message = the(messages, "dj_hx.E013")
-    assert says in message.msg and 'two elements with id="notify"' in message.msg
+    assert "so the control must use an outer swap (outerHTML, outerMorph or outerSync)" in message.msg
+    assert says in message.msg and ('two elements with id="notify"' in message.msg) == two_ids
     assert 'hx-swap="outerHTML"' in message.hint
+
+
+@pytest.mark.parametrize(
+    "swap", ["outerHTML", "outerMorph", "outerSync", "outerMorph transition:true", "outerHTML swap:100ms"]
+)
+def test_e013_takes_each_outer_swap_whatever_its_modifiers(startup, swap):
+    # htmx 4.0.2's swap code: outerMorph morphs the target itself; outerSync copies the reply root's attributes onto
+    # the target and replaces its children with the root's. Each leaves one element with the id, as outerHTML does.
+    assert found(startup(**{"extra.html": swapping(swap)})) == []
 
 
 def test_e012_and_e013_read_an_ancestors_inherited_target_and_swap(startup):
@@ -764,12 +788,17 @@ def test_e011_to_e013_do_not_judge_a_computed_value(startup, verb, rest):
     assert found(startup(**{"extra.html": control(NOTIFY, verb, rest)})) == []
 
 
-def test_e014_an_interaction_no_template_writes_a_control_for(startup):
-    reviewers = CHECKED["reviewers.html"].replace("{% act 'sign_off' member=member %}", "/elsewhere/")
+@pytest.mark.parametrize("url", ["{% url 'dj_hx:sign_off' member=member %}", "/reviewers/{{ member }}/sign-off"], ids=["url-tag", "path"])
+def test_e014_an_interaction_no_template_writes_an_act_for(startup, url):
+    # a control that reaches sign_off() by {% url %} or a hand-written path is not counted: E011-E013 cannot check it
+    reviewers = CHECKED["reviewers.html"].replace("{% act 'sign_off' member=member %}", url)
     messages = startup(**{"reviewers.html": reviewers})
     assert found(messages) == [("dj_hx.E014", "tests.interactions_app.views.sign_off")]
     message = the(messages, "dj_hx.E014")
-    assert "sign_off() has no control: no project template writes {% act 'sign_off' %}." in message.msg
+    assert message.msg == (
+        "sign_off() has no control: no project template writes {% act 'sign_off' %}. A {% url 'dj_hx:sign_off' %} or a "
+        "hand-written path is not counted, because E011 to E013 cannot check it."
+    )
     assert """hx-post="{% act 'sign_off' member=... %}" hx-target="#signoff" hx-swap="outerHTML\"""" in message.hint
 
 
@@ -953,6 +982,13 @@ def test_i021_an_act_the_checks_cannot_tie_to_a_control(startup, template, says)
     messages = startup(**{"extra.html": template})
     assert found(messages) == [("dj_hx.I021", "extra.html:2")]
     assert says in the(messages, "dj_hx.I021").msg and "SILENCED_SYSTEM_CHECKS" in the(messages, "dj_hx.I021").hint
+
+
+def test_assert_no_hx_check_issues_counts_an_info(tmp_path):
+    with checked_on_disk(tmp_path, {"extra.html": "{% load hx %}\n<p>" + NOTIFY + "</p>"}, SILENCED_SYSTEM_CHECKS=["dj_hx.W018"]):
+        with pytest.raises(AssertionError, match=r"\(dj_hx\.I021\) extra\.html:2: \{% act 'notify' %\} is outside an attribute"):
+            assert_no_hx_check_issues()
+        assert_no_hx_check_issues(include_warnings=False)  # Errors only
 
 
 @pytest.mark.parametrize(

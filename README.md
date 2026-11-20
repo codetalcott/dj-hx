@@ -299,10 +299,13 @@ The rules:
 - **`manage.py check` reads every `{% act %}` in the project's templates**, as `hx_lint` does,
   never site-packages, and checks the control it writes the URL of against its interaction: the
   verb attribute sends the interaction's method, `hx-target` is `#<partial name>` and `hx-swap` is
-  `outerHTML`, each the control's own or an ancestor's `:inherited` one (a plain attribute on an
-  ancestor does not reach it in htmx 4). Without `hx-swap`, htmx 4 swaps `innerHTML` and nests a
-  second element with the partial's id inside the first. It also checks that every interaction has
-  a control, and that its partial loads and starts with its id. A computed `hx-target`, `hx-swap`,
+  an outer swap (`outerHTML`, `outerMorph` or `outerSync`, which each leave one element with the
+  id, as read in htmx 4.0.2's swap code), each the control's own or an ancestor's `:inherited` one
+  (a plain attribute on an ancestor does not reach it in htmx 4). Without `hx-swap`, htmx 4 swaps
+  `innerHTML` and nests a second element with the partial's id inside the first. It also checks
+  that every interaction has an `{% act %}` control (a `{% url 'dj_hx:…' %}` or hand-written path
+  is not counted, because its control cannot be checked), and that its partial loads and starts
+  with its id. A computed `hx-target`, `hx-swap`,
   `hx-method` or root `id` is not judged, and an `{% act %}` it cannot tie to one element's verb
   attribute gets an Info (`dj_hx.I021`) saying so. The ids are in "What is loud" below.
 
@@ -334,8 +337,8 @@ by `HxTestClient`. Nothing is gated on `DEBUG` that a test needs.
 | An interaction returns anything but a `dict` or `None`, an `HttpResponse` included, or a view decorator below `@interaction` answers with one | `ImproperlyConfigured`: an interaction always re-renders its partial; leave the page from a view that returns `navigate()`, and put Django view decorators above `@interaction` |
 | An interaction's reply sets a key its context does not define, a refusal's `error` included | `ImproperlyConfigured`, naming the key and the context function: define each there with its default |
 | `{% act %}` with a positional argument, a keyword the handler does not take, a missing one, or a name no interaction has | `TemplateSyntaxError` at render, naming the handler's parameters, or listing the interactions there are; at start-up, checks `dj_hx.E009` (no such interaction) and `E010` (the arguments), naming template:line |
-| An `{% act %}` control that sends another method than its interaction answers, whose `hx-target` (its own, or an ancestor's `hx-target:inherited`) is not `#<partial name>`, or whose `hx-swap` (likewise) is not `outerHTML` | checks `dj_hx.E011`, `E012` and `E013`, naming template:line and the attribute to write; a plain `hx-target` or `hx-swap` on an ancestor is named as not reaching the control |
-| An interaction no project template writes an `{% act %}` for, whose partial does not load, or whose partial's root element is not `id="<partial name>"` | checks `dj_hx.E014`, `E015` (with `HxUnknownPartial`'s reason) and `E016` (the start-up twin of `HxPartialRootId`, judged where the source shows the root) |
+| An `{% act %}` control that sends another method than its interaction answers, whose `hx-target` (its own, or an ancestor's `hx-target:inherited`) is not `#<partial name>`, or whose `hx-swap` (likewise) is not an outer swap (`outerHTML`, `outerMorph` or `outerSync`, read from htmx 4.0.2's swap code) | checks `dj_hx.E011`, `E012` and `E013`, naming template:line and the attribute to write; a plain `hx-target` or `hx-swap` on an ancestor is named as not reaching the control |
+| An interaction no project template writes an `{% act %}` for (a `{% url 'dj_hx:…' %}` or hand-written path is not counted: E011 to E013 cannot check it), whose partial does not load, or whose partial's root element is not `id="<partial name>"` | checks `dj_hx.E014`, `E015` (with `HxUnknownPartial`'s reason) and `E016` (the start-up twin of `HxPartialRootId`, judged where the source shows the root) |
 | An interaction registered after `dj_hx.urls` was first read, so its route is the bare view and the decorators above it do not apply | check `dj_hx.E017`, naming the module to import before the URLconf is loaded |
 | Interactions registered, but `dj_hx.urls` not included | check `dj_hx.E020`; `{% act %}` raises `ImproperlyConfigured`; both name `path("", include("dj_hx.urls"))` |
 | A decorator above `@interaction` written without `functools.wraps`, so nothing can see that it wraps the interaction; a decorator below `@interaction` (the handler has `__wrapped__`) | checks `dj_hx.W018` (use `functools.wraps`) and `W019` (view decorators belong above `@interaction`) |
@@ -354,6 +357,10 @@ client.hx_post("/contacts/new/", form, full=True, follow=True)  # what the brows
 def test_dj_hx_is_configured():
     assert_no_hx_check_issues()               # pytest does not run system checks
 ```
+
+`assert_no_hx_check_issues()` fails on any dj-hx check message, Infos included (`dj_hx.I021`, a
+control the checks could not tie to its interaction); `include_warnings=False` keeps Errors only,
+and `SILENCED_SYSTEM_CHECKS` silences one id.
 
 Every `text/html` response is linted (`HxLintError` on an error-level
 finding, a warning otherwise; `lint_ignore=(...)` or `HX_LINT_IGNORE`
