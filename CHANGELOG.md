@@ -52,6 +52,8 @@ event fired without a target lands on `document` after a delete swap, where a
   on a control reaching a view that calls no verb, and on a view that calls
   `.retarget()` or `.reswap()`, naming the controls whose templates no longer
   predict the DOM effect. `--by-template` reads the map from the other end.
+  A hyperscript listener (`_="on x from body ..."`) pairs with a view's
+  `.trigger("x")` like an `hx-trigger`.
   Whether or not a view calls a verb, it errors on a read of the `HX-Trigger`
   request header, which htmx 4 does not send, and on `request.POST` read on
   DELETE, which htmx 4 sends as query parameters; it warns on a read of
@@ -67,7 +69,7 @@ event fired without a target lands on `document` after a delete swap, where a
   neither, and a string where a tuple belongs.
 - Checks W001, E002, W003, W004, W005, W006, E007, W008.
 - The example: contact.app on the ORM, same routes, templates and tests as
-  hx-flask; 110 tests plus 7 in Chromium, on Django 4.2, 5.2 and 6.0.
+  hx-flask; 110 tests plus 7 in Chromium, on Django 4.2, 5.2, 6.0 and 6.1.
 - The shared core, vendored: `hxlint.py`, `hx_vocab.py` and `mapcore.py`, the
   framework-neutral map engine, from hx-flask (one or two import lines differ),
   `urlconf.py` from dj-fixi; `tools/sync_shared.py` and a pin test.

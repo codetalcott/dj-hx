@@ -36,9 +36,9 @@ python manage.py hx_lint [paths...] [--warnings-as-errors]
 python manage.py hx_map [--no-check]
 ```
 
-CI runs `ruff check .` on 3.13 and the suite on six Python/Django pairs covering Django 4.2, 5.2 and 6.0.
+CI runs `ruff check .` on 3.13 and the suite on eight Python/Django pairs covering Django 4.2, 5.2, 6.0 and 6.1.
 Any change touching template partials, `{% url %}` handling or middleware ordering has to work on all
-three Django lines; `django.VERSION < (6, 0)` branches already exist in `verbs.py`, `checks.py`,
+four Django lines; `django.VERSION < (6, 0)` branches already exist in `verbs.py`, `checks.py`,
 `tests/conftest.py` and the example settings.
 
 ## Architecture

@@ -8,7 +8,7 @@
 Facts to hold while writing code against this package:
 
 - Requires htmx **4** (`HX-Request-Type` header). htmx 1/2 idioms are rejected by a lint that runs on every
-  test-client response. Django 4.2 to 6.0, Python 3.10+.
+  test-client response. Django 4.2 to 6.1, Python 3.10+.
 - The only client fact a handler reads is `HX-Request-Type`: `full` (browser, boosted link, or a control
   whose target is `body` or that sets `hx-select`) or `partial` (a control targeting an element). Never
   read `HX-Source` or `HX-Target`; never branch on an element id.
@@ -369,7 +369,7 @@ controls that reach them.
 the literal path, and errors when a partial control reaches a view that only calls `page`, or a full
 control reaches one that only calls `fragment`/`text`/`removed`; `navigate` says nothing about shape, so a
 view that calls it and `page` is still page-only. `if request.method == "DELETE":` branches
-are attributed to that method. It pairs `.trigger("x")` with `hx-trigger="x from:body"` both ways and warns
+are attributed to that method. It pairs `.trigger("x")` with `hx-trigger="x from:body"` or a hyperscript `_="on x from body ..."` both ways (a listener for a browser event such as `click` is never asked to be announced) and warns
 on `hx-delete` controls that send no values to a handler that reads them. Whether or not a view calls a
 verb, it errors when the view reads the `HX-Trigger` request header (`request.headers`, `request.META`),
 which htmx 4 does not send, or reads `request.POST` on DELETE, which htmx 4 sends as query parameters

@@ -33,7 +33,7 @@ longer swaps, an event fired without a target lands where a `from:body`
 listener cannot hear it, and the headers it still writes are gone. The same
 design for Flask is [hx-flask]; the sibling for Fixi.js is [dj-fixi].
 
-**Status:** 0.1.0, unreleased. Django 4.2 to 6.0, Python 3.10 to 3.13.
+**Status:** 0.1.0, unreleased. Django 4.2 to 6.1, Python 3.10 to 3.13.
 
 ## The three rules
 
@@ -253,7 +253,9 @@ them, for when you are editing a partial and need to know who serves it.
 resolves it through `{% url %}` or the literal path, and checks it against the
 verbs its view calls, with `if request.method == "DELETE":` branches
 attributed to that method. It also pairs `.trigger("x")` with
-`hx-trigger="x from:body"` in both directions.
+`hx-trigger="x from:body"` in both directions, and with a hyperscript listener
+(`_="on x from body ..."`); a listener for a browser event such as `click` is never
+asked to be announced by a view.
 
 ## The example
 

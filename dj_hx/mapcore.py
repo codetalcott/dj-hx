@@ -41,7 +41,7 @@ from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 
 from . import hx_vocab as vocab
-from .hxlint import JINJA, Node, parse, parse_trigger_specs
+from .hxlint import HYPERSCRIPT_ATTRS, JINJA, Node, parse, parse_trigger_specs
 
 __all__ = [
     "URLFOR",
@@ -74,6 +74,28 @@ DOM_EVENTS = {
     "transitionend", "animationend", "wheel", "contextmenu", "drop", "dragover", "dragstart", "dragend", "paste",
     "copy", "cut", "select", "invalid", "resize", "hashchange", "popstate", "DOMContentLoaded",
 } | set(vocab.SPECIAL_TRIGGERS)
+# Every event a browser fires on its own, so a hyperscript ``on mouseover`` is not read as a custom event.
+# Source: the ``on*`` handler properties of window, document, HTMLElement, <video>, <dialog> and <input> in
+# Chromium 1.64.0's build (Playwright), plus the events that have no handler property (touch, composition,
+# focusin/out, orientation, DOMContentLoaded, fullscreen/visibility variants). Measured 2026-11-20.
+DOM_EVENTS |= {
+    "abort", "afterprint", "animationcancel", "animationiteration", "animationstart", "auxclick", "beforeinput",
+    "beforematch", "beforeprint", "beforetoggle", "beforeunload", "cancel", "canplay", "canplaythrough", "close",
+    "compositionend", "compositionstart", "compositionupdate", "contextlost", "contextrestored", "cuechange", "drag",
+    "dragenter", "dragleave", "durationchange", "emptied", "ended", "error", "formdata", "fullscreenchange",
+    "fullscreenerror", "gamepadconnected", "gamepaddisconnected", "gotpointercapture", "languagechange", "load",
+    "loadeddata", "loadedmetadata", "loadstart", "lostpointercapture", "message", "messageerror", "offline", "online",
+    "orientationchange", "pagehide", "pagereveal", "pageshow", "pageswap", "pause", "play", "playing", "pointercancel",
+    "pointerenter", "pointerleave", "pointerlockchange", "pointerlockerror", "pointerout", "pointerover", "progress",
+    "ratechange", "readystatechange", "rejectionhandled", "resume", "scrollend", "securitypolicyviolation", "seeked",
+    "seeking", "selectionchange", "selectstart", "slotchange", "stalled", "storage", "suspend", "timeupdate",
+    "touchcancel", "transitioncancel", "transitionrun", "transitionstart", "unhandledrejection", "unload",
+    "visibilitychange", "volumechange", "waiting", "mousewheel",
+}
+# hyperscript: ``on <name>[(args)]`` opens a feature at the start of a script, after ``end`` or on a new line.
+# ``send <name>[(args)]`` / ``trigger <name>``, with or without ``to <target>``: events the script announces itself.
+_HS_SEND = re.compile(r"\b(?:send|trigger)\s+([\w:.-]+)")
+_HS_ON = re.compile(r"(?:^|\bend\b|\n)\s*on\s+(?:every\s+)?([\w:.-]+)(?:\(([^)]*)\))?")
 
 VERBS = {"render", "page", "fragment", "invalid", "redirect", "removed", "text", "navigate"}
 PAGE_VERBS = {"page"}
@@ -118,6 +140,9 @@ class Listener:
     line: int
     element: str
     event: str
+    # A browser event name (click, close, ...): it can pair with a ``.trigger()`` of the same name, but nothing
+    # is warned about when no handler announces it, because the browser does.
+    browser: bool = False
 
 
 @dataclass
@@ -192,6 +217,8 @@ def scan_templates(
             for attr, value in node.attrs.items():
                 if attr == "hx-on" or attr.startswith("hx-on:"):
                     script_names.update(_NAME.findall(value or ""))
+                if attr in HYPERSCRIPT_ATTRS:
+                    script_names.update(n for n in _HS_SEND.findall(value or "") if ":" not in n)
                 if value:
                     controls += _script_controls(name, node, value, None, resolve)
             if node.tag == "script" and node.text and not node.attrs.get("src"):
@@ -373,13 +400,17 @@ def resolve_path(url: str) -> str | None:
 
 def _listeners_for(file: str, node: Node) -> list[Listener]:
     out = []
+
+    def add(name: str) -> None:
+        out.append(Listener(file, node.line, node.describe(), name, browser=name in DOM_EVENTS))
+
     trigger = node.own("hx-trigger")
     if trigger and JINJA not in trigger:
         try:
             for spec in parse_trigger_specs(trigger):
                 name = spec["name"].split("[", 1)[0]
-                if name not in DOM_EVENTS and not name.startswith("htmx:"):
-                    out.append(Listener(file, node.line, node.describe(), name))
+                if not name.startswith("htmx:"):
+                    add(name)
         except ValueError:
             pass
     for attr, value in node.attrs.items():
@@ -387,12 +418,19 @@ def _listeners_for(file: str, node: Node) -> list[Listener]:
             for part in re.split(r";(?=[^;]*->)", value):
                 if "->" in part:
                     name = part.split("->", 1)[0].strip().split()[0].split("[", 1)[0]
-                    if name not in DOM_EVENTS and not name.startswith("htmx:"):
-                        out.append(Listener(file, node.line, node.describe(), name))
+                    if not name.startswith("htmx:"):
+                        add(name)
         elif attr.startswith("hx-on:") and not attr.startswith("hx-on::"):
             name = attr[len("hx-on:"):]
-            if name not in DOM_EVENTS and not name.startswith("htmx:"):
-                out.append(Listener(file, node.line, node.describe(), name))
+            if not name.startswith("htmx:"):
+                add(name)
+    seen = set()
+    for attr in HYPERSCRIPT_ATTRS:
+        for match in _HS_ON.finditer(node.attrs.get(attr) or ""):
+            name = match.group(1)
+            if ":" not in name and name not in seen:
+                seen.add(name)
+                add(name)
     return out
 
 
@@ -701,7 +739,8 @@ def check(handlers: dict[str, Handler], controls: list[Control], listeners: list
             delete_reads_body(h)  # no control needs to resolve: the route itself is DELETE-only
     announced = {e for h in handlers.values() for e in h.announces}
     listened = {li.event for li in listeners}
-    for event in sorted(listened - announced):
+    unannounced = {li.event for li in listeners if not li.browser}
+    for event in sorted(unannounced - announced):
         where = ", ".join(f"{li.file}:{li.line}" for li in listeners if li.event == event)
         if event in script_names:
             continue  # dispatched by a script or hx-on handler in the templates

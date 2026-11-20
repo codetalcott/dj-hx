@@ -131,6 +131,19 @@ def test_map_treats_script_dispatched_events_as_announced():
 
 
 @override_settings(ROOT_URLCONF="tests.urlconfs.mapping")
+def test_a_hyperscript_listener_pairs_with_the_views_trigger():
+    sources = {"p.html": '<div _="on nobody-listens from body add .flash to me">x</div>'}
+    m = build_map(sources=sources)
+    assert [(li.element, li.event) for li in m.listeners] == [("div", "nobody-listens")]
+    assert not [w for w in m.warnings if "nobody-listens" in w], m.warnings
+    # a browser event named by hyperscript is a listener too, and is not asked to be announced
+    sources = {"p.html": '<div _="on click from body add .x to me">x</div><div _="on orphan from body log 1">y</div>'}
+    m = build_map(sources=sources)
+    warnings = "\n".join(m.warnings)
+    assert "event 'orphan' is listened for" in warnings and "event 'click'" not in warnings
+
+
+@override_settings(ROOT_URLCONF="tests.urlconfs.mapping")
 def test_url_tag_with_as_and_unknown_names():
     sources = {"p.html": "<a hx-get=\"{% url 'nope' %}\">x</a>{% url 'm-go' as u %}<a hx-get=\"{{ u }}\">y</a>"}
     m = build_map(sources=sources)
