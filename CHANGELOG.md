@@ -98,10 +98,12 @@ event fired without a target lands on `document` after a delete swap, where a
   included raises `ImproperlyConfigured`, naming the include.
 - Interaction checks, from `manage.py check`: every `{% act %}` in the
   project's templates names an interaction (E009) with its handler's
-  parameters (E010), and its control sends the interaction's method (E011),
-  targets `#<partial>` (E012) and uses an outer swap, `outerHTML`, `outerMorph`
-  or `outerSync` as read in htmx 4.0.2's swap code (E013), reading htmx 4's
-  `:inherited` on ancestors; every interaction has an `{% act %}` control (E014;
+  parameters (E010), and its control sends the interaction's method (E011,
+  with `hx-action`'s method resolved as htmx 4.0.2 does), targets the element
+  with the partial's id (E012: `#<partial>`, or no `hx-target` or
+  `hx-target="this"` on that element) and uses an outer swap, `outerHTML`,
+  `outerMorph` or `outerSync` as read in htmx 4.0.2's swap code (E013), reading
+  htmx 4's `:inherited` on ancestors; every interaction has an `{% act %}` control (E014;
   a `{% url %}` or hand-written path is not counted), a partial
   that loads (E015) and whose root carries its id (E016); `dj_hx.urls` routes
   each interaction to what its module holds (E017) and is included (E020).

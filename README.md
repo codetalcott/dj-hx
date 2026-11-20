@@ -297,17 +297,26 @@ The rules:
     an element the guard records that 302 (`HxRedirectIntoFragment`), as it does for any view,
     because fetch would follow it into the target.
 - **`manage.py check` reads every `{% act %}` in the project's templates**, as `hx_lint` does,
-  never site-packages, and checks the control it writes the URL of against its interaction: the
-  verb attribute sends the interaction's method, `hx-target` is `#<partial name>` and `hx-swap` is
-  an outer swap (`outerHTML`, `outerMorph` or `outerSync`, which each leave one element with the
-  id, as read in htmx 4.0.2's swap code), each the control's own or an ancestor's `:inherited` one
-  (a plain attribute on an ancestor does not reach it in htmx 4). Without `hx-swap`, htmx 4 swaps
-  `innerHTML` and nests a second element with the partial's id inside the first. It also checks
-  that every interaction has an `{% act %}` control (a `{% url 'dj_hx:…' %}` or hand-written path
-  is not counted, because its control cannot be checked), and that its partial loads and starts
-  with its id. A computed `hx-target`, `hx-swap`,
-  `hx-method` or root `id` is not judged, and an `{% act %}` it cannot tie to one element's verb
-  attribute gets an Info (`dj_hx.I021`) saying so. The ids are in "What is loud" below.
+  never site-packages, and checks the control it writes the URL of against its interaction, as
+  htmx 4.0.2 resolves each attribute:
+  - The control sends the interaction's method. `hx-post` and its siblings name it; `hx-action`
+    sends its own `hx-method`, else an ancestor's `hx-method:inherited`, else its `method`
+    attribute (`<form method="post">`), else GET. A submit button's `formmethod` is chosen at
+    click time and is not read.
+  - It targets the element with the partial's id: `hx-target="#<partial name>"`, or no
+    `hx-target` on a control that carries the id itself, or `hx-target="this"` on the element
+    that carries it (htmx 4 resolves `this` to the element declaring it).
+  - Its `hx-swap` is an outer swap (`outerHTML`, `outerMorph` or `outerSync`, which each leave one
+    element with the id, as read in htmx 4.0.2's swap code). Without `hx-swap`, htmx 4 swaps
+    `innerHTML` and nests a second element with the partial's id inside the first.
+  - Each attribute is the control's own or an ancestor's `:inherited` one; a plain attribute on an
+    ancestor does not reach it in htmx 4.
+
+  It also checks that every interaction has an `{% act %}` control (a `{% url 'dj_hx:…' %}` or
+  hand-written path is not counted, because its control cannot be checked), and that its partial
+  loads and starts with its id. A computed `hx-target`, `hx-swap`, `hx-method` or root `id` is not
+  judged, and an `{% act %}` it cannot tie to one element's verb attribute gets an Info
+  (`dj_hx.I021`) saying so. The ids are in "What is loud" below.
 
 ## What is loud
 
@@ -337,7 +346,7 @@ by `HxTestClient`. Nothing is gated on `DEBUG` that a test needs.
 | An interaction returns anything but a `dict` or `None`, an `HttpResponse` included, or a view decorator below `@interaction` answers with one | `ImproperlyConfigured`: an interaction always re-renders its partial; leave the page from a view that returns `navigate()`, and put Django view decorators above `@interaction` |
 | An interaction's reply sets a key its context does not define, a refusal's `error` included | `ImproperlyConfigured`, naming the key and the context function: define each there with its default |
 | `{% act %}` with a positional argument, a keyword the handler does not take, a missing one, or a name no interaction has | `TemplateSyntaxError` at render, naming the handler's parameters, or listing the interactions there are; at start-up, checks `dj_hx.E009` (no such interaction) and `E010` (the arguments), naming template:line |
-| An `{% act %}` control that sends another method than its interaction answers, whose `hx-target` (its own, or an ancestor's `hx-target:inherited`) is not `#<partial name>`, or whose `hx-swap` (likewise) is not an outer swap (`outerHTML`, `outerMorph` or `outerSync`, read from htmx 4.0.2's swap code) | checks `dj_hx.E011`, `E012` and `E013`, naming template:line and the attribute to write; a plain `hx-target` or `hx-swap` on an ancestor is named as not reaching the control |
+| An `{% act %}` control that sends another method than its interaction answers (for `hx-action`: its `hx-method`, an ancestor's `hx-method:inherited`, its `method` attribute, else GET; a submit button's `formmethod` is not read), that does not target the element with id `<partial name>` (`hx-target="#<partial name>"`, its own or an ancestor's `hx-target:inherited`; or no `hx-target`, or `hx-target="this"`, on the element with that id), or whose `hx-swap` (its own or inherited) is not an outer swap (`outerHTML`, `outerMorph` or `outerSync`, read from htmx 4.0.2's swap code) | checks `dj_hx.E011`, `E012` and `E013`, naming template:line and the attribute to write; a plain `hx-target` or `hx-swap` on an ancestor is named as not reaching the control |
 | An interaction no project template writes an `{% act %}` for (a `{% url 'dj_hx:…' %}` or hand-written path is not counted: E011 to E013 cannot check it), whose partial does not load, or whose partial's root element is not `id="<partial name>"` | checks `dj_hx.E014`, `E015` (with `HxUnknownPartial`'s reason) and `E016` (the start-up twin of `HxPartialRootId`, judged where the source shows the root) |
 | An interaction registered after `dj_hx.urls` was first read, so its route is the bare view and the decorators above it do not apply | check `dj_hx.E017`, naming the module to import before the URLconf is loaded |
 | Interactions registered, but `dj_hx.urls` not included | check `dj_hx.E020`; `{% act %}` raises `ImproperlyConfigured`; both name `path("", include("dj_hx.urls"))` |

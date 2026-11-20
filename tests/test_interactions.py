@@ -706,22 +706,53 @@ def test_e011_a_control_that_sends_another_method(startup, verb, rest, sends):
     assert f"a {sends} gets a 405" in message.msg and "hx-post=" in message.hint
 
 
-def test_e011_reads_hx_method_beside_hx_action(startup):
-    assert found(startup(**{"extra.html": control(NOTIFY, "hx-action", 'hx-method="post" hx-target="#notify" hx-swap="outerHTML"')})) == []
+@pytest.mark.parametrize(
+    "template",
+    [
+        control(NOTIFY, "hx-action", 'hx-method="post" hx-target="#notify" hx-swap="outerHTML"'),
+        '{% load hx %}\n<form method="post" hx-action="' + NOTIFY + '" hx-target="#notify" hx-swap="outerHTML"><button>Go</button></form>',
+        '{% load hx %}\n<div hx-method:inherited="post"><button hx-action="' + NOTIFY + '" hx-target="#notify" hx-swap="outerHTML">Go</button></div>',
+    ],
+    ids=["own-hx-method", "form-method", "inherited-hx-method"],
+)
+def test_e011_reads_hx_actions_method_as_htmx_4_does(startup, template):
+    # mapcore.action_method: its hx-method, else an ancestor's hx-method:inherited, else its method attribute, else GET
+    assert found(startup(**{"extra.html": template})) == []
+
+
+def test_e011_a_plain_hx_method_on_an_ancestor_does_not_reach_the_control(startup):
+    template = '{% load hx %}\n<div hx-method="post"><button hx-action="' + NOTIFY + '" hx-target="#notify" hx-swap="outerHTML">Go</button></div>'
+    messages = startup(**{"extra.html": template})
+    assert found(messages) == [("dj_hx.E011", "extra.html:2")]
+    assert "{% act 'notify' %} is in hx-action, so its control sends GET" in the(messages, "dj_hx.E011").msg
 
 
 @pytest.mark.parametrize(
     "template, says",
     [
         (control(NOTIFY, rest='hx-target="#rota" hx-swap="outerHTML"'), "its hx-target is '#rota'"),
-        (control(NOTIFY, rest='hx-swap="outerHTML"'), "it has no hx-target, so htmx 4 swaps the reply into the control itself"),
+        (
+            control(NOTIFY, rest='hx-swap="outerHTML"'),
+            'it has no hx-target, so htmx 4 targets the control itself, a <button> with no id, which would need id="notify"',
+        ),
         (
             '{% load hx %}\n<div hx-target="#notify"><button hx-post="' + NOTIFY + '" hx-swap="outerHTML">Go</button></div>',
-            "it has no hx-target, so htmx 4 swaps the reply into the control itself; the plain hx-target on <div> above "
-            "it does not reach it in htmx 4",
+            'it has no hx-target, so htmx 4 targets the control itself, a <button> with no id, which would need id="notify"; '
+            "the plain hx-target on <div> above it does not reach it in htmx 4",
+        ),
+        (
+            '{% load hx %}\n<div id="box" hx-post="' + NOTIFY + '" hx-target="this" hx-swap="outerHTML">Go</div>',
+            "its hx-target is 'this', so htmx 4 targets the element that declares it, a <div> with id=\"box\", which "
+            'would need id="notify"',
+        ),
+        (
+            '{% load hx %}\n<div class="box" hx-target:inherited="this" hx-swap:inherited="outerHTML"><button hx-post="'
+            + NOTIFY + '">Go</button></div>',
+            "its hx-target is 'this', so htmx 4 targets the element that declares it, a <div> with no id, which would need "
+            'id="notify"',
         ),
     ],
-    ids=["another", "none", "plain-ancestor"],
+    ids=["another", "none", "plain-ancestor", "this-wrong-id", "inherited-this-no-id"],
 )
 def test_e012_a_control_whose_target_is_not_the_partial(startup, template, says):
     messages = startup(**{"extra.html": template})
@@ -768,6 +799,21 @@ def test_e013_takes_each_outer_swap_whatever_its_modifiers(startup, swap):
     # htmx 4.0.2's swap code: outerMorph morphs the target itself; outerSync copies the reply root's attributes onto
     # the target and replaces its children with the root's. Each leaves one element with the id, as outerHTML does.
     assert found(startup(**{"extra.html": swapping(swap)})) == []
+
+
+@pytest.mark.parametrize(
+    "template",
+    [
+        '{% load hx %}\n<div id="notify" hx-post="' + NOTIFY + '" hx-swap="outerHTML">Go</div>',
+        '{% load hx %}\n<div id="notify" hx-post="' + NOTIFY + '" hx-target="this" hx-swap="outerHTML">Go</div>',
+        '{% load hx %}\n<div id="notify" hx-target:inherited="this" hx-swap:inherited="outerHTML"><button hx-post="'
+        + NOTIFY + '">Go</button></div>',
+    ],
+    ids=["no-target", "this", "inherited-this"],
+)
+def test_e012_takes_a_control_that_targets_the_element_with_the_partials_id(startup, template):
+    # htmx 4.0.2: no hx-target targets the control itself; "this" is the element that declares it (#K, #z)
+    assert found(startup(**{"extra.html": template})) == []
 
 
 def test_e012_and_e013_read_an_ancestors_inherited_target_and_swap(startup):

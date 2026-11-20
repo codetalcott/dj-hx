@@ -20,7 +20,7 @@ W008     Warning  HX_EXTENSIONS is a string, or names an extension htmx 4 does n
 E009     Error    {% act %} names no interaction
 E010     Error    {% act %}'s keywords are not its handler's parameters
 E011     Error    An {% act %} control sends another method than its interaction answers
-E012     Error    An {% act %} control's hx-target (own or :inherited) is not #<partial>
+E012     Error    An {% act %} control does not target the element with the partial's id
 E013     Error    An {% act %} control's hx-swap (own or :inherited) is not an outer swap
 E014     Error    An interaction has no control: no template writes its {% act %}
 E015     Error    An interaction's partial does not load
@@ -460,13 +460,19 @@ def _plain_on_ancestor(node, attr: str) -> str:
     return f"; the plain {attr} on <{plain.tag}> above it does not reach it in htmx 4" if plain is not None else ""
 
 
+def _described(element) -> str:
+    found = element.attrs.get("id")
+    return f'a <{element.tag}> with id="{found}"' if found else f"a <{element.tag}> with no id"
+
+
 def _control_messages(it, node, attr: str, where: str) -> list:
     """E011 to E013: the control that ``{% act %}`` writes the URL of, against what its interaction replies."""
     from .hxlint import JINJA, parse_swap_spec
     from .interactions import act_form
+    from .mapcore import action_method
 
     tag, partial, messages = f"{{% act '{it.name}' %}}", it.partial, []
-    sends = (node.own("hx-method") or "GET").upper() if attr == "hx-action" else attr[len("hx-") :].upper()
+    sends = action_method(node) if attr == "hx-action" else attr[len("hx-") :].upper()
     if JINJA not in sends and sends != it.method:
         messages.append(
             Error(
@@ -478,17 +484,30 @@ def _control_messages(it, node, attr: str, where: str) -> list:
                 id="dj_hx.E011",
             )
         )
+    # htmx 4.0.2 targets the control itself when no hx-target reaches it, and the element declaring
+    # hx-target="this" for "this" (its #K and #z); either is right when that element has the partial's id.
     target = node.resolved("hx-target")
-    if (target is None or JINJA not in target) and (target or "").strip() != f"#{partial}":
-        says = (
-            "it has no hx-target, so htmx 4 swaps the reply into the control itself" + _plain_on_ancestor(node, "hx-target")
-            if target is None
-            else f"its hx-target is {target!r}"
-        )
+    value = (target or "").strip()
+    targeted = node if target is None else node.resolving("hx-target") if value == "this" else None
+    computed = JINJA in value or (targeted is not None and JINJA in (targeted.attrs.get("id") or ""))
+    if not computed and value != f"#{partial}" and (targeted is None or targeted.attrs.get("id") != partial):
+        if target is None:
+            says = (
+                f"it has no hx-target, so htmx 4 targets the control itself, {_described(node)}, which would need "
+                f'id="{partial}"' + _plain_on_ancestor(node, "hx-target")
+            )
+        elif targeted is not None:
+            says = (
+                f"its hx-target is 'this', so htmx 4 targets the element that declares it, {_described(targeted)}, "
+                f'which would need id="{partial}"'
+            )
+        else:
+            says = f"its hx-target is {target!r}"
         messages.append(
             Error(
                 f"{tag}: {it.name}() replies with its partial, #{partial}, but {says}.",
-                hint=f'Write hx-target="#{partial}" on the control, or hx-target:inherited="#{partial}" on an ancestor.',
+                hint=f'Write hx-target="#{partial}" on the control, or hx-target:inherited="#{partial}" on an ancestor, '
+                f'or give the element it targets id="{partial}".',
                 obj=where,
                 id="dj_hx.E012",
             )

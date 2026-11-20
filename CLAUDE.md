@@ -15,8 +15,8 @@ to a verb signature, a setting, an error, a check id or a lint rule must be mirr
 The checked-in `.venv` has Django 6.0, pytest, ruff and playwright.
 
 ```
-.venv/bin/python -m pytest                      # 235 tests, ~5s
-.venv/bin/python -m pytest -m "not browser"     # 228, skipping Chromium
+.venv/bin/python -m pytest                      # 243 tests, ~5s
+.venv/bin/python -m pytest -m "not browser"     # 236, skipping Chromium
 .venv/bin/python -m pytest -m browser           # the 7 Playwright tests alone
 .venv/bin/python -m pytest tests/test_verbs.py::test_text_escapes
 .venv/bin/ruff check .
@@ -92,7 +92,9 @@ check `dj_hx.E017` reports.
 
 **The interaction checks reuse the runtime's own pieces.** `{% act %}` and checks E009/E010 take their
 messages from `act_unknown()` and `act_mismatch()` in interactions.py, and E015/E016 from
-`_get_partial()` and `check_root_id()`, so the start-up and render-time wording cannot drift. The
+`_get_partial()` and `check_root_id()`, so the start-up and render-time wording cannot drift. E011
+reads `hx-action`'s method through `mapcore.action_method()`, as `hx_map` does, and E012 finds the
+element `hx-target="this"` names through `Node.resolving()`; both are hx-flask's, so change them there. The
 template checks read each `{% act %}` through `strip_template_syntax(source, acts=[...])`, which marks
 the n-th tag `__ACT<n>__` so its holding element is found in hxlint's tree, and `partial_sources()`
 for `{% partialdef %}` bodies.
