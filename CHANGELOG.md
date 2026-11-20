@@ -83,9 +83,12 @@ event fired without a target lands on `document` after a delete swap, where a
   `@interaction` returns the routed view, and `dj_hx.urls` routes each
   interaction to what its module holds under the handler's name, as written,
   so a decorator written above it (`@login_required`, or a hand-written check)
-  wraps the route.
+  wraps the route. A module that holds the raw handler under that name, as
+  `remind_view = interaction(...)(remind)` leaves it, raises
+  `ImproperlyConfigured` when the URLconf is read, instead of routing a
+  handler past the method guard.
 - The example: contact.app on the ORM, same routes, templates and tests as
-  hx-flask; 153 tests plus 7 in Chromium, on Django 4.2, 5.2, 6.0 and 6.1.
+  hx-flask; 156 tests plus 7 in Chromium, on Django 4.2, 5.2, 6.0 and 6.1.
 - The shared core, vendored: `hxlint.py`, `hx_vocab.py` and `mapcore.py`, the
   framework-neutral map engine, from hx-flask (one or two import lines differ),
   `urlconf.py` from dj-fixi; `tools/sync_shared.py` and a pin test.

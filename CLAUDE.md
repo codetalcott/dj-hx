@@ -15,8 +15,8 @@ to a verb signature, a setting, an error, a check id or a lint rule must be mirr
 The checked-in `.venv` has Django 6.0, pytest, ruff and playwright.
 
 ```
-.venv/bin/python -m pytest                      # 160 tests, ~5s
-.venv/bin/python -m pytest -m "not browser"     # 153, skipping Chromium
+.venv/bin/python -m pytest                      # 163 tests, ~5s
+.venv/bin/python -m pytest -m "not browser"     # 156, skipping Chromium
 .venv/bin/python -m pytest -m browser           # the 7 Playwright tests alone
 .venv/bin/python -m pytest tests/test_verbs.py::test_text_escapes
 .venv/bin/ruff check .
@@ -81,7 +81,10 @@ before the URLconf is read. The decorator returns the routed view; when `dj_hx/u
 imported, `bind_routes()` points each route at whatever the handler's module holds under its name, as
 written, whenever it is callable, so any decorator written above `@interaction` wraps the route, with or
 without `functools.wraps` (falling back to the bare view would drop an access check). Only a missing or
-non-callable attribute routes the bare view. It rebuilds the list in place: `interactions.urlpatterns`,
+non-callable attribute routes the bare view. The raw handler, or a decorator that unwraps to it before
+the view (the call form `remind_view = interaction(...)(remind)`), raises `ImproperlyConfigured` from
+`bind_routes()`, so from the first URLconf read (first request, `manage.py check`): routing it would
+skip the method guard. It rebuilds the list in place: `interactions.urlpatterns`,
 `dj_hx.urls.urlpatterns` and the `include("dj_hx.urls")` resolver's `url_patterns` are one list, which
 the resolver reads lazily and then caches. An interaction registered after that keeps a route to its
 bare view.

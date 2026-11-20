@@ -7,6 +7,7 @@ that defines its own interactions takes ``scratch``, which puts the registry bac
 
 import json
 import sys
+import types
 
 import pytest
 from django.apps import apps
@@ -65,6 +66,36 @@ def box_context(request):
 
 def render_act(source, **context):
     return Template("{% load hx %}" + source).render(Context(context))
+
+
+# A views module that applies @interaction as a call, not as a decorator. Its last line is the test's.
+FUNCTIONAL_VIEWS = """
+import functools
+
+from dj_hx import interaction
+
+def box_context(request):
+    return {"value": "nothing yet", "error": None}
+
+def audited(view):
+    @functools.wraps(view)
+    def wrapper(request, **kwargs):
+        return view(request, **kwargs)
+    return wrapper
+
+def remind(request):  # kept plain, so a unit test can call it for its dict
+    return {"value": "reminded"}
+
+REMIND = dict(partial="scratch.html#box", context=box_context, route="t/remind")
+"""
+
+
+def functional_views(monkeypatch, last_line):
+    """That module, imported as tests.functional_views: its interaction is registered, its routes not yet bound."""
+    module = types.ModuleType("tests.functional_views")
+    monkeypatch.setitem(sys.modules, module.__name__, module)
+    exec(FUNCTIONAL_VIEWS + last_line, module.__dict__)
+    return module
 
 
 # ------------------------------------------------------------------ the routes
@@ -304,6 +335,13 @@ def test_a_decorator_above_interaction_without_wraps_is_routed_as_written(rota, 
 
 @pytest.mark.parametrize("held", [None, "not callable"], ids=["missing", "not-callable"])
 def test_bind_routes_routes_the_view_when_the_module_holds_nothing_callable(scratch, rota, client, monkeypatch, held):
+    def deny(view):
+        def check(request, **kwargs):
+            return HttpResponse("denied", status=403)
+
+        return check
+
+    @deny  # applied, but the module holds no callable `ghost`, so the route gets the bare view without it
     @interaction("POST", partial="scratch.html#box", context=box_context, route="t/ghost")
     def ghost(request):  # a local function: the module holds no `ghost` unless the test puts one there
         return {"value": "the view itself"}
@@ -312,6 +350,35 @@ def test_bind_routes_routes_the_view_when_the_module_holds_nothing_callable(scra
         monkeypatch.setattr(sys.modules[__name__], "ghost", held, raising=False)
     bind_routes()
     assert client.hx_post("/t/ghost").content.decode() == '<div id="box">the view itself</div>'
+
+
+def test_a_module_holding_the_raw_handler_raises_when_the_routes_are_bound(scratch, monkeypatch):
+    functional_views(monkeypatch, 'remind_view = interaction("POST", **REMIND)(remind)\n')
+    bound = list(urlpatterns)
+    with pytest.raises(
+        ImproperlyConfigured,
+        match=r"tests\.functional_views\.remind holds remind\(\) itself, not the view @interaction returned, so its route "
+        r"would skip the method guard, the declared refusals and the return-type guard\. Apply @interaction as a "
+        r"decorator, or bind its result to the handler's own name: remind = interaction\(\.\.\.\)\(remind\)\.",
+    ):
+        bind_routes()
+    assert urlpatterns == bound  # nothing was rebound
+
+
+def test_a_decorator_that_skips_the_view_raises_when_the_routes_are_bound(scratch, monkeypatch):
+    functional_views(monkeypatch, 'remind_view = interaction("POST", **REMIND)(remind)\nremind = audited(remind)\n')
+    with pytest.raises(
+        ImproperlyConfigured, match=r"tests\.functional_views\.remind holds a decorator of remind\(\) itself, not the view"
+    ):
+        bind_routes()
+
+
+def test_the_functional_form_bound_to_the_handlers_name_routes_the_view(scratch, rota, client, monkeypatch):
+    module = functional_views(monkeypatch, 'remind = interaction("POST", **REMIND)(remind)\n')
+    bind_routes()
+    assert client.hx_get("/t/remind").status_code == 405  # the method guard is on the route
+    assert client.hx_post("/t/remind").content.decode() == '<div id="box">reminded</div>'
+    assert module.remind.__wrapped__(None) == {"value": "reminded"}  # the handler, as the message says
 
 
 def test_a_view_decorator_below_interaction_is_a_return_type_error(scratch, rota, client, db):

@@ -33,7 +33,9 @@ Interactions: one handler bound to one template partial, by name.
 - ``@interaction`` returns the routed view, and ``dj_hx.urls`` routes each interaction to what its
   module holds under the handler's name, as written, so a decorator written above it
   (``@login_required``) wraps the route, as on any view. Write such decorators with
-  ``functools.wraps``, so dj-hx's messages and ``hx_map`` see the handler through them.
+  ``functools.wraps``, so dj-hx's messages and ``hx_map`` see the handler through them. The module
+  must hold that view, or a decorator of it, and never the raw handler: binding the routes raises
+  then, because the raw handler would skip the method guard.
 """
 
 from __future__ import annotations
@@ -202,20 +204,36 @@ def interaction(method: str, *, partial: str, context: Callable[..., dict], refu
 
 def _routed_view(it: Interaction):
     """
-    What the handler's module holds under its name, as written, whenever it is callable: a decorator
-    above ``@interaction`` is routed even without ``functools.wraps``, because dropping one could drop
-    an access check. The view itself only when the module holds nothing callable under that name.
+    What the handler's module holds under its name, routed as written when it is callable: the view
+    ``@interaction`` returned, or a decorator of it, with or without ``functools.wraps`` (dropping one
+    could drop an access check). The bare view when the module holds nothing callable there.
+
+    The raw handler, or a decorator that reaches the raw handler before the view, raises instead:
+    routing it would skip the method guard, the refusals and the return-type guard.
     """
-    held = getattr(sys.modules.get(it.view.__module__), it.name, None)
-    return held if callable(held) else it.view
+    module = it.view.__module__
+    held = getattr(sys.modules.get(module), it.name, None)
+    if not callable(held):
+        return it.view
+    reached = inspect.unwrap(held, stop=lambda link: link is it.view or link is it.func)
+    if reached is it.func:
+        what = f"{it.name}() itself" if held is it.func else f"a decorator of {it.name}() itself"
+        raise ImproperlyConfigured(
+            f"{module}.{it.name} holds {what}, not the view @interaction returned, so its route would skip the "
+            "method guard, the declared refusals and the return-type guard. Apply @interaction as a decorator, "
+            f"or bind its result to the handler's own name: {it.name} = interaction(...)({it.name}). The handler "
+            f"stays reachable as {it.name}.__wrapped__."
+        )
+    return held
 
 
 def bind_routes() -> None:
     """
     Route each interaction to what its module holds under the handler's name, as written: the view
-    ``@interaction`` returned, inside any decorators written above it. ``dj_hx.urls`` calls this when
-    it is first imported, after ``ready()`` has imported every views module. The list is rebuilt in
-    place because ``dj_hx.urls.urlpatterns`` is this same list object, and the resolver for
+    ``@interaction`` returned, inside any decorators written above it (see ``_routed_view``, which
+    raises ``ImproperlyConfigured`` when the module holds the raw handler). ``dj_hx.urls`` calls this
+    when it is first imported, after ``ready()`` has imported every views module. The list is rebuilt
+    in place because ``dj_hx.urls.urlpatterns`` is this same list object, and the resolver for
     ``include("dj_hx.urls")`` reads it lazily and caches it, so a new list would never be seen.
     """
     urlpatterns[:] = [path(it.route, _routed_view(it), name=it.name) for it in registry.values()]

@@ -272,14 +272,22 @@ The rules:
 - **Any other method gets a 405** with `Allow`. The guard records nothing for it.
 - **The partial's root element carries `id="<partial name>"`**, checked on every reply, so the
   element `hx-swap="outerHTML"` puts back keeps the id the next request targets.
-- **View decorators go above `@interaction`.** It returns the routed view, and `dj_hx.urls`
-  routes each interaction to whatever its module holds under the handler's name, as written:
-  `@login_required` above it wraps the route, as on any Django view, and so does a hand-written
-  check. Write your own with `functools.wraps`, as Django's are, so dj-hx's messages and `hx_map`
-  name the handler rather than the decorator's inner function. A signed-out request to a
-  `@login_required` interaction gets its 302. On a control that targets an element the guard
-  records that 302 (`HxRedirectIntoFragment`), as it does for any view, because fetch would follow
-  it into the target.
+- **View decorators go above `@interaction`, and the module holds what it returned.**
+  `@interaction` returns the routed view, and `dj_hx.urls` routes each interaction to whatever its
+  module holds under the handler's name, as written:
+  - `@login_required` above it wraps the route, as on any Django view, and so does a hand-written
+    check. Write your own with `functools.wraps`, as Django's are, so dj-hx's messages and `hx_map`
+    name the handler rather than the decorator's inner function.
+  - That name must hold the view `@interaction` returned, or a decorator of it, and never the raw
+    handler. The call form `remind_view = interaction(...)(remind)` leaves `remind` itself there,
+    which would skip the method guard, so reading the URLconf raises `ImproperlyConfigured`. Write
+    `remind = interaction(...)(remind)`; the handler stays reachable as `remind.__wrapped__`.
+  - An interaction its module does not hold under its name, or holds as something not callable,
+    such as one defined inside a function, is routed to the bare view, and any decorator applied to
+    it is dropped.
+  - A signed-out request to a `@login_required` interaction gets its 302. On a control that targets
+    an element the guard records that 302 (`HxRedirectIntoFragment`), as it does for any view,
+    because fetch would follow it into the target.
 
 ## What is loud
 
@@ -304,6 +312,7 @@ by `HxTestClient`. Nothing is gated on `DEBUG` that a test needs.
 | A control pointing at a view that calls no verb; a view that calls `.retarget()` or `.reswap()` | `manage.py hx_map`, as warnings |
 | `HxMiddleware` missing, listed before `MessageMiddleware`, `HX_MESSAGES_TEMPLATE` unset or unresolvable, no partials on Django < 6, `HxMixin` after a Django base | checks `dj_hx.W001`, `E002`, `W003`, `W004`, `W006`, `E007` |
 | `HX_EXTENSIONS` names an extension htmx 4 does not ship, or is a string | check `dj_hx.W008`; htmx's registered name (`sse`) and the file name (`hx-sse`) both count |
+| An interaction's module holds the raw handler under its name (`remind_view = interaction(...)(remind)`), or a decorator of the raw handler, so its route would skip the method guard | `ImproperlyConfigured` when the URLconf is first read (the first request, or `manage.py check`), naming the module attribute and the fix |
 | An `@interaction` that cannot work: two with one name, a minted route for a handler in no installed app, `route=` parameters that are not the handler's (or `<str:...>` for one annotated `int`), a `partial=` that is not `page.html#name`, `triggers=` given as a string | `ImproperlyConfigured` when the views module is imported, so at start-up, naming the handler |
 | An interaction returns anything but a `dict` or `None`, an `HttpResponse` included, or a view decorator below `@interaction` answers with one | `ImproperlyConfigured`: an interaction always re-renders its partial; leave the page from a view that returns `navigate()`, and put Django view decorators above `@interaction` |
 | An interaction's reply sets a key its context does not define, a refusal's `error` included | `ImproperlyConfigured`, naming the key and the context function: define each there with its default |

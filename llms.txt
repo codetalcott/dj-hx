@@ -237,13 +237,18 @@ urlpatterns = [..., path("", include("dj_hx.urls"))]   # once, at the site root
   routed view and `dj_hx.urls` routes whatever the module holds under the handler's name, as written, so every
   decorator above it wraps the route, a hand-written one included. Write your own with `functools.wraps`, so
   dj-hx's messages and `hx_map` name the handler. Below it, a decorator that returns a response is a
-  return-type error. `login_required`'s 302 to a control that targets an
+  return-type error. The module must hold the view `@interaction` returned (or a decorator of it) under the
+  handler's name, never the raw handler: `remind_view = interaction(...)(remind)` raises when the URLconf is
+  read; write `remind = interaction(...)(remind)` (the handler is `remind.__wrapped__`). An interaction the
+  module does not hold under its name gets the bare view, and decorators applied to it are dropped. `login_required`'s 302 to a control that targets an
   element is recorded by the guard (`HxRedirectIntoFragment`), as for any view.
 - Reply: `fragment()` of the partial with `context(request, <the route parameters it names>)` and the
   returned keys over it, status 200, then `.trigger(name)` for each of `triggers`. Its root element must
   carry `id="<partial name>"` (`HxPartialRootId`).
 - Refusal: an exception in `refuses` re-renders the partial with `error=str(exc)`, status 422, no triggers.
   Any other exception is a 500. Any other method is a 405.
+- `ImproperlyConfigured` when the URLconf is first read (first request, `manage.py check`): the module holds
+  the raw handler under its name, or a decorator of the raw handler.
 - `ImproperlyConfigured` at import: a duplicate name, a minted route for a handler in no installed app, a
   `route=` that does not match, `partial=` not `page.html#name`, `triggers=` a string. At the reply: a return
   that is not a dict or `None` (a view decorator below `@interaction` returning a response included), or a
