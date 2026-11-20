@@ -14,8 +14,12 @@ register = template.Library()
 
 
 @register.simple_tag
-def act(name, *args, **kwargs):
-    """The route of interaction ``name``, reversed from keyword arguments named like its parameters."""
+def act(interaction_name, /, *args, **kwargs):
+    """
+    The route of interaction ``interaction_name``, reversed from keyword arguments named like its
+    parameters. Positional-only, so every keyword reaches ``kwargs``: a handler may take ``name``.
+    """
+    name = interaction_name
     it = registry.get(name)
     if it is None:
         known = ", ".join(sorted(registry)) or "none"

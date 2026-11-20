@@ -15,8 +15,8 @@ to a verb signature, a setting, an error, a check id or a lint rule must be mirr
 The checked-in `.venv` has Django 6.0, pytest, ruff and playwright.
 
 ```
-.venv/bin/python -m pytest                      # 153 tests, ~5s
-.venv/bin/python -m pytest -m "not browser"     # 146, skipping Chromium
+.venv/bin/python -m pytest                      # 157 tests, ~5s
+.venv/bin/python -m pytest -m "not browser"     # 150, skipping Chromium
 .venv/bin/python -m pytest -m browser           # the 7 Playwright tests alone
 .venv/bin/python -m pytest tests/test_verbs.py::test_text_escapes
 .venv/bin/ruff check .
@@ -77,8 +77,11 @@ route to the module's `urlpatterns`, which [urls.py](dj_hx/urls.py) serves (`inc
 namespace `dj_hx`); [templatetags/hx.py](dj_hx/templatetags/hx.py) is `{% act %}`, which reverses
 from keyword arguments only. [apps.py](dj_hx/apps.py)'s `ready()` imports every project app's `views`
 module (`templates.in_site_packages` decides what is the project's), so every route is registered
-before the URLconf is read. The decorator returns the handler unchanged and registers the view, so
-nothing above it reaches the route.
+before the URLconf is read. The decorator returns the routed view; when `dj_hx/urls.py` is first
+imported, `bind_routes()` points each route at what the handler's module holds under its name, so a
+Django view decorator written above `@interaction` wraps the route. It rebuilds the list in place,
+because an `include()`'s resolver keeps the list object it was first given; an interaction registered
+after that keeps a route to its bare view.
 
 **The map is split by framework.** [mapcore.py](dj_hx/mapcore.py) is framework-neutral: template scan,
 the AST visitor that finds verb calls, the control-vs-handler checks. [hxmap.py](dj_hx/hxmap.py) is the
@@ -115,6 +118,8 @@ is genuinely Django-specific; the core is vendored from hx-flask (see below).
 - `tests/interactions_app/` is an installed app (label `rota`, from its `apps.py`; installed by `tests/settings.py`), because a
   minted route needs an app label; dj-hx's `ready()` imports its views. A test that defines its own
   interactions takes the `scratch` fixture in `tests/test_interactions.py`, which restores the registry.
+  `tests/settings.py` also adds `django.contrib.auth` and `AuthenticationMiddleware` (the example has
+  neither) for the `@login_required` test.
 - `tests/test_contact_app.py` and `tests/test_browser.py` run against `example/`, mirroring hx-flask's
   suite for a like-for-like comparison.
 - pytest does not run system checks, so check coverage goes through `assert_no_hx_check_issues()`.

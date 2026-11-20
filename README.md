@@ -255,14 +255,16 @@ The rules:
 - **Interactions live in an app's `views.py`.** dj-hx's `ready()` imports the `views` module of
   every installed app outside site-packages, so every route exists before the URLconf is read. An
   interaction defined anywhere else has to be imported before then, and one in a pip-installed app
-  is not registered until something imports its views.
+  is not registered until something imports its views. One registered after the URLconf was read
+  is routed to its view alone, without the view decorators above it.
 - **The reply is always the partial**, through `fragment()`. `context` is called on every reply
   with the route parameters it names, and the handler's keys are laid over it. A key the handler
   returns must already be in the context: define each there with its default (`notified: False`,
   `error: None`), so the page renders the same names as the reply.
 - **One return type:** a `dict` or `None`. Anything else, an `HttpResponse` included, raises. An
   interaction always re-renders its partial; to leave the page, write a view that returns
-  `navigate()`.
+  `navigate()`. A view decorator written below `@interaction` that answers with a response, such
+  as `@login_required` redirecting, raises the same way.
 - **A declared refusal is a 422.** An exception listed in `refuses` re-renders the partial with
   `error=str(exc)` and status 422, which htmx 4 swaps, and sends no triggers. The handler writes no
   `try`. Any other exception is a 500.
@@ -270,9 +272,11 @@ The rules:
 - **Any other method gets a 405** with `Allow`. The guard records nothing for it.
 - **The partial's root element carries `id="<partial name>"`**, checked on every reply, so the
   element `hx-swap="outerHTML"` puts back keeps the id the next request targets.
-- **`@interaction` goes outermost.** It registers the function it decorates, so a decorator listed
-  above it, such as `@login_required`, wraps the module's name and never reaches the route. Check
-  access in the handler; Django answers `PermissionDenied` with a 403.
+- **View decorators go above `@interaction`.** It returns the routed view, and `dj_hx.urls`
+  routes each interaction to what its module holds under the handler's name, so `@login_required`
+  written above it wraps the route, as on any Django view. A signed-out request then gets
+  `login_required`'s 302. On a control that targets an element the guard records that 302
+  (`HxRedirectIntoFragment`), as it does for any view, because fetch would follow it into the target.
 
 ## What is loud
 
@@ -298,7 +302,7 @@ by `HxTestClient`. Nothing is gated on `DEBUG` that a test needs.
 | `HxMiddleware` missing, listed before `MessageMiddleware`, `HX_MESSAGES_TEMPLATE` unset or unresolvable, no partials on Django < 6, `HxMixin` after a Django base | checks `dj_hx.W001`, `E002`, `W003`, `W004`, `W006`, `E007` |
 | `HX_EXTENSIONS` names an extension htmx 4 does not ship, or is a string | check `dj_hx.W008`; htmx's registered name (`sse`) and the file name (`hx-sse`) both count |
 | An `@interaction` that cannot work: two with one name, a minted route for a handler in no installed app, `route=` parameters that are not the handler's (or `<str:...>` for one annotated `int`), a `partial=` that is not `page.html#name`, `triggers=` given as a string | `ImproperlyConfigured` when the views module is imported, so at start-up, naming the handler |
-| An interaction returns anything but a `dict` or `None`, an `HttpResponse` included | `ImproperlyConfigured`: an interaction always re-renders its partial; leave the page from a view that returns `navigate()` |
+| An interaction returns anything but a `dict` or `None`, an `HttpResponse` included, or a view decorator below `@interaction` answers with one | `ImproperlyConfigured`: an interaction always re-renders its partial; leave the page from a view that returns `navigate()`, and put Django view decorators above `@interaction` |
 | An interaction's reply sets a key its context does not define, a refusal's `error` included | `ImproperlyConfigured`, naming the key and the context function: define each there with its default |
 | `{% act %}` with a positional argument, a keyword the handler does not take, a missing one, or a name no interaction has | `TemplateSyntaxError` at render, naming the handler's parameters, or listing the interactions there are |
 

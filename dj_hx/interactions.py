@@ -30,12 +30,16 @@ Interactions: one handler bound to one template partial, by name.
 - A request with any other method gets a 405.
 - dj-hx's ``ready()`` imports each project app's ``views`` module, so every route exists before
   the URLconf is read.
+- ``@interaction`` returns the routed view, and ``dj_hx.urls`` routes each interaction to what its
+  module holds under the handler's name, so Django view decorators written above it
+  (``@login_required``) wrap the route, as on any view.
 """
 
 from __future__ import annotations
 
 import functools
 import inspect
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from importlib import import_module
@@ -52,7 +56,7 @@ from .verbs import HxResponse, check_root_id, fragment
 __all__ = ["interaction"]
 
 registry: dict[str, Interaction] = {}
-urlpatterns: list = []  # served by dj_hx.urls; filled as each app's views module is imported
+urlpatterns: list = []  # served by dj_hx.urls; filled as each app's views module is imported, bound by bind_routes()
 
 
 @dataclass(frozen=True)
@@ -68,7 +72,9 @@ class Interaction:
     refuses: tuple[type[BaseException], ...]
     triggers: tuple[str, ...]
     params: tuple[str, ...]
-    func: Callable[..., Any]
+    func: Callable[..., Any]  # the handler
+    route: str
+    view: Callable[..., Any]  # the routed view @interaction returned, before any decorator above it
 
     def respond(self, request, **kwargs):
         """The wrapper view's body: the method guard, the handler, then its partial."""
@@ -83,7 +89,8 @@ class Interaction:
             raise ImproperlyConfigured(
                 f"{self.name}() returned {type(reply).__name__}; an interaction returns a dict of context keys, or "
                 "None. An interaction always re-renders its partial; to leave the page, write a view that returns "
-                "navigate()."
+                "navigate(). Django view decorators (@login_required, @permission_required) go above "
+                "@interaction, where they wrap the routed view."
             )
         response = self._render(request, kwargs, reply or {}, f"{self.name}() returns")
         for name in self.triggers:
@@ -131,7 +138,7 @@ def _check_route(name: str, route: str, pattern, params: list[inspect.Parameter]
 
 
 def interaction(method: str, *, partial: str, context: Callable[..., dict], refuses=(), triggers=(), route=None):
-    """Register the decorated function as an interaction; see the module docstring. Returns it unchanged."""
+    """Register the decorated function as an interaction (see the module docstring) and return its routed view."""
 
     def decorate(func):
         name = func.__name__
@@ -153,18 +160,6 @@ def interaction(method: str, *, partial: str, context: Callable[..., dict], refu
                 f"Write triggers=({triggers!r},)."
             )
         params = list(inspect.signature(func).parameters.values())[1:]
-        it = Interaction(
-            name=name,
-            method=method.upper(),
-            template=template,
-            partial=part,
-            context=context,
-            context_params=tuple(list(inspect.signature(context).parameters)[1:]),
-            refuses=tuple(refuses),
-            triggers=tuple(triggers),
-            params=tuple(p.name for p in params),
-            func=func,
-        )
 
         def view(request, **kwargs):
             return it.respond(request, **kwargs)
@@ -183,11 +178,43 @@ def interaction(method: str, *, partial: str, context: Callable[..., dict], refu
         else:
             pattern = path(route, view, name=name)
             _check_route(name, route, pattern, params)
+        it = Interaction(
+            name=name,
+            method=method.upper(),
+            template=template,
+            partial=part,
+            context=context,
+            context_params=tuple(list(inspect.signature(context).parameters)[1:]),
+            refuses=tuple(refuses),
+            triggers=tuple(triggers),
+            params=tuple(p.name for p in params),
+            func=func,
+            route=str(pattern.pattern),
+            view=view,
+        )
         registry[name] = it
-        urlpatterns.append(pattern)
-        return func
+        urlpatterns.append(pattern)  # routed to the view until bind_routes() runs
+        return view
 
     return decorate
+
+
+def _routed_view(it: Interaction):
+    """What the handler's module holds under its name, if that is the view or wraps it; else the view."""
+    held = getattr(sys.modules.get(it.view.__module__), it.name, None)
+    if held is not None and inspect.unwrap(held, stop=lambda f: f is it.view) is it.view:
+        return held
+    return it.view
+
+
+def bind_routes() -> None:
+    """
+    Route each interaction to what its module holds under the handler's name: the view
+    ``@interaction`` returned, wrapped by any Django view decorators written above it. ``dj_hx.urls``
+    calls this when it is first imported, after ``ready()`` has imported every views module. The list
+    is rebuilt in place, because an ``include()`` keeps the list object it was first given.
+    """
+    urlpatterns[:] = [path(it.route, _routed_view(it), name=it.name) for it in registry.values()]
 
 
 def import_views() -> None:

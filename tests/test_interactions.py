@@ -10,6 +10,7 @@ import sys
 
 import pytest
 from django.apps import apps
+from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ImproperlyConfigured
 from django.http import HttpResponse
 from django.template import Context, Template, TemplateSyntaxError
@@ -17,7 +18,8 @@ from django.test import override_settings
 from django.urls import Resolver404, clear_url_caches, resolve, reverse
 from django.utils.module_loading import module_has_submodule
 
-from dj_hx import HxFragmentIntoPage, HxPartialRootId, interaction
+import dj_hx.urls  # noqa: F401  binds the routes now, after ready(), before any `scratch` snapshot of them
+from dj_hx import HxFragmentIntoPage, HxPartialRootId, HxRedirectIntoFragment, interaction
 from dj_hx.interactions import registry, urlpatterns
 from dj_hx.templates import in_site_packages
 from tests.conftest import locmem
@@ -27,7 +29,8 @@ ROTA = """{% extends "layout.html" %}{% load hx %}{% block content %}<h1>{{ cont
 {% partialdef notify inline %}<div id="notify">{% for member in members %}<button hx-post="{% act 'notify' contest=contest member=member %}" hx-target="#notify" hx-swap="outerHTML">Notify {{ member }}</button>{% endfor %}{% if notified %}<p class="done">Notified {{ notified }}</p>{% endif %}{% if error %}<p class="error">{{ error }}</p>{% endif %}</div>{% endpartialdef %}
 {% endblock %}"""
 
-REVIEWERS = """{% load hx %}{% partialdef reviewer inline %}<div id="reviewer"><button hx-post="{% act 'notify_reviewer' member=member %}" hx-target="#reviewer" hx-swap="outerHTML">Notify reviewer {{ member }}</button>{% if notified %}<p class="done">Reviewer notified</p>{% endif %}</div>{% endpartialdef %}"""
+REVIEWERS = """{% load hx %}{% partialdef reviewer inline %}<div id="reviewer"><button hx-post="{% act 'notify_reviewer' member=member %}" hx-target="#reviewer" hx-swap="outerHTML">Notify reviewer {{ member }}</button>{% if notified %}<p class="done">Reviewer notified</p>{% endif %}</div>{% endpartialdef %}
+{% partialdef signoff inline %}<div id="signoff">{% if signed %}Signed off by {{ request.user.username }}{% endif %}</div>{% endpartialdef %}"""
 
 SCRATCH = """{% partialdef box inline %}<div id="box">{{ value }}{% if error %} {{ error }}{% endif %}</div>{% endpartialdef %}
 {% partialdef rootless inline %}<div class="box">{{ value }}</div>{% endpartialdef %}"""
@@ -132,7 +135,7 @@ def test_two_interactions_cannot_share_a_name(scratch):
         match=r"Two interactions are named notify\(\), in tests\.interactions_app\.views and tests\.test_interactions",
     ):
         interaction("POST", partial="scratch.html#box", context=nothing, route="elsewhere/")(notify)
-    assert registry["notify"].func is views.notify
+    assert registry["notify"].view is views.notify  # @interaction returns the routed view
 
 
 @pytest.mark.parametrize("partial", ["scratch.html", "scratch.html#", "#box", "scratch.html#box.html"])
@@ -277,18 +280,39 @@ def test_the_reply_root_carries_the_partial_name(scratch, rota, client):
         client.hx_post("/t/rootless")
 
 
-def test_a_decorator_above_interaction_never_reaches_the_route(scratch, rota, client):
-    def deny(func):
-        def wrapper(request, **kwargs):
-            raise AssertionError("the route ran the decorator")
-        return wrapper
+def test_a_view_decorator_above_interaction_wraps_the_route(rota, client, db, django_user_model):
+    url = reverse("dj_hx:sign_off", kwargs={"member": 5})
+    r = client.post(url)  # a browser, signed out: @login_required answers
+    assert (r.status_code, r["Location"]) == (302, f"/accounts/login/?next={url}")
+    with pytest.raises(HxRedirectIntoFragment, match=r"sign_off\(\) answered a request that targets an element with a 302"):
+        client.hx_post(url)  # its 302 to a control that targets an element, which the guard records
+    client.force_login(django_user_model.objects.create_user("ada"))
+    r = client.hx_post(url)
+    assert (r.status_code, r.content.decode()) == (200, '<div id="signoff">Signed off by ada</div>')
 
-    @deny
-    @interaction("POST", partial="scratch.html#box", context=box_context, route="t/guarded")
-    def guarded(request):
-        return {"value": "the handler ran undecorated"}
 
-    assert client.hx_post("/t/guarded").content.decode() == '<div id="box">the handler ran undecorated</div>'
+def test_a_view_decorator_below_interaction_is_a_return_type_error(scratch, rota, client, db):
+    @interaction("POST", partial="scratch.html#box", context=box_context, route="t/below")
+    @login_required
+    def below(request):
+        return {"value": "signed in"}
+
+    with pytest.raises(
+        ImproperlyConfigured,
+        match=r"below\(\) returned HttpResponseRedirect; .*write a view that returns navigate\(\)\. Django view "
+        r"decorators \(@login_required, @permission_required\) go above @interaction, where they wrap the routed view\.",
+    ):
+        client.hx_post("/t/below")  # signed out
+
+
+def test_an_interaction_registered_after_the_urlconf_was_read_is_routed_to_its_view_alone(scratch, rota, client, db):
+    # The `scratch` interactions are all registered late; README says a decorator above one is not bound.
+    @login_required
+    @interaction("POST", partial="scratch.html#box", context=box_context, route="t/late")
+    def late(request):
+        return {"value": "routed undecorated"}
+
+    assert client.hx_post("/t/late").content.decode() == '<div id="box">routed undecorated</div>'  # signed out
 
 
 def test_findings_name_the_handler(rota, client):
@@ -326,6 +350,21 @@ def test_act_refuses_an_unknown_or_a_missing_keyword(rota):
 
 def test_act_lists_the_interactions_when_it_names_none(rota):
     with pytest.raises(
-        TemplateSyntaxError, match=r"\{% act 'notfy' %\} names no interaction; the interactions are: notify, notify_reviewer\."
+        TemplateSyntaxError,
+        match=r"\{% act 'notfy' %\} names no interaction; the interactions are: notify, notify_reviewer, sign_off\.",
     ):
         render_act("{% act 'notfy' %}")
+
+
+def test_act_reverses_a_handler_parameter_called_name(scratch, rota):
+    @interaction("POST", partial="scratch.html#box", context=box_context, route="t/rename/<str:name>")
+    def rename(request, name: str):
+        return None
+
+    clear_url_caches()
+    assert render_act("{% act 'rename' name='ada' %}") == "/t/rename/ada"
+
+
+def test_act_refuses_an_unknown_keyword_called_name(rota):
+    with pytest.raises(TemplateSyntaxError, match=r"\{% act 'notify' %\}: notify\(\) takes no name\. notify\(\) takes contest, member"):
+        render_act("{% act 'notify' contest='spring' member=3 name='x' %}")

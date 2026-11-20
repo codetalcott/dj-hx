@@ -232,7 +232,11 @@ urlpatterns = [..., path("", include("dj_hx.urls"))]   # once, at the site root
 - `{% act %}` takes keyword arguments only, one per handler parameter. A positional argument, an unknown or
   a missing keyword, or an unknown interaction raises `TemplateSyntaxError` at render.
 - Put interactions in an installed app's `views.py`: dj-hx's `ready()` imports the `views` module of every
-  app outside site-packages. `@interaction` is the outermost decorator; one above it never reaches the route.
+  app outside site-packages.
+- Django view decorators go ABOVE `@interaction` (`@login_required` then `@interaction(...)`). It returns the
+  routed view and `dj_hx.urls` routes to what the module holds, so they wrap the route. Below it, a decorator
+  that returns a response is a return-type error. `login_required`'s 302 to a control that targets an
+  element is recorded by the guard (`HxRedirectIntoFragment`), as for any view.
 - Reply: `fragment()` of the partial with `context(request, <the route parameters it names>)` and the
   returned keys over it, status 200, then `.trigger(name)` for each of `triggers`. Its root element must
   carry `id="<partial name>"` (`HxPartialRootId`).
@@ -240,7 +244,8 @@ urlpatterns = [..., path("", include("dj_hx.urls"))]   # once, at the site root
   Any other exception is a 500. Any other method is a 405.
 - `ImproperlyConfigured` at import: a duplicate name, a minted route for a handler in no installed app, a
   `route=` that does not match, `partial=` not `page.html#name`, `triggers=` a string. At the reply: a return
-  that is not a dict or `None`, or a returned key (a refusal's `error` included) the context lacks.
+  that is not a dict or `None` (a view decorator below `@interaction` returning a response included), or a
+  returned key (a refusal's `error` included) the context lacks.
 
 ### Settings
 
