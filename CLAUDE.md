@@ -149,9 +149,9 @@ interaction is found by the callback `dj_hx.urls.urlpatterns` routes it to (iden
 is scanned rather than a decorator's closure, and `_as_interaction()` records its partial and `triggers=`.
 The `__ACT<n>__` markers index one `acts` list shared by every template. The checks build this map at every
 `runserver` start, so `_scan_handlers` parses each views module once per map (`module_verbs`), not once per
-view, and `templates.in_site_packages` resolves the site roots once per set of directories: TextShelf's
-checks took 3.6 s before those two, and after them three runs had medians of 553, 639 and 659 ms
-(2026-11-20, Apple M4, Python 3.13.6, Django 6.1.2). New map logic belongs in `mapcore` unless it
+view, and `templates.in_site_packages` resolves the site roots once per set of directories. On a private
+378-template production project the checks took 3.6 s before those two, and after them three runs had
+medians of 553, 639 and 659 ms (2026-11-20, Apple M4, Python 3.13.6, Django 6.1.2). New map logic belongs in `mapcore` unless it
 is genuinely Django-specific; the core is vendored from hx-flask (see below).
 
 ## Vendored files: do not edit in place
