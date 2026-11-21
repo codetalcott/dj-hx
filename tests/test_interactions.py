@@ -1216,7 +1216,8 @@ def test_w024_an_interactions_trigger_no_template_listens_for(startup):
     assert warning.level == WARNING
     assert warning.msg == (
         "notify() announces 'rota-changed' in its triggers=, but no project template listens for it (hx-trigger, "
-        "hx-on or a hyperscript 'on rota-changed')."
+        "hx-on, or a hyperscript 'on rota-changed' in an attribute or a <script type=\"text/hyperscript\">), and no "
+        "script there names it."
     )
     assert 'hx-trigger="rota-changed from:body"' in warning.hint and "a JavaScript file" in warning.hint
 
@@ -1237,7 +1238,7 @@ def test_w025_a_listener_nothing_announces(startup, template, says):
     assert warning.level == WARNING and warning.msg.startswith(says)
     assert warning.msg.endswith(
         "but no view announces it with .trigger(), no interaction declares it in triggers=, and no script in the "
-        "templates names it."
+        "templates names it (a quoted name in a <script> or hx-on, or a hyperscript send or trigger)."
     )
     assert "cannot see every side" in warning.hint
 

@@ -55,14 +55,19 @@ E022 reads each {% url %} as Django's lexer does (not in a comment or {% verbati
 skips a name built at run time, and reverses the name through Django's resolver
 with a placeholder for each argument, chosen by the converter the pattern
 declares there: int 1; str, slug and path "a"; uuid 00000000-0000-0000-0000-000000000000.
-Positional and keyword arguments are counted apart, and {% url ... as var %} is
-checked too, because there a failed reverse stores "" instead of raising. A
-custom converter or a re_path group gets I023 instead.
+Positional and keyword arguments are counted apart; a keyword that names one of
+a route's extra kwargs is passed that default. {% url ... as var %} is skipped:
+it is Django's documented form for a view that may be missing. A custom
+converter or a re_path group gets I023 instead. It reads .html and .htm
+templates and reverses against ROOT_URLCONF only.
 W024 and W025 pair the events views announce with .trigger() (as hx_map finds
 them) and interactions declare in triggers= with the listeners in the project's
-templates (hx-trigger, hx-on, hyperscript on), through mapcore.unpaired_events(),
-the pairing hx_map warns from. A browser event, and a name a script or hx-on
-handler in the templates sends, is never asked to be announced. They are
+templates (hx-trigger, hx-on, and hyperscript on in an attribute or a
+<script type="text/hyperscript">, behaviors included), through
+mapcore.unpaired_events(), the pairing hx_map warns from. A browser event is
+never asked to be announced. An event a script names (a quoted name in a
+<script> or hx-on, or a hyperscript send or trigger) counts for both sides,
+since the scan cannot tell whether the script listens or sends. They are
 Warnings because a scan cannot see every side: a JavaScript file, a template in
 site-packages, or a helper the view calls. An interaction in site-packages
 announces its triggers= but is not warned about.
@@ -687,7 +692,8 @@ def _root_messages(it, line: int, body: str) -> list:
 def check_url_tags(app_configs=None, **kwargs):
     """
     Every ``{% url %}`` with a quoted name in the project's templates reverses with the arguments it
-    passes (E022), or names the converter that keeps it from being checked (I023).
+    passes (E022), or names the converter that keeps it from being checked (I023). ``{% url ... as var %}``
+    is skipped: it is Django's documented form for a view that may be missing, and stores "" then.
     """
     if not _should_run(app_configs):
         return []
@@ -705,7 +711,7 @@ def check_url_tags(app_configs=None, **kwargs):
     messages = []
     for template, source in template_sources().items():
         for tag in url_tags(source):
-            if tag.name is not None:  # a name built at run time is the page's to resolve
+            if tag.name is not None and tag.stored_as is None:  # a name built at run time, or `as var`
                 messages += _url_messages(tag, f"{template}:{tag.line}")
     return messages
 
@@ -725,9 +731,10 @@ def _placeholder(converter):
 
 def _url_patterns(name: str):
     """
-    ``(patterns, None)``: what ``reverse(name)`` chooses among, as ``(route, params, converters)``, read
-    from the resolver through the namespaces as ``reverse()`` walks them. ``(None, (namespace, inside,
-    known))`` when a namespace on the way is not installed.
+    ``(patterns, None)``: what ``reverse(name)`` chooses among, as ``(route, params, converters,
+    defaults)``, read from the resolver through the namespaces as ``reverse()`` walks them; ``defaults``
+    are the route's extra kwargs, which a keyword may name. ``(None, (namespace, inside, known))`` when a
+    namespace on the way is not installed.
     """
     from django.urls import get_resolver
     from django.urls.resolvers import get_ns_resolver
@@ -748,8 +755,8 @@ def _url_patterns(name: str):
     if ns_pattern:
         resolver = get_ns_resolver(ns_pattern, resolver, tuple(ns_converters.items()))
     patterns = [
-        (route, params, converters)
-        for possibilities, _, _, converters in resolver.reverse_dict.getlist(view)
+        (route, params, converters, defaults)
+        for possibilities, _, defaults, converters in resolver.reverse_dict.getlist(view)
         for route, params in possibilities
     ]
     return patterns, None
@@ -780,12 +787,7 @@ def _url_messages(tag, where: str) -> list:
     from django.urls import NoReverseMatch, get_resolver, reverse
 
     shown = f"{{% url '{tag.name}' %}}"
-    fails = (
-        f"so {{% url ... as {tag.stored_as} %}} stores an empty string in {tag.stored_as} instead of raising, and "
-        "whatever reads it gets no URL"
-        if tag.stored_as
-        else "so the page raises NoReverseMatch at render"
-    )
+    fails = "so the page raises NoReverseMatch at render"
 
     def error(msg, hint):
         return [Error(msg, hint=hint, obj=where, id="dj_hx.E022")]
@@ -819,14 +821,16 @@ def _url_messages(tag, where: str) -> list:
             f"Correct the name in the tag, or name the pattern: path(..., name={tag.name.rsplit(':', 1)[-1]!r}).",
         )
     unchecked = []
-    for route, params, converters in patterns:
+    for route, params, converters, defaults in patterns:
         passed = params[: tag.positional] if tag.positional else [k for k in tag.keywords if k in params]
         values = {p: _placeholder(converters.get(p)) for p in passed}
         if None in values.values():
             unchecked.append((route, params, converters, next(p for p, v in values.items() if v is None)))
             continue
         args = [values.get(p, "a") for p in params[: tag.positional]] + ["a"] * (tag.positional - len(params))
-        kwargs = {k: values.get(k, "a") for k in tag.keywords}
+        # a keyword naming one of the route's extra kwargs reverses only with its value: pass that, so a
+        # literal that differs is missed rather than a correct tag called wrong
+        kwargs = {k: values[k] if k in values else defaults.get(k, "a") for k in tag.keywords}
         try:
             reverse(tag.name, args=args, kwargs=kwargs)
         except NoReverseMatch:
@@ -856,7 +860,7 @@ def _url_messages(tag, where: str) -> list:
         passes = f"the keyword{'s' if len(tag.keywords) > 1 else ''} {', '.join(tag.keywords)}"
     else:
         passes = "no arguments"
-    routes = [(_route_shown(route, params, conv), ", ".join(params) or "nothing") for route, params, conv in patterns]
+    routes = [(_route_shown(route, params, conv), ", ".join(params) or "nothing") for route, params, conv, _ in patterns]
     if len(routes) == 1:
         takes = f"{routes[0][0]}, which takes {routes[0][1]}"
     else:
@@ -904,8 +908,9 @@ def check_events(app_configs=None, **kwargs):
             who, how = (f"{it.name}()", "in its triggers=") if it else (h.label, "with .trigger()")
             messages.append(
                 Warning(
-                    f"{who} announces '{event}' {how}, but no project template listens for it (hx-trigger, hx-on or "
-                    f"a hyperscript 'on {event}').",
+                    f"{who} announces '{event}' {how}, but no project template listens for it (hx-trigger, hx-on, or "
+                    f"a hyperscript 'on {event}' in an attribute or a <script type=\"text/hyperscript\">), and no "
+                    "script there names it.",
                     hint=f'Listen where the change should show: hx-trigger="{event} from:body", or '
                     f'_="on {event} from body ..."; or stop announcing it. ' + _UNSEEN.format("listen", "W024"),
                     obj=f"{it.view.__module__}.{it.name}" if it else h.endpoint,
@@ -917,7 +922,8 @@ def check_events(app_configs=None, **kwargs):
         messages.append(
             Warning(
                 f"'{event}' is listened for ({where}), but no view announces it with .trigger(), no interaction "
-                "declares it in triggers=, and no script in the templates names it.",
+                "declares it in triggers=, and no script in the templates names it (a quoted name in a <script> or "
+                "hx-on, or a hyperscript send or trigger).",
                 hint=f"Announce it, with triggers=({event!r},) on the interaction or .trigger({event!r}) on the "
                 "view's response, or correct the name. " + _UNSEEN.format("send it", "W025"),
                 obj=f"{heard[0].file}:{heard[0].line}",

@@ -52,8 +52,10 @@ event fired without a target lands on `document` after a delete swap, where a
   on a control reaching a view that calls no verb, and on a view that calls
   `.retarget()` or `.reswap()`, naming the controls whose templates no longer
   predict the DOM effect. `--by-template` reads the map from the other end.
-  A hyperscript listener (`_="on x from body ..."`) pairs with a view's
-  `.trigger("x")` like an `hx-trigger`. An `{% act %}` control resolves
+  A hyperscript listener (`_="on x from body ..."`, or in a
+  `<script type="text/hyperscript">`, behaviors included) pairs with a view's
+  `.trigger("x")` like an `hx-trigger`, and an event a script names counts
+  for both sides. An `{% act %}` control resolves
   through the interaction registry, as a `{% url %}` control resolves through
   the URLconf: the interaction answers its method with its partial and
   announces its `triggers=`, and an `{% act %}` naming no interaction, or
@@ -122,20 +124,24 @@ event fired without a target lands on `document` after a delete swap, where a
   (W018) and for one below it (W019); an Info for an `{% act %}` no element's
   verb attribute holds (I021), which `assert_no_hx_check_issues()` counts.
 - `{% url %}` checks, from `manage.py check`: every `{% url %}` with a quoted
-  name in the project's templates reverses with the arguments it passes
-  (E022), through Django's resolver with a placeholder for the converter each
-  argument's route declares, positional and keyword arguments counted apart.
-  `{% url ... as var %}` is checked too, since there a failed reverse is a
-  silent empty string. The message names template:line and the route, and
-  lists close names for one that does not exist or a namespace no URLconf
-  installs. A route with a custom converter or a `re_path` group gets an Info
-  instead (I023); a name built at run time, or a tag in a comment or
-  `{% verbatim %}`, is skipped.
+  name in the project's `.html` and `.htm` templates reverses, against
+  `ROOT_URLCONF`, with the arguments it passes (E022), through Django's
+  resolver with a placeholder for the converter each argument's route
+  declares, positional and keyword arguments counted apart, and a keyword
+  that names a route's extra kwarg passed that default. The message names
+  template:line and the route, and lists close names for one that does not
+  exist or a namespace no URLconf installs. A route with a custom converter or
+  a `re_path` group gets an Info instead (I023). Skipped: `{% url ... as var %}`,
+  Django's documented form for a view that may be missing; a name built at
+  run time; a tag in a comment or `{% verbatim %}`.
 - Event checks, from `manage.py check`: an event a view announces with
   `.trigger()` (as `hx_map` finds it) or an interaction declares in
   `triggers=` that no project template listens for (W024), and an event a
-  template listens for that nothing announces (W025), browser events and the
-  names scripts send left out. They call the pairing `hx_map` warns from
+  template listens for that nothing announces (W025), browser events left out.
+  A hyperscript `on` counts in an attribute or a `<script type="text/hyperscript">`,
+  behaviors included, and an event a script names (a quoted name in a
+  `<script>` or `hx-on`, a hyperscript `send`) counts for both sides. They call
+  the pairing `hx_map` warns from
   (hx-flask's `mapcore.unpaired_events`), and they are Warnings, because a
   JavaScript file, a template in site-packages or a helper the view calls can
   be the other side.

@@ -3,6 +3,7 @@
 import importlib.util
 import io
 import site
+import sys
 import sysconfig
 import types
 from pathlib import Path
@@ -230,3 +231,27 @@ def test_the_map_skips_a_view_installed_in_user_site_packages(user_site):
         path("m/detail/", mapping.detail, name="m-detail"),
     ]
     assert sorted(build_map(urlconf, sources={}).handlers) == ["m-detail"]
+
+
+def test_the_map_reads_each_views_module_for_its_own_verb_names(tmp_path, monkeypatch):
+    # one parse of a module serves every view routed from it; a view in another module gets that module's names
+    sources = {
+        "aliased_views": "import dj_hx as hx\n\n\ndef one(request):\n    return hx.page(request, 'one.html')\n\n\n"
+        "def two(request):\n    return hx.page(request, 'two.html')\n",
+        "renamed_views": "from dj_hx import fragment as frag\n\n\ndef three(request):\n    return frag(request, 'three.html', 'part')\n",
+    }
+    for name, source in sources.items():
+        (tmp_path / f"{name}.py").write_text(source)
+        spec = importlib.util.spec_from_file_location(name, tmp_path / f"{name}.py")
+        module = importlib.util.module_from_spec(spec)
+        monkeypatch.setitem(sys.modules, name, module)  # inspect.getmodule() finds a view's module there
+        spec.loader.exec_module(module)
+    aliased, renamed = sys.modules["aliased_views"], sys.modules["renamed_views"]
+    urlconf = types.ModuleType("two_modules_urls")
+    urlconf.urlpatterns = [
+        path("1/", aliased.one, name="one"),
+        path("2/", aliased.two, name="two"),
+        path("3/", renamed.three, name="three"),
+    ]
+    m = build_map(urlconf, sources={})
+    assert {endpoint: h.verbs for endpoint, h in m.handlers.items()} == {"one": {"page"}, "two": {"page"}, "three": {"fragment"}}

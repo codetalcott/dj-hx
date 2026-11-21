@@ -360,13 +360,16 @@ by `HxTestClient`. Nothing is gated on `DEBUG` that a test needs.
 | Interactions registered, but `dj_hx.urls` not included | check `dj_hx.E020`; `{% act %}` raises `ImproperlyConfigured`; both name `path("", include("dj_hx.urls"))` |
 | A decorator above `@interaction` written without `functools.wraps`, so nothing can see that it wraps the interaction; a decorator below `@interaction` (the handler has `__wrapped__`) | checks `dj_hx.W018` (use `functools.wraps`) and `W019` (view decorators belong above `@interaction`) |
 | An `{% act %}` the checks cannot tie to one element's verb attribute: in a `<script>` or text, in another attribute, stored with `as`, or naming its interaction with a variable | check `dj_hx.I021`, an Info naming template:line; a quoted name and its keywords are still checked. `assert_no_hx_check_issues()` counts it, so silence it by id where it is deliberate |
-| A `{% url 'name' … %}` in a project template that does not reverse: a name no pattern has (close names are listed), a namespace no URLconf installs, positional arguments or keywords the route does not take, or both kinds mixed; `{% url … as var %}` included, where the failure is silent (`var` is an empty string) | check `dj_hx.E022`, naming template:line and the route the name has. Each argument is reversed with a placeholder for the converter its route declares (`int` 1; `str`, `slug` and `path` "a"; `uuid` all zeros), so a route with a custom converter or a `re_path` group is not checked: Info `dj_hx.I023` names it. A name built at run time (a variable, a filter on it) is skipped, and so is a tag in a comment or `{% verbatim %}` |
-| An event a view announces with `.trigger()` (as `hx_map` finds it) or an interaction declares in `triggers=` that no project template listens for (`hx-trigger`, `hx-on`, a hyperscript `on`); an event a template listens for that nothing announces, leaving out browser events and the names a script or `hx-on` handler in the templates sends | checks `dj_hx.W024` (naming the view or the handler) and `W025` (naming template:line), through the pairing `hx_map` uses. Warnings, not Errors: a JavaScript file, a template in site-packages or a helper the view calls can be the other side, which a scan cannot see |
+| A `{% url 'name' … %}` in a project's `.html` or `.htm` template that does not reverse: a name no pattern has (close names are listed), a namespace no URLconf installs, positional arguments or keywords the route does not take, or both kinds mixed | check `dj_hx.E022`, naming template:line and the route the name has. Each argument is reversed with a placeholder for the converter its route declares (`int` 1; `str`, `slug` and `path` "a"; `uuid` all zeros), and a keyword that names one of a route's extra kwargs (`path("feed.atom", view, {"fmt": "atom"})`) with that default, so a route with a custom converter or a `re_path` group is not checked: Info `dj_hx.I023` names it. `{% url … as var %}` is skipped, as Django's documented form for a view that may be missing (admin's own templates use it), and so are a name built at run time (a variable, a filter on it) and a tag in a comment or `{% verbatim %}`. It reverses against `ROOT_URLCONF` only: a site that sets `request.urlconf` per request silences it |
+| An event a view announces with `.trigger()` (as `hx_map` finds it) or an interaction declares in `triggers=` that no project template listens for (`hx-trigger`, `hx-on`, a hyperscript `on` in an `_`, `script` or `data-script` attribute or in a `<script type="text/hyperscript">`, behaviors included); an event a template listens for that nothing announces, leaving out browser events. An event a script in the templates names (a quoted name in a `<script>` or `hx-on`, such as `addEventListener('x', …)`, or a hyperscript `send` or `trigger`) counts for both sides, since the scan cannot tell whether the script listens or sends | checks `dj_hx.W024` (naming the view or the handler) and `W025` (naming template:line), through the pairing `hx_map` uses. Warnings, not Errors: a JavaScript file, a template in site-packages or a helper the view calls can be the other side, which a scan cannot see |
 
 On an existing site the first `manage.py check` is a worklist, `dj_hx.E022` above all, since it
-reads every `{% url %}` in the project's templates. An Error fails `manage.py check` and keeps
-`runserver` from starting. While you work through the list, `SILENCED_SYSTEM_CHECKS = ["dj_hx.E022"]`
-silences one id, Errors included; take it out again to check the rest.
+reads every `{% url %}` in the project's `.html` and `.htm` templates. An Error fails `manage.py
+check`, keeps `runserver` from starting, and aborts `migrate`, `makemigrations`, `createsuperuser` and
+`manage.py test`, which all run the checks. While you work through the list,
+`SILENCED_SYSTEM_CHECKS = ["dj_hx.E022"]` silences one id, Errors included; take it out again to check
+the rest. E022 reverses against `ROOT_URLCONF` only, so a site that routes some requests through
+another URLconf (`request.urlconf`, as django-hosts sets it) silences it.
 
 ## Testing
 
@@ -418,8 +421,10 @@ interaction registry to its interaction, which answers its one method with its
 partial (`fragment()`) and announces its `triggers=`; one naming no interaction,
 or written while `dj_hx.urls` is not included, is an error. It also pairs `.trigger("x")` with
 `hx-trigger="x from:body"` in both directions, and with a hyperscript listener
-(`_="on x from body ..."`); a listener for a browser event such as `click` is never
-asked to be announced by a view. Checks `dj_hx.W024` and `W025` report the same
+(`_="on x from body ..."`, or the same in a `<script type="text/hyperscript">`,
+behaviors included); a listener for a browser event such as `click` is never
+asked to be announced by a view, and an event a script names (`addEventListener('x', …)`,
+a hyperscript `send x`) is taken as heard and announced. Checks `dj_hx.W024` and `W025` report the same
 pairing at start-up.
 
 ## The example

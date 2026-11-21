@@ -11,6 +11,7 @@ whitespace; comments go. Line numbers survive.
 
 from __future__ import annotations
 
+import functools
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -187,15 +188,22 @@ def in_site_packages(path) -> bool:
     import site
     import sysconfig
 
-    roots = [Path(sysconfig.get_paths()[k]) for k in ("purelib", "platlib")]
+    paths = sysconfig.get_paths()
+    roots = [paths["purelib"], paths["platlib"]]
     for name in ("getsitepackages", "getusersitepackages"):
         try:
             found = getattr(site, name)()
         except Exception:  # AttributeError where an old virtualenv's site.py lacks it
             continue
-        roots += [Path(d) for d in ([found] if isinstance(found, str) else found) if Path(d).name in _SITE_NAMES]
+        roots += [str(d) for d in ([found] if isinstance(found, str) else found) if Path(d).name in _SITE_NAMES]
     path = Path(path).resolve()
-    return any(path.is_relative_to(root.resolve()) for root in roots)
+    return any(path.is_relative_to(root) for root in _resolved(tuple(roots)))
+
+
+@functools.lru_cache(maxsize=16)
+def _resolved(directories: tuple[str, ...]) -> tuple[Path, ...]:
+    """The site-packages roots, resolved once per set of directories rather than on every call."""
+    return tuple(Path(d).resolve() for d in directories)
 
 
 def template_directories() -> list[Path]:

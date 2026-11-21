@@ -101,6 +101,7 @@ def _scan_handlers(urlconf=None) -> tuple[dict[str, Handler], dict[int, Handler]
     by_callback: dict[int, Handler] = {}
     interactions = _interactions_by_callback()
     routed_interactions: dict[str, Handler | None] = {}
+    module_verbs: dict = {}  # each module's verb names, parsed once per map though many of its views are routed
     for routed in iter_routed_views(urlconf):
         it = interactions.get(id(routed.callback))
         if it is not None:
@@ -114,7 +115,9 @@ def _scan_handlers(urlconf=None) -> tuple[dict[str, Handler], dict[int, Handler]
         if h is None:
             h = handlers[endpoint] = Handler(endpoint, name=getattr(target, "__name__", endpoint))
             module = inspect.getmodule(target)
-            verb_names = _verb_names(module) if module else {}
+            if module is not None and module not in module_verbs:
+                module_verbs[module] = _verb_names(module)
+            verb_names = module_verbs.get(module, {}) if module is not None else {}
             if routed.view_class is not None:
                 cls = routed.view_class
                 for m in _HTTP_METHODS:

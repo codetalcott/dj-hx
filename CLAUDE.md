@@ -15,8 +15,8 @@ to a verb signature, a setting, an error, a check id or a lint rule must be mirr
 The checked-in `.venv` has Django 6.0, pytest, ruff and playwright.
 
 ```
-.venv/bin/python -m pytest                      # 320 tests, ~5s
-.venv/bin/python -m pytest -m "not browser"     # 313, skipping Chromium
+.venv/bin/python -m pytest                      # 326 tests, ~5s
+.venv/bin/python -m pytest -m "not browser"     # 319, skipping Chromium
 .venv/bin/python -m pytest -m browser           # the 7 Playwright tests alone
 .venv/bin/python -m pytest tests/test_verbs.py::test_text_escapes
 .venv/bin/ruff check .
@@ -103,7 +103,9 @@ the n-th tag `__ACT<n>__` so its holding element is found in hxlint's tree, and 
 for `{% partialdef %}` bodies. E022 reads `{% url %}` through `url_tags()`, which is Django's own lexer:
 a tag in `{% verbatim %}` or across lines is text to Django, and `strip_template_syntax` would read both.
 It reverses through `django.urls.reverse()`, taking each placeholder from the converter the resolver holds
-for that parameter (the namespace walk mirrors `reverse()`'s), never from the route string. W024 and W025
+for that parameter (the namespace walk mirrors `reverse()`'s), never from the route string; a keyword naming
+a route's extra kwarg is passed that default. It skips `{% url ... as var %}`: Django's documented form for a
+view that may be missing, which admin's own templates use, so an Error there would stop `migrate`. W024 and W025
 take `hxmap.map_with_interactions()` and call `mapcore.unpaired_events()` on it, the pairing `hx_map` warns
 from: there is no second trigger or listener collector. An interaction the map has no handler for (not
 routed, or in site-packages) is added from the registry, so its `triggers=` still count.
@@ -113,7 +115,10 @@ the AST visitor that finds verb calls, the control-vs-handler checks. [hxmap.py]
 Django adapter: URLconf walk, `{% url %}` and `resolve()`, and `{% act %}` through the registry: an
 interaction is found by the callback `dj_hx.urls.urlpatterns` routes it to (identity, not name), its handler
 is scanned rather than a decorator's closure, and `_as_interaction()` records its partial and `triggers=`.
-The `__ACT<n>__` markers index one `acts` list shared by every template. New map logic belongs in `mapcore` unless it
+The `__ACT<n>__` markers index one `acts` list shared by every template. The checks build this map at every
+`runserver` start, so `_scan_handlers` parses each views module once per map (`module_verbs`), not once per
+view, and `templates.in_site_packages` resolves the site roots once per set of directories: TextShelf's
+checks took 3.6 s before those two, 0.64 s after (2026-11-20, Apple M4). New map logic belongs in `mapcore` unless it
 is genuinely Django-specific; the core is vendored from hx-flask (see below).
 
 ## Vendored files: do not edit in place
