@@ -33,7 +33,8 @@ longer swaps, an event fired without a target lands where a `from:body`
 listener cannot hear it, and the headers it still writes are gone. The same
 design for Flask is [hx-flask]; the sibling for Fixi.js is [dj-fixi].
 
-**Status:** 0.1.0, unreleased. Django 4.2, 5.2, 6.0 and 6.1; Python 3.10 to 3.13.
+**Status:** 0.1.0 (2026-11-21), alpha, installed from its git tag; not on PyPI. Django 4.2, 5.2,
+6.0 and 6.1; Python 3.10 to 3.13.
 
 ## The three rules
 
@@ -112,6 +113,11 @@ What was rejected, and why:
   written in the app's URLconf, served by one more include.
 
 ## Install
+
+```sh
+pip install "dj-hx @ git+https://github.com/codetalcott/dj-hx@v0.1.0"
+pip install "dj-hx[partials] @ git+https://github.com/codetalcott/dj-hx@v0.1.0"   # Django 4.2 to 5.x
+```
 
 ```python
 INSTALLED_APPS = [..., "django.contrib.messages", "dj_hx", ...]

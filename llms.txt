@@ -22,6 +22,13 @@ Facts to hold while writing code against this package:
 
 ## Install
 
+Not on PyPI; install from the release tag:
+
+```sh
+pip install "dj-hx @ git+https://github.com/codetalcott/dj-hx@v0.1.0"
+pip install "dj-hx[partials] @ git+https://github.com/codetalcott/dj-hx@v0.1.0"   # Django 4.2 to 5.x
+```
+
 ```python
 INSTALLED_APPS = [..., "django.contrib.messages", "dj_hx", ...]
 

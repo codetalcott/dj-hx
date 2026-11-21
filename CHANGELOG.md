@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## 0.1.0 (2026-11-21)
 
 First release: the handler-first design built for Flask in hx-flask,
 standalone on Django. It does not build on django-htmx, which was written
