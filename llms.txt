@@ -8,7 +8,7 @@
 Facts to hold while writing code against this package:
 
 - Requires htmx **4** (`HX-Request-Type` header). htmx 1/2 idioms are rejected by a lint that runs on every
-  test-client response. Django 4.2 to 6.1, Python 3.10+.
+  test-client response. Django 4.2, 5.2, 6.0 and 6.1; Python 3.10 to 3.13.
 - The only client fact a handler reads is `HX-Request-Type`: `full` (browser, boosted link, or a control
   whose target is `body` or that sets `hx-select`) or `partial` (a control targeting an element). Never
   read `HX-Source` or `HX-Target`; never branch on an element id.

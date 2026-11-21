@@ -46,7 +46,10 @@ python manage.py hx_lint [paths...] [--warnings-as-errors]
 python manage.py hx_map [--no-check]
 ```
 
-CI runs `ruff check .` on 3.13 and the suite on eight Python/Django pairs covering Django 4.2, 5.2, 6.0 and 6.1.
+CI runs `ruff check .` on 3.13 and the suite on nine Python/Django pairs, covering Django 4.2, 5.2, 6.0 and 6.1
+and Python 3.10 to 3.13: the support README, llms.txt and the `pyproject.toml` classifiers state. Change the
+matrix and those three together. A local run on 3.12 or 3.13 cannot show what the older pathlib of 3.10 and
+3.11 does: it refuses to intern a `SafeString`, which a Django template name often is.
 Any change touching template partials, `{% url %}` handling or middleware ordering has to work on all
 four Django lines; `django.VERSION < (6, 0)` branches already exist in `verbs.py`, `checks.py`,
 `tests/conftest.py` and the example settings.

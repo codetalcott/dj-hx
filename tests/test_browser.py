@@ -1,9 +1,11 @@
 """
 A real browser against the ported app: the protocol claims the design makes,
-observed rather than reasoned about. Same seven scenarios as hx-flask. Opt-in:
+observed rather than reasoned about. Same seven scenarios as hx-flask. They run
+wherever Playwright is installed, in a bare ``pytest`` too, and are skipped where
+it is not (``importorskip``):
 
     pip install playwright && playwright install chromium
-    pytest -m browser
+    pytest -m browser                  # these and tests/test_interactions_browser.py alone
 """
 
 import types

@@ -33,7 +33,7 @@ longer swaps, an event fired without a target lands where a `from:body`
 listener cannot hear it, and the headers it still writes are gone. The same
 design for Flask is [hx-flask]; the sibling for Fixi.js is [dj-fixi].
 
-**Status:** 0.1.0, unreleased. Django 4.2 to 6.1, Python 3.10 to 3.13.
+**Status:** 0.1.0, unreleased. Django 4.2, 5.2, 6.0 and 6.1; Python 3.10 to 3.13.
 
 ## The three rules
 
