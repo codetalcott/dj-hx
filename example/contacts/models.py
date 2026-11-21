@@ -2,6 +2,10 @@
 The book's Contact model on the ORM. Same surface as contacts_model.py in
 Hypermedia Systems: ``errors``, ``validate()``, ``all(page)``, ``search()``,
 ``count()`` (slow on purpose, to demonstrate lazy loading), and the Archiver.
+One difference: ``errors`` holds every field the forms show, ``""`` when it
+has no error, because the forms read ``contact.errors.<field>`` for each and a
+Django template renders a missing key as nothing, silently (HxTestClient
+raises ``HxUndefinedVariable`` on one).
 """
 
 import json
@@ -12,6 +16,12 @@ from random import random
 from django.db import models
 
 PAGE_SIZE = 10
+FIELDS = ("first", "last", "phone", "email")
+
+
+def no_errors() -> dict:
+    """Every field the forms show, none in error."""
+    return dict.fromkeys(FIELDS, "")
 
 
 class Contact(models.Model):
@@ -25,7 +35,7 @@ class Contact(models.Model):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.errors = {}
+        self.errors = no_errors()
 
     def __str__(self):
         return json.dumps({"id": self.id, "first": self.first, "last": self.last, "phone": self.phone, "email": self.email})
@@ -34,12 +44,12 @@ class Contact(models.Model):
         self.first, self.last, self.phone, self.email = first, last, phone, email
 
     def validate(self) -> bool:
-        self.errors = {}
+        self.errors = no_errors()
         if not self.email:
             self.errors["email"] = "Email Required"
         elif Contact.objects.filter(email=self.email).exclude(pk=self.pk).exists():
             self.errors["email"] = "Email Must Be Unique"
-        return not self.errors
+        return not any(self.errors.values())
 
     @classmethod
     def count(cls) -> int:
@@ -61,7 +71,7 @@ class Contact(models.Model):
     def find(cls, id_):
         contact = cls.objects.filter(pk=int(id_)).first()
         if contact is not None:
-            contact.errors = {}
+            contact.errors = no_errors()
         return contact
 
     @classmethod

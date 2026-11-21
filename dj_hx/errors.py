@@ -57,5 +57,21 @@ class HxLintError(HxError):
         super().__init__(head + ":\n  " + "\n  ".join(str(f) for f in self.findings))
 
 
+class HxUndefinedVariable(HxError):
+    """``HxTestClient``: a project template read a variable that does not exist, which Django renders as nothing."""
+
+    def __init__(self, lookups, where=""):
+        self.lookups = list(lookups)
+        count = len(self.lookups)
+        head = f"{where} read" if where else "A template read"
+        super().__init__(
+            f"{head} {count} undefined template variable{'' if count == 1 else 's'}, which Django renders as '', "
+            "as false in {% if %} and as nothing to loop over in {% for %}, without a word:\n  "
+            + "\n  ".join(str(lookup) for lookup in self.lookups)
+            + "\nPut each in the context the view renders with (an interaction's: its context=), with its default, "
+            "or correct the name. HxTestClient(undefined=False) turns this check off."
+        )
+
+
 class HxRedirectError(AssertionError):
     """``HxTestClient``: a redirect answered a full request and the test did not say what it wanted."""

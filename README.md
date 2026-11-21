@@ -262,8 +262,12 @@ The rules:
   with the route parameters it names, and the handler's keys are laid over it. A parameter of
   `context` that the route lacks takes its default; one without a default, or `*args` or
   `**kwargs`, raises at import. A key the handler returns must already be in the context: define
-  each there with its default (`notified: False`, `error: None`), so the page renders the same
-  names as the reply.
+  each there with its default (`notified: False`), so the page renders the same names as the reply.
+- **Every reply carries `error`:** `str(exc)` on a refusal, and `None` on success unless `context`
+  or the handler sets it, so the partial can read `{% if error %}` whatever `context` defines. The
+  page is a plain view, not a reply, so a page that renders the partial needs `error` in its own
+  context, as `assign_context` above has it; otherwise `HxTestClient` raises
+  `HxUndefinedVariable` on the page.
 - **One return type:** a `dict` or `None`. Anything else, an `HttpResponse` included, raises. An
   interaction always re-renders its partial; to leave the page, write a view that returns
   `navigate()`. A view decorator written below `@interaction` that answers with a response, such
@@ -345,6 +349,8 @@ by `HxTestClient`. Nothing is gated on `DEBUG` that a test needs.
 | `partial=` names a partial the template does not define | `HxUnknownPartial`, listing the partials it does |
 | An htmx request without `HX-Request-Type` | `HxProtocolError`: this needs htmx 4. `HX_REQUEST_TYPE_FALLBACK = "full"` answers with the page instead, for a proxy that strips the header; the guard still records it |
 | htmx 2 idioms in the HTML: `hx-ext`, implicit inheritance, htmx 2 event names in `hx-on` or `hx-trigger`, camelCase or kebab-case (`hx-on::after-request`), `show:#x:top` | the lint, on every test-client response, in the middleware log under `DEBUG`, in `manage.py hx_lint`, and as check `dj_hx.W005` |
+| A project template reads a name or an attribute that does not exist: `{{ x }}`, `{{ contact.nme }}`, `{% if x %}`, `{% for i in x %}`, `{{ x\|default:"" }}` (Django logs the lookup before the filter runs), or a name an `{% include … only %}` does not pass. Django renders each as nothing, without a word, and `string_if_invalid` never sees the ones `{% if %}` and `{% for %}` read | `HxTestClient` raises `HxUndefinedVariable` on the request, naming each variable and the template:line it is written in (the base of an `{% extends %}`, the included file, the file a partial is in). It reads Django's `django.template` DEBUG log while the request runs; `strict=False` records it on `response.hx_findings`, and `undefined=False` turns it off. Not counted: a template in site-packages (Django's, admin's, any pip-installed app's), one built from a string, which has no file (Django's `DEBUG` error pages are), and a lookup that raised an exception Django silences (a missing related object's `DoesNotExist`) |
+| `logging.disable()` is in force, or the `django.template` logger is disabled (a `LOGGING` dict that leaves `disable_existing_loggers` at its default, `True`, disables it), so Django writes no record for the undefined-variable check to read | `HxTestClient` raises `ImproperlyConfigured` on the request, naming which; `undefined=False` goes without the check |
 | A partial control pointing at a page-only view, or a boosted link at a fragment-only one (an interaction is fragment-only) | `manage.py hx_map` |
 | A control pointing at a view that calls no verb; a view that calls `.retarget()` or `.reswap()` | `manage.py hx_map`, as warnings |
 | `HxMiddleware` missing, listed before `MessageMiddleware`, `HX_MESSAGES_TEMPLATE` unset or unresolvable, no partials on Django < 6, `HxMixin` after a Django base | checks `dj_hx.W001`, `E002`, `W003`, `W004`, `W006`, `E007` |
@@ -352,7 +358,7 @@ by `HxTestClient`. Nothing is gated on `DEBUG` that a test needs.
 | The module that defines the handler holds the raw handler under its name (`remind_view = interaction(...)(remind)`, or `remind = interaction(...)(handlers.remind)` in another module), or a decorator of it written with `functools.wraps`, so its route would skip the method guard | `ImproperlyConfigured` when the URLconf is first read (the first request, or `manage.py check`), naming the module attribute and the fix. A decorator of the raw handler written without `functools.wraps` is routed as it is, past the method guard: only check `dj_hx.W018` warns |
 | An `@interaction` that cannot work: two with one name, a minted route for a handler in no installed app, `route=` parameters that are not the handler's (or `<str:...>` for one annotated `int`), a `partial=` that is not `page.html#name`, `triggers=` given as a string, a `method` that is not GET, POST, PUT, PATCH or DELETE, a `refuses` holding anything but exception classes (`refuses=("DomainError",)`), a handler or a `context=` taking `*args` or `**kwargs`, a `context=` parameter without a default that the route does not have | `ImproperlyConfigured` when the views module is imported, so at start-up, naming the handler |
 | An interaction returns anything but a `dict` or `None`, an `HttpResponse` included, or a view decorator below `@interaction` answers with one | `ImproperlyConfigured`: an interaction always re-renders its partial; leave the page from a view that returns `navigate()`, and put Django view decorators above `@interaction` |
-| An interaction's reply sets a key its context does not define, a refusal's `error` included | `ImproperlyConfigured`, naming the key and the context function: define each there with its default |
+| An interaction's reply sets a key its context does not define | `ImproperlyConfigured`, naming the key and the context function: define each there with its default. `error` is always defined, because every reply carries it |
 | `{% act %}` with a positional argument, a keyword the handler does not take, a missing one, or a name no interaction has | `TemplateSyntaxError` at render, naming the handler's parameters, or listing the interactions there are; at start-up, checks `dj_hx.E009` (no such interaction) and `E010` (the arguments), naming template:line |
 | An `{% act %}` control that sends another method than its interaction answers (for `hx-action`: its `hx-method`, an ancestor's `hx-method:inherited`, its `method` attribute, else GET; a submit button's `formmethod` is not read), that does not target the element with id `<partial name>` (`hx-target="#<partial name>"`, its own or an ancestor's `hx-target:inherited`, or an htmx 4.0.2 extended selector whose CSS part is that, such as `closest #<partial name>`; or no `hx-target`, or `hx-target="this"`, on the element with that id), or whose `hx-swap` (its own or inherited) is not an outer swap (`outerHTML`, `outerMorph` or `outerSync`, read from htmx 4.0.2's swap code) | checks `dj_hx.E011`, `E012` and `E013`, naming template:line and the attribute to write; a plain `hx-target` or `hx-swap` on an ancestor is named as not reaching the control |
 | An interaction no project template writes an `{% act %}` for (a `{% url 'dj_hx:…' %}` or hand-written path is not counted: E011 to E013 cannot check it), whose partial does not load, or whose partial's root element is not `id="<partial name>"` | checks `dj_hx.E014`, `E015` (with `HxUnknownPartial`'s reason) and `E016` (the start-up twin of `HxPartialRootId`, judged where the source shows the root). E014 skips an interaction whose handler's module is in site-packages: its controls are in that app's templates, which are never read |
@@ -395,6 +401,16 @@ finding, a warning otherwise; `lint_ignore=(...)` or `HX_LINT_IGNORE`
 silence a rule). Recorded findings raise; `HxTestClient(strict=False)` turns
 that off. A 3xx to a full request must be chosen with `follow=`, because
 htmx's fetch follows it and the browser never sees it.
+
+A project template that reads a variable that does not exist raises
+`HxUndefinedVariable`, naming each one and its template:line, `{% if %}` and
+`{% for %}` included, which `string_if_invalid` never sees. The client reads
+Django's documented `django.template` DEBUG log while each request runs: it
+lowers that logger to DEBUG for the request and passes on to the other handlers
+only the records they received before, then puts the level back.
+Put each name in the context the view renders with, with its default; a
+`|default` filter does not count, because Django logs the lookup before the
+filter runs. `HxTestClient(undefined=False)` turns the check off.
 
 ## Tools
 

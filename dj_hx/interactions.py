@@ -6,7 +6,7 @@ Interactions: one handler bound to one template partial, by name.
     from dj_hx import interaction
 
     def assign_context(request, contest):
-        return {"contest": Contest.get(contest), "notified": False, "error": None}
+        return {"contest": Contest.get(contest), "notified": False}
 
     @interaction("POST", partial="contests/assign.html#notify", context=assign_context,
                  refuses=(DomainError,), triggers=("notified",))
@@ -25,6 +25,9 @@ Interactions: one handler bound to one template partial, by name.
   ``context`` that the route lacks takes its default; one without a default raises at import. A
   returned key the context does not define raises, so the page and the reply render the same
   names. The handler returns a dict or ``None``; anything else raises.
+- Every reply carries ``error``, which the layer owns: ``None`` on success unless ``context`` or
+  the handler sets it, so the partial can read ``{% if error %}`` without ``context`` defining it.
+  A page view is not a reply: a page that renders the partial puts ``error`` in its own context.
 - A declared refusal, an exception in ``refuses``, re-renders the partial with
   ``error=str(exc)`` and status 422, so the handler writes no ``try``. Any other exception is a 500.
 - ``triggers`` names the facts a successful reply announces, ``.trigger(name)`` for each.
@@ -91,8 +94,7 @@ class Interaction:
         try:
             reply = self.func(request, **kwargs)
         except self.refuses as exc:
-            why = f"{self.name}() refused with {type(exc).__name__}, and the refusal's reply sets"
-            return self._render(request, kwargs, {"error": str(exc)}, why).with_status(422)
+            return self._render(request, kwargs, {"error": str(exc)}).with_status(422)
         if reply is not None and not isinstance(reply, dict):
             raise ImproperlyConfigured(
                 f"{self.name}() returned {type(reply).__name__}; an interaction returns a dict of context keys, or "
@@ -100,18 +102,19 @@ class Interaction:
                 "navigate(). Django view decorators (@login_required, @permission_required) go above "
                 "@interaction, where they wrap the routed view."
             )
-        response = self._render(request, kwargs, reply or {}, f"{self.name}() returns")
+        response = self._render(request, kwargs, reply or {})
         for name in self.triggers:
             response.trigger(name)
         return response
 
-    def _render(self, request, kwargs, reply: dict, why: str) -> HxResponse:
-        context = self.context(request, **{p: kwargs[p] for p in self.context_params})
+    def _render(self, request, kwargs, reply: dict) -> HxResponse:
+        # `error` is the layer's: a refusal writes it, and any other reply reads None unless context= or the handler sets it.
+        context = {"error": None, **self.context(request, **{p: kwargs[p] for p in self.context_params})}
         undefined = sorted(key for key in reply if key not in context)
         if undefined:
             context_name = getattr(self.context, "__name__", repr(self.context))
             raise ImproperlyConfigured(
-                f"{why} {', '.join(map(repr, undefined))}, which {context_name}() does not define. Define each "
+                f"{self.name}() returns {', '.join(map(repr, undefined))}, which {context_name}() does not define. Define each "
                 "there with its default, so the page renders the same names as the reply."
             )
         response = fragment(request, self.template, self.partial, {**context, **reply})

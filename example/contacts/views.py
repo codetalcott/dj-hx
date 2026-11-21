@@ -25,7 +25,7 @@ def contacts(request):
             Contact.find(contact_id).delete()
         messages.success(request, "Deleted Contacts!")
         return render(
-            request, "index.html", "rows", {"contacts": Contact.all(1), "page": 1, "archiver": Archiver.get()}
+            request, "index.html", "rows", {"contacts": Contact.all(1), "page": 1, "archiver": Archiver.get(), "q": ""}
         ).trigger("contacts-changed")
 
     search = request.GET.get("q")
@@ -35,7 +35,10 @@ def contacts(request):
     else:
         contacts_set = Contact.all(page_number)
     return render(
-        request, "index.html", "rows", {"contacts": contacts_set, "page": page_number, "archiver": Archiver.get()}
+        request,
+        "index.html",
+        "rows",
+        {"contacts": contacts_set, "page": page_number, "archiver": Archiver.get(), "q": search or ""},
     )
 
 

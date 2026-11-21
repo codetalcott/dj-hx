@@ -9,22 +9,23 @@ from django.urls import path
 from dj_hx import fragment, invalid, navigate, page, redirect, removed, render, text
 
 ITEMS = ["ada", "grace", "linus"]
+PAGE = {"items": ITEMS, "extra": ""}  # every name index.html reads; extra() is the view that fills in extra
 
 
 def index(request):
-    return render(request, "index.html", "rows", {"items": ITEMS})
+    return render(request, "index.html", "rows", PAGE)
 
 
 def index_file(request):
-    return render(request, "index.html", "rows.html", {"items": ITEMS})
+    return render(request, "index.html", "rows.html", PAGE)
 
 
 def only_page(request):
-    return page(request, "index.html", {"items": ITEMS})
+    return page(request, "index.html", PAGE)
 
 
 def rows(request):
-    return fragment(request, "index.html", "rows", {"items": ITEMS})
+    return fragment(request, "index.html", "rows", PAGE)
 
 
 def count(request):
@@ -69,19 +70,19 @@ def x(request):
 
 
 def with_partial(request):
-    return render(request, "index.html", "rows", {"items": ITEMS}).partial("count")
+    return render(request, "index.html", "rows", PAGE).partial("count")
 
 
 def bad_partial(request):
-    return render(request, "index.html", "rows", {"items": ITEMS}).partial("badcount")
+    return render(request, "index.html", "rows", PAGE).partial("badcount")
 
 
 def unknown_partial(request):
-    return render(request, "index.html", "rowz", {"items": ITEMS})
+    return render(request, "index.html", "rowz", PAGE)
 
 
 def extra(request):
-    return fragment(request, "index.html", "extra", {"items": ITEMS, "extra": "processed"})
+    return fragment(request, "index.html", "extra", {**PAGE, "extra": "processed"})
 
 
 def flash_removed(request):
@@ -91,7 +92,7 @@ def flash_removed(request):
 
 def flash_page(request):
     messages.success(request, "Hello")
-    return render(request, "index.html", "rows", {"items": ITEMS})
+    return render(request, "index.html", "rows", PAGE)
 
 
 def flash_file(request):
@@ -111,11 +112,11 @@ def plain(request):
 
 
 def bare_page(request):
-    return django_render(request, "index.html", {"items": ITEMS})  # the whole page, into an element
+    return django_render(request, "index.html", PAGE)  # the whole page, into an element
 
 
 def bare_template_response(request):
-    return TemplateResponse(request, "index.html", {"items": ITEMS})  # what a generic view without HxMixin returns
+    return TemplateResponse(request, "index.html", PAGE)  # what a generic view without HxMixin returns
 
 
 def escaped(request):

@@ -41,9 +41,12 @@ WARN = '<div hx-target="#t"><button hx-post="/a">a</button></div>'
 TEMPLATES_IN_MEMORY = {"layout.html": LAYOUT, "index.html": INDEX, "form.html": FORM, "rows.html": ROWS_FILE, "bad.html": BAD, "warn.html": WARN}
 
 
-def locmem(templates=None, **options):
-    """A TEMPLATES setting serving in-memory templates, for exercising the library directly."""
-    return _templates([("django.template.loaders.locmem.Loader", {**TEMPLATES_IN_MEMORY, **(templates or {})})], **options)
+def locmem(templates=None, *, dirs=(), **options):
+    """A TEMPLATES setting serving in-memory templates, for exercising the library directly; ``dirs`` adds files."""
+    loaders = [("django.template.loaders.locmem.Loader", {**TEMPLATES_IN_MEMORY, **(templates or {})})]
+    if dirs:
+        loaders.append("django.template.loaders.filesystem.Loader")
+    return _templates(loaders, dirs=dirs, **options)
 
 
 def on_disk(directory, **options):

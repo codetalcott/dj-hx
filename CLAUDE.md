@@ -15,8 +15,8 @@ to a verb signature, a setting, an error, a check id or a lint rule must be mirr
 The checked-in `.venv` has Django 6.0, pytest, ruff and playwright.
 
 ```
-.venv/bin/python -m pytest                      # 326 tests, ~5s
-.venv/bin/python -m pytest -m "not browser"     # 319, skipping Chromium
+.venv/bin/python -m pytest                      # 338 tests, ~5s
+.venv/bin/python -m pytest -m "not browser"     # 331, skipping Chromium
 .venv/bin/python -m pytest -m browser           # the 7 Playwright tests alone
 .venv/bin/python -m pytest tests/test_verbs.py::test_text_escapes
 .venv/bin/ruff check .
@@ -58,6 +58,16 @@ logged to the `dj_hx` logger. [guard.py](dj_hx/guard.py) records the post-hoc on
 `HX-Request-Type`, `APPEND_SLASH`). [middleware.py](dj_hx/middleware.py) never raises;
 [testing.py](dj_hx/testing.py) is where findings become exceptions. Keep that split: a false positive
 must not be able to 500 in production.
+
+**The undefined-variable check is test-time only.** `HxTestClient` reads Django's `django.template`
+DEBUG record for a failed lookup through one filter on that logger (`_Gate`), attached while any of its
+requests runs. It drops what the logger's old level would not have delivered, so other handlers see
+no change. The record's own template name is the template the render started from: the child of an
+`{% extends %}`, the page that includes an admin template, and a partial's bare name. So the place comes
+from the template node being rendered on the stack (its `origin` and `token.lineno`), and
+`templates.in_site_packages` judges that origin. Every view a test requests through `HxTestClient` must
+supply every name its templates read: `tests/urlconfs/lib.py`'s `PAGE` carries `extra` for the inline
+`extra` partial of the in-memory `index.html`.
 
 **Ordering matters.** `HxMiddleware` must run its response phase before `MessageMiddleware` stores
 messages, which means it is listed *after* it. [checks.py](dj_hx/checks.py) enforces that as `dj_hx.E002`;
@@ -162,4 +172,7 @@ is genuinely Django-specific; the core is vendored from hx-flask (see below).
   neither) for the `@login_required` test.
 - `tests/test_contact_app.py` and `tests/test_browser.py` run against `example/`, mirroring hx-flask's
   suite for a like-for-like comparison.
+- `tests/test_undefined_variables.py` covers the client's undefined-variable check, through the views in
+  `tests/urlconfs/undefined.py`. `locmem(templates, dirs=[...])` adds a filesystem loader over `dirs`,
+  so a test can include one of Django's own templates from site-packages.
 - pytest does not run system checks, so check coverage goes through `assert_no_hx_check_issues()`.

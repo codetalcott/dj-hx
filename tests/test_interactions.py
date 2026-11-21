@@ -387,19 +387,25 @@ def test_a_reply_key_the_context_does_not_define_raises(scratch, rota, client):
         client.hx_post("/t/boast")
 
 
-def test_a_refusal_needs_error_in_the_context(scratch, rota, client):
-    def bare_context(request):
-        return {"value": ""}
+def test_every_reply_carries_error_so_its_partial_can_read_it(scratch, rota, client):
+    def bare_context(request):  # defines no `error`: the layer owns it
+        return {"value": "nothing yet"}
 
     @interaction("POST", partial="scratch.html#box", context=bare_context, refuses=(LookupError,), route="t/vanish")
     def vanish(request):
-        raise LookupError("gone")
+        if request.POST.get("gone"):
+            raise LookupError("gone")
+        if request.POST.get("warn"):
+            return {"value": "kept", "error": "careful"}  # the handler may set it too
+        return {"value": "kept"}
 
-    with pytest.raises(
-        ImproperlyConfigured,
-        match=r"vanish\(\) refused with LookupError, and the refusal's reply sets 'error', which bare_context\(\) does not define",
-    ):
-        client.hx_post("/t/vanish")
+    # The strict client raises HxUndefinedVariable on a reply whose {% if error %} reads a missing name.
+    r = client.hx_post("/t/vanish")
+    assert (r.status_code, r.content.decode()) == (200, '<div id="box">kept</div>')
+    r = client.hx_post("/t/vanish", {"warn": "1"})
+    assert (r.status_code, r.content.decode()) == (200, '<div id="box">kept careful</div>')
+    r = client.hx_post("/t/vanish", {"gone": "1"})
+    assert (r.status_code, r.content.decode()) == (422, '<div id="box">nothing yet gone</div>')
 
 
 @pytest.mark.parametrize("reply", [HttpResponse("left"), ["value"], "value"], ids=["HttpResponse", "list", "str"])

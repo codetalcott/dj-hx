@@ -207,7 +207,7 @@ One handler bound to one partial. The reply is always that partial.
 ```python
 from dj_hx import interaction
 
-def assign_context(request, contest):     # the page view calls it too; every reply key has its default here
+def assign_context(request, contest):     # the page view calls it too: every name the page reads has its default here
     return {"contest": Contest.get(contest), "notified": False, "error": None}
 
 @interaction("POST", partial="contests/assign.html#notify", context=assign_context,
@@ -249,6 +249,10 @@ urlpatterns = [..., path("", include("dj_hx.urls"))]   # once, at the site root
 - Reply: `fragment()` of the partial with `context(request, <the route parameters it names>)` and the
   returned keys over it, status 200, then `.trigger(name)` for each of `triggers`. A `context=` parameter the
   route lacks takes its default. Its root element must carry `id="<partial name>"` (`HxPartialRootId`).
+- Every reply carries `error`: `str(exc)` on a refusal, `None` on success unless `context=` or the handler sets
+  it, so the partial reads `{% if error %}` whatever `context=` defines. The page view is not a reply: a page
+  that renders the partial needs `error` in its own context (as `assign_context` has it), or `HxTestClient`
+  raises `HxUndefinedVariable` on the page.
 - Refusal: an exception in `refuses` (one class, or a tuple of them) re-renders the partial with
   `error=str(exc)`, status 422, no triggers. Any other exception is a 500. Any other method is a 405.
 - `ImproperlyConfigured` when the URLconf is first read (first request, `manage.py check`): the module holds
@@ -259,7 +263,7 @@ urlpatterns = [..., path("", include("dj_hx.urls"))]   # once, at the site root
   GET, POST, PUT, PATCH, DELETE (any case), `refuses` holding anything but exception classes, `*args` or
   `**kwargs` on the handler or on `context=`, a `context=` parameter without a default that the route lacks.
   At the reply: a return that is not a dict or `None` (a view decorator below `@interaction` returning a
-  response included), or a returned key (a refusal's `error` included) the context lacks.
+  response included), or a returned key the context lacks (`error` never is: every reply carries it).
 - `manage.py check` reads each `{% act %}` in the project's templates (never site-packages) and the control
   whose verb attribute holds it, resolving each attribute as htmx 4.0.2 does. The verb must send the
   interaction's method (`hx-action` sends its `hx-method`, an ancestor's `hx-method:inherited`, its
@@ -301,6 +305,7 @@ All subclass `HxError` except `HxRedirectError` (an `AssertionError` from the te
 | `HxPartialRootId` | raised at render | a partial used as `<hx-partial>`, or an interaction's reply, does not start with one element carrying `id="<name>"` | wrap the region in `<div id="name">` |
 | `HxLintError` | raised by `HxTestClient` | an error-level lint finding in a `text/html` response | fix the HTML; `lint_ignore=` / `HX_LINT_IGNORE` to silence a rule |
 | `HxRedirectError` | raised by `HxTestClient` | 3xx to a `full=True` request without `follow=` | pass `follow=True` (what the browser shows) or `follow=False` (assert on the 3xx) |
+| `HxUndefinedVariable` | raised by `HxTestClient`; recorded under `strict=False` | a project template reads a name or attribute that does not exist, in `{{ }}`, `{% if %}`, `{% for %}` or any tag; `.lookups` names each with its template:line | put the name in the view's context with its default (an interaction's: `context=`), or correct it; `undefined=False` turns the check off |
 
 ## Templates
 
@@ -391,7 +396,7 @@ the nearest valid name.
 ```python
 from dj_hx.testing import HxTestClient, assert_no_hx_check_issues
 
-client = HxTestClient()                       # strict=True, lint=True, lint_ignore=()
+client = HxTestClient()                       # strict=True, lint=True, lint_ignore=(), undefined=True
 client.get("/contacts/")                      # a browser
 client.hx_get("/contacts/?q=a")               # HX-Request: true, HX-Request-Type: partial
 client.hx_get("/contacts/", full=True)        # a boosted link or body-targeted control
@@ -416,6 +421,17 @@ What the client enforces on every request, including plain `client.get`:
   `HxLintWarning` (`warnings.warn`). `lint=False` or `lint_ignore=("rule",)` per client.
 - A 3xx to a `full=True` request raises `HxRedirectError` unless `follow=True` or `follow=False` was
   chosen, because htmx's fetch follows redirects and the browser never sees the 3xx.
+- A project template that reads a name or attribute that does not exist raises `HxUndefinedVariable`, a
+  recorded finding (`strict=False` leaves it in `response.hx_findings`). Its `.lookups` give each one's
+  `variable` (the name, or the attribute after a dot), `template`, `line` and `tag`, where the tag is written:
+  an `{% extends %}` base, an included file, the file a partial is in. `{{ x }}`, `{{ x.attr }}`, `{% if x %}`,
+  `{% for i in x %}` and `{{ x|default:"" }}` all count (Django logs the lookup before any filter runs), so
+  supply each name from the view's context with its default. Read from Django's `django.template` DEBUG
+  log while the request runs; other handlers see only what they saw before. Not counted: templates in
+  site-packages, templates built from a string, a lookup that raised an exception Django silences
+  (`DoesNotExist`). `undefined=False` turns it off. `logging.disable()` in force, or a disabled
+  `django.template` logger (a `LOGGING` dict leaving `disable_existing_loggers` at `True`), raises
+  `ImproperlyConfigured`, because the check would see nothing.
 - Without `HxMiddleware` installed the client runs the guard itself.
 
 Assertions that match the protocol:

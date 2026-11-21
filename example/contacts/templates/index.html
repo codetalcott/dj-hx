@@ -7,7 +7,7 @@
 
     <form action="{% url 'contacts' %}" method="get" class="tool-bar">
         <label for="search">Search Term</label>
-        <input id="search" type="search" name="q" value="{{ request.GET.q|default:'' }}"
+        <input id="search" type="search" name="q" value="{{ q }}"
                hx-get="{% url 'contacts' %}"
                hx-trigger="search, keyup delay:200ms changed"
                hx-target="tbody"

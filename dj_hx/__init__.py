@@ -20,6 +20,7 @@ from .errors import (
     HxProtocolError,
     HxRedirectError,
     HxRedirectIntoFragment,
+    HxUndefinedVariable,
     HxUnknownPartial,
 )
 from .interactions import interaction
@@ -33,4 +34,5 @@ __all__ = [
     "HxResponse", "HxRedirectResponse", "HxMixin", "interaction",
     "HxError", "HxProtocolError", "HxPageIntoFragment", "HxFragmentIntoPage", "HxRedirectIntoFragment",
     "HxNoSwap", "HxBareResponse", "HxUnknownPartial", "HxPartialRootId", "HxMessagesUnconfigured", "HxLintError", "HxRedirectError",
+    "HxUndefinedVariable",
 ]
