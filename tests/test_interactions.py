@@ -14,11 +14,14 @@ import re
 import sys
 import types
 
+import django
 import pytest
 from django.apps import apps
+from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.core.checks import WARNING
 from django.core.exceptions import ImproperlyConfigured
+from django.db import connections, transaction
 from django.http import HttpResponse
 from django.template import Context, Template, TemplateSyntaxError
 from django.test import override_settings
@@ -26,11 +29,19 @@ from django.urls import Resolver404, clear_url_caches, resolve, reverse
 from django.utils.module_loading import module_has_submodule
 
 import dj_hx.urls  # noqa: F401  binds the routes now, after ready(), before any `scratch` snapshot of them
-from dj_hx import HxFragmentIntoPage, HxPartialRootId, HxRedirectIntoFragment, HxUndefinedVariable, checks, interaction
+from dj_hx import (
+    HxEmptyRefusal,
+    HxFragmentIntoPage,
+    HxPartialRootId,
+    HxRedirectIntoFragment,
+    HxUndefinedVariable,
+    checks,
+    interaction,
+)
 from dj_hx.hxmap import build_map, print_map
 from dj_hx.interactions import act_not_included, bind_routes, registry, urlpatterns
 from dj_hx.templates import in_site_packages
-from dj_hx.testing import assert_no_hx_check_issues, hx_check_messages
+from dj_hx.testing import HxTestClient, assert_no_hx_check_issues, hx_check_messages
 from tests.conftest import locmem, on_disk
 from tests.interactions_app import views
 
@@ -383,6 +394,64 @@ def test_only_a_declared_exception_is_a_refusal(scratch, rota, client):
 
     with pytest.raises(ValueError, match="a bug"):
         client.hx_post("/t/broken")
+
+
+@pytest.mark.parametrize("message, is_", [("", "empty"), ("  ", "blank")], ids=["empty", "blank"])
+def test_a_refusal_with_nothing_to_read_is_recorded(scratch, rota, client, message, is_, caplog):
+    @interaction("POST", partial="scratch.html#box", context=box_context, refuses=(LookupError,), route="t/mute")
+    def mute(request):
+        raise LookupError(message)
+
+    with pytest.raises(HxEmptyRefusal) as info:
+        client.hx_post("/t/mute")
+    assert str(info.value) == (
+        f"mute() refused with LookupError, whose message is {is_}, so its 422 reply sets error to "
+        f"{message!r} and the partial's {{% if error %}} shows nothing to read: the control seems to do nothing. "
+        'Raise it with a message for the user: raise LookupError("...").'
+    )
+    r = HxTestClient(strict=False).hx_post("/t/mute")  # the reply still goes out
+    assert r.status_code == 422 and r.content.decode().startswith('<div id="box">nothing yet')
+    assert [type(finding) for finding in r.hx_findings] == [HxEmptyRefusal]
+    assert f"mute() refused with LookupError, whose message is {is_}" in caplog.text  # logged, as every finding is
+
+
+@pytest.mark.parametrize(
+    "atomic_requests, undo, kept",
+    [(True, None, 1), (True, "set_rollback", 0), (True, "atomic", 0), (False, "atomic", 0)],
+    ids=["kept", "set_rollback", "atomic-block", "atomic-block-alone"],
+)
+def test_a_refusal_is_a_response_so_atomic_requests_commits_what_was_written(
+    scratch, rota, client, transactional_db, monkeypatch, atomic_requests, undo, kept
+):
+    from contacts.models import Contact
+
+    monkeypatch.setitem(connections.settings["default"], "ATOMIC_REQUESTS", atomic_requests)
+
+    @interaction("POST", partial="scratch.html#box", context=box_context, refuses=(LookupError,), route="t/overbook")
+    def overbook(request):
+        if undo == "atomic":
+            with transaction.atomic():  # the refusal leaves the block, which rolls it back
+                Contact.objects.create(first="Ada")
+                raise LookupError("The room is full.")
+        Contact.objects.create(first="Ada")
+        if undo == "set_rollback":
+            transaction.set_rollback(True)  # ATOMIC_REQUESTS' block rolls back as the 422 goes out
+        raise LookupError("The room is full.")
+
+    r = client.hx_post("/t/overbook")
+    assert r.status_code == 422 and "The room is full." in r.content.decode()
+    assert Contact.objects.filter(first="Ada").count() == kept
+
+
+@pytest.mark.skipif(django.VERSION < (5, 1), reason="LoginRequiredMiddleware is new in Django 5.1")
+def test_site_wide_middleware_reaches_every_interaction(rota, db):
+    # Interactions are routed by the root include("dj_hx.urls"), not under their app's own include, so only a
+    # decorator above @interaction or middleware that sees every request protects them.
+    middleware = [*settings.MIDDLEWARE, "django.contrib.auth.middleware.LoginRequiredMiddleware"]
+    with override_settings(MIDDLEWARE=middleware):
+        r = HxTestClient(strict=False).hx_post("/x/rota/notify/spring/3/")
+    assert r.status_code == 302 and r["Location"].startswith(f"{settings.LOGIN_URL}?next=")
+    assert [type(finding) for finding in r.hx_findings] == [HxRedirectIntoFragment]
 
 
 def test_a_reply_key_the_context_does_not_define_raises(scratch, rota, client):
@@ -739,6 +808,14 @@ def test_the_rota_app_passes_every_check_but_the_warning_it_carries_on_purpose(s
     assert [(m.id, m.obj) for m in startup()] == [APPROVE_UNVERIFIED]
 
 
+def test_the_desk_the_browser_tests_drive_passes_every_check(desk):
+    # So each control tests/test_interactions_browser.py measures is one the checks accept: outerMorph and
+    # outerSync (E013), a self-replacing control, hx-target:inherited="this" and closest #<partial> (E012),
+    # <form method="post" hx-action> (E011), and a trigger a hyperscript listener hears (W024, W025).
+    assert sorted(registry) == ["morph", "nearest", "notify", "retitle", "selfswap", "sign_off", "sync"]
+    assert_no_hx_check_issues()
+
+
 def test_e009_an_act_that_names_no_interaction(startup):
     messages = startup(**{"extra.html": control("{% act 'notfy' contest='spring' member=3 %}")})
     assert found(messages) == [("dj_hx.E009", "extra.html:2")]
@@ -846,29 +923,37 @@ def swapping(swap):
     return control(NOTIFY, rest=f'hx-target="#notify" hx-swap="{swap}"')
 
 
+TWO_IDS = 'That leaves two elements with id="notify".'
+DROPPED = 'innerMorph keeps one element with id="notify" and leaves its old content: the reply does not reach the page.'
+
+
+# What each rejected swap does is measured in Chromium on htmx 4.0.2 by tests/test_interactions_browser.py.
 @pytest.mark.parametrize(
-    "template, says, two_ids",
+    "template, says, effect",
     [
-        (control(NOTIFY, rest='hx-target="#notify"'), "it has no hx-swap, so htmx 4 swaps innerHTML", True),
-        (swapping("innerHTML"), "its hx-swap is 'innerHTML'", True),
-        (swapping("innerMorph"), "its hx-swap is 'innerMorph'", True),  # morphs the reply, root and all, into the target
+        (control(NOTIFY, rest='hx-target="#notify"'), "it has no hx-swap, so htmx 4 swaps innerHTML", TWO_IDS),
+        (swapping("innerHTML"), "its hx-swap is 'innerHTML'", TWO_IDS),
+        (swapping("beforeend"), "its hx-swap is 'beforeend'", TWO_IDS),
+        (swapping("afterend"), "its hx-swap is 'afterend'", TWO_IDS),
+        (swapping("innerMorph"), "its hx-swap is 'innerMorph'", DROPPED),
         (
             '{% load hx %}\n<div hx-swap="outerHTML"><button hx-post="' + NOTIFY + '" hx-target="#notify">Go</button></div>',
             "the plain hx-swap on <div> above it does not reach it in htmx 4",
-            True,
+            TWO_IDS,
         ),
-        (swapping("none"), "its hx-swap is 'none'", False),
-        (swapping("delete"), "its hx-swap is 'delete'", False),
-        (swapping("textContent"), "its hx-swap is 'textContent'", False),
+        (swapping("none"), "its hx-swap is 'none'", None),
+        (swapping("delete"), "its hx-swap is 'delete'", None),
+        (swapping("textContent"), "its hx-swap is 'textContent'", None),
     ],
-    ids=["none", "innerHTML", "innerMorph", "plain-ancestor", "style-none", "delete", "textContent"],
+    ids=["none", "innerHTML", "beforeend", "afterend", "innerMorph", "plain-ancestor", "style-none", "delete", "textContent"],
 )
-def test_e013_a_control_that_does_not_swap_outer(startup, template, says, two_ids):
+def test_e013_a_control_that_does_not_swap_outer(startup, template, says, effect):
     messages = startup(**{"extra.html": template})
     assert found(messages) == [("dj_hx.E013", "extra.html:2")]
     message = the(messages, "dj_hx.E013")
     assert "so the control must use an outer swap (outerHTML, outerMorph or outerSync)" in message.msg
-    assert says in message.msg and ('two elements with id="notify"' in message.msg) == two_ids
+    assert says in message.msg
+    assert [sentence for sentence in (TWO_IDS, DROPPED) if sentence in message.msg] == ([effect] if effect else [])
     assert 'hx-swap="outerHTML"' in message.hint
 
 

@@ -101,8 +101,15 @@ What was rejected, and why:
   inside the target.
 - **htmx 2 compatibility.** Without `HX-Request-Type` the page-or-fragment
   question is a guess.
-- **Decorators that render a returned dict.** A view that sometimes returns a
-  dict and sometimes a redirect has two return types, which is an agent trap.
+- **Decorators that render a returned dict, as first proposed.** A view that
+  sometimes returns a dict and sometimes a redirect has two return types, which
+  is an agent trap. `@interaction` (below) is that decorator, made safe by
+  three rules: one return type, a dict of context keys or `None`, and anything
+  else, a response included, raises; the reply is always the partial it
+  declares, a refusal's 422 included; and leaving the page is a plain view's
+  job, through `navigate()`. What it costs: one more concept beside the verbs,
+  and routes minted for interactions (`x/<app label>/<handler>/…`) instead of
+  written in the app's URLconf, served by one more include.
 
 ## Install
 
@@ -275,6 +282,14 @@ The rules:
 - **A declared refusal is a 422.** An exception listed in `refuses` re-renders the partial with
   `error=str(exc)` and status 422, which htmx 4 swaps, and sends no triggers. The handler writes no
   `try`. Any other exception is a 500.
+  - The message is what the user reads. One that is empty or blank (`raise NotOnRota()`) leaves
+    `{% if error %}` nothing to show, so the click seems to do nothing; the reply still goes out, and
+    `HxEmptyRefusal` is recorded on it, which `HxTestClient` raises.
+  - A refusal is a response, not an exception Django sees, so under `ATOMIC_REQUESTS` the writes the
+    handler made before raising are committed. Raise before writing; or call
+    `transaction.set_rollback(True)` before the raise, which rolls the request's block back as the
+    422 goes out; or write inside `with transaction.atomic():` and raise inside it, which rolls that
+    block back with or without `ATOMIC_REQUESTS`.
 - **Success is a 200**, with `.trigger(name)` for each name in `triggers`.
 - **Any other method gets a 405** with `Allow`. The guard records nothing for it.
 - **The partial's root element carries `id="<partial name>"`**, checked on every reply, so the
@@ -300,23 +315,30 @@ The rules:
   - A signed-out request to a `@login_required` interaction gets its 302. On a control that targets
     an element the guard records that 302 (`HxRedirectIntoFragment`), as it does for any view,
     because fetch would follow it into the target.
+  - Every interaction is routed by the root `include("dj_hx.urls")`, not under its app's own
+    include, so protection attached to that include, such as `decorator_include` or a middleware
+    that checks the app's URL prefix, never reaches it. A decorator above `@interaction` does, and
+    so does middleware that sees every request, such as Django 5.1's `LoginRequiredMiddleware`.
 - **`manage.py check` reads every `{% act %}` in the project's templates**, as `hx_lint` does,
   never site-packages, and checks the control it writes the URL of against its interaction, as
   htmx 4.0.2 resolves each attribute:
   - The control sends the interaction's method. `hx-post` and its siblings name it; `hx-action`
     sends its own `hx-method`, else an ancestor's `hx-method:inherited`, else its `method`
-    attribute (`<form method="post">`), else GET. A submit button's `formmethod` is chosen at
-    click time and is not read.
+    attribute (`<form method="post">`, measured), else GET. A submit button's `formmethod` is
+    chosen at click time and is not read.
   - It targets the element with the partial's id: `hx-target="#<partial name>"`, or no
     `hx-target` on a control that carries the id itself, or `hx-target="this"` on the element
-    that carries it (htmx 4 resolves `this` to the element declaring it). An extended selector
+    that carries it (htmx 4 resolves `this` to the element declaring it; both measured, the second
+    as click-to-edit's `hx-target:inherited="this"` on the partial's root). An extended selector
     whose CSS part is `#<partial name>` counts too: `closest`, `find`, `findAll`, `next` or
     `previous #<partial name>`, with or without `global `, as htmx 4.0.2's target resolver reads
-    them, each reaching that element or nothing. A comma list, a bare `next` or `previous`,
-    `document`, `window`, `body`, `host` and any other CSS stay Errors.
+    them, each reaching that element or nothing (`closest` measured). A comma list, a bare `next`
+    or `previous`, `document`, `window`, `body`, `host` and any other CSS stay Errors.
   - Its `hx-swap` is an outer swap (`outerHTML`, `outerMorph` or `outerSync`, which each leave one
-    element with the id, as read in htmx 4.0.2's swap code). Without `hx-swap`, htmx 4 swaps
-    `innerHTML` and nests a second element with the partial's id inside the first.
+    element with the id, as read in htmx 4.0.2's swap code and measured). Without `hx-swap`, htmx 4
+    swaps `innerHTML` and nests a second element with the partial's id inside the first, as
+    `beforeend`, `afterbegin`, `beforebegin` and `afterend` leave a second one beside it or inside
+    it; `innerMorph` keeps one element with the id and drops the reply's content.
   - Each attribute is the control's own or an ancestor's `:inherited` one; a plain attribute on an
     ancestor does not reach it in htmx 4.
 
@@ -329,6 +351,43 @@ The rules:
   it wraps, is computed too, since it may not render: `id="{% if p %}{{ p }}-{% endif %}notify"` is
   skipped, `id="{% if p %}{{ p }}-{% endif %}row"` is an Error. An `{% act %}` it cannot tie to
   one element's verb attribute gets an Info (`dj_hx.I021`) saying so. The ids are in "What is loud" below.
+
+  "Measured" means in Chromium, on htmx 4.0.2, by `tests/test_interactions_browser.py`, against a
+  page whose controls pass every check (`tests/desk`).
+
+### The status policy
+
+htmx 4 swaps every status but 204 and 304. A 405 from a control that sends the wrong method, a 404
+for an object removed since the page was drawn, or a 500 replaces the region with the error's body,
+and the controls are gone (measured for each). A site with interactions puts this in its layout:
+
+```django
+<head>
+  <meta name="htmx-config" content='{"noSwap": [204, 304, "40x", "5xx"]}'>
+  ...
+</head>
+<body hx-headers:inherited='{"X-CSRFToken": "{{ csrf_token }}"}'>
+  <p id="trouble" role="alert" style="display: none"
+     _="on htmx:before:request from body hide me end
+        on htmx:response:error from body if event.detail.ctx.response.status is not 422 show me">Something went wrong on the server. Please try again.</p>
+```
+
+- **`noSwap`** keeps the controls on a 404, a 405 or a 500, while a 422 refusal still swaps (each
+  measured). htmx 4.0.2 matches the status, then its first two digits and `x`, then its first digit
+  and `xx`, so `"40x"` covers 400 to 409 and `"5xx"` every 5xx; a 410, 413 or 429 still swaps (read
+  from that code, not measured).
+- **One generic listener**, written once in the layout, says something went wrong.
+  `htmx:response:error` fires for every status of 400 or above, a refusal's 422 included, so it
+  leaves 422 to the partial's own `{% if error %}`. It hides itself again when the next request
+  starts.
+- **Hidden with `style="display: none"`, never the `hidden` attribute.** Hyperscript's `show`
+  clears only an inline `display`, so an alert hidden with `hidden` never appears (measured).
+- **A fact an interaction announces in `triggers=`** reaches the regions that care through a
+  listener, `_="on notified from body ..."` in hyperscript or `hx-trigger="notified from:body"`,
+  and the listener runs after the reply, never while it is pending (measured, holding the request
+  for 1.2 s).
+
+The alert and the `_=` listener are hyperscript, so that layout loads `_hyperscript` after htmx.
 
 ## What is loud
 
@@ -358,9 +417,10 @@ by `HxTestClient`. Nothing is gated on `DEBUG` that a test needs.
 | The module that defines the handler holds the raw handler under its name (`remind_view = interaction(...)(remind)`, or `remind = interaction(...)(handlers.remind)` in another module), or a decorator of it written with `functools.wraps`, so its route would skip the method guard | `ImproperlyConfigured` when the URLconf is first read (the first request, or `manage.py check`), naming the module attribute and the fix. A decorator of the raw handler written without `functools.wraps` is routed as it is, past the method guard: only check `dj_hx.W018` warns |
 | An `@interaction` that cannot work: two with one name, a minted route for a handler in no installed app, `route=` parameters that are not the handler's (or `<str:...>` for one annotated `int`), a `partial=` that is not `page.html#name`, `triggers=` given as a string, a `method` that is not GET, POST, PUT, PATCH or DELETE, a `refuses` holding anything but exception classes (`refuses=("DomainError",)`), a handler or a `context=` taking `*args` or `**kwargs`, a `context=` parameter without a default that the route does not have | `ImproperlyConfigured` when the views module is imported, so at start-up, naming the handler |
 | An interaction returns anything but a `dict` or `None`, an `HttpResponse` included, or a view decorator below `@interaction` answers with one | `ImproperlyConfigured`: an interaction always re-renders its partial; leave the page from a view that returns `navigate()`, and put Django view decorators above `@interaction` |
+| A declared refusal whose message is empty or blank (`raise NotOnRota()`), so the 422 reply's `{% if error %}` shows nothing and the click seems to do nothing | `HxEmptyRefusal`, recorded on the 422, which still goes out: logged, and raised by `HxTestClient`, naming the handler and the exception to give a message |
 | An interaction's reply sets a key its context does not define | `ImproperlyConfigured`, naming the key and the context function: define each there with its default. `error` is always defined, because every reply carries it |
 | `{% act %}` with a positional argument, a keyword the handler does not take, a missing one, or a name no interaction has | `TemplateSyntaxError` at render, naming the handler's parameters, or listing the interactions there are; at start-up, checks `dj_hx.E009` (no such interaction) and `E010` (the arguments), naming template:line |
-| An `{% act %}` control that sends another method than its interaction answers (for `hx-action`: its `hx-method`, an ancestor's `hx-method:inherited`, its `method` attribute, else GET; a submit button's `formmethod` is not read), that does not target the element with id `<partial name>` (`hx-target="#<partial name>"`, its own or an ancestor's `hx-target:inherited`, or an htmx 4.0.2 extended selector whose CSS part is that, such as `closest #<partial name>`; or no `hx-target`, or `hx-target="this"`, on the element with that id), or whose `hx-swap` (its own or inherited) is not an outer swap (`outerHTML`, `outerMorph` or `outerSync`, read from htmx 4.0.2's swap code) | checks `dj_hx.E011`, `E012` and `E013`, naming template:line and the attribute to write; a plain `hx-target` or `hx-swap` on an ancestor is named as not reaching the control |
+| An `{% act %}` control that sends another method than its interaction answers (for `hx-action`: its `hx-method`, an ancestor's `hx-method:inherited`, its `method` attribute, else GET; a submit button's `formmethod` is not read), that does not target the element with id `<partial name>` (`hx-target="#<partial name>"`, its own or an ancestor's `hx-target:inherited`, or an htmx 4.0.2 extended selector whose CSS part is that, such as `closest #<partial name>`; or no `hx-target`, or `hx-target="this"`, on the element with that id), or whose `hx-swap` (its own or inherited) is not an outer swap (`outerHTML`, `outerMorph` or `outerSync`, read from htmx 4.0.2's swap code and measured in Chromium) | checks `dj_hx.E011`, `E012` and `E013`, naming template:line and the attribute to write; a plain `hx-target` or `hx-swap` on an ancestor is named as not reaching the control. E013 says what the swap does instead: two elements with the id (`innerHTML`, `beforeend`, `afterbegin`, `beforebegin`, `afterend`), or, for `innerMorph`, one element that keeps its old content |
 | An interaction no project template writes an `{% act %}` for (a `{% url 'dj_hx:…' %}` or hand-written path is not counted: E011 to E013 cannot check it), whose partial does not load, or whose partial's root element is not `id="<partial name>"` | checks `dj_hx.E014`, `E015` (with `HxUnknownPartial`'s reason) and `E016` (the start-up twin of `HxPartialRootId`, judged where the source shows the root). E014 skips an interaction whose handler's module is in site-packages: its controls are in that app's templates, which are never read |
 | An interaction registered after `dj_hx.urls` was first read, so its route is the bare view and the decorators above it do not apply | check `dj_hx.E017`, naming the module to import before the URLconf is loaded |
 | Interactions registered, but `dj_hx.urls` not included | check `dj_hx.E020`; `{% act %}` raises `ImproperlyConfigured`; both name `path("", include("dj_hx.urls"))` |
@@ -464,6 +524,11 @@ python -m pytest                 # the suite
 python -m pytest -m browser      # in Chromium (pip install playwright; playwright install chromium)
 ```
 
+The browser tests also drive `tests/desk`, one page of interactions on htmx
+4.0.2 and _hyperscript 0.9.94 (vendored, with their npm sources and sha256
+beside them), which passes every check: the status policy and the htmx
+behaviours checks E011 to E013 accept are measured there.
+
 ## htmx 4 facts this depends on
 
 All verified against `src/htmx.js` at tag v4.0.0; the line numbers are into
@@ -475,7 +540,12 @@ that file.
 - `HX-Trigger` fires on the source element, or `document` if the swap removed it (L620, L1296); that is why `.trigger()` always sets a `target`.
 - Attributes reach descendants only with `:inherited`; `<body hx-boost="true">` boosts nothing (L285).
 - `hx-delete` sends query parameters and excludes the enclosing form unless asked with `hx-include` (L476).
-- Only 204 and 304 skip the swap (L202). A 422 body swaps with no client configuration.
+- Only 204 and 304 skip the swap (L202). A 422 body swaps with no client configuration, and so do a
+  404, a 405 and a 5xx, which is why interactions want the status policy.
+
+The interaction layer's facts are measured on htmx 4.0.2 in Chromium instead,
+by `tests/test_interactions_browser.py`: the status policy, and the swaps,
+targets and `hx-action` method checks E011 to E013 accept.
 
 ## License
 

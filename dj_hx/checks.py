@@ -50,7 +50,9 @@ which the scan never reads.
 E013's outer swaps, read from htmx 4.0.2's swap code: outerHTML replaces the
 target, outerMorph morphs the target itself, and outerSync copies the reply
 root's attributes onto it and takes the root's children, so each leaves one
-element with the id. innerMorph morphs the reply, root and all, into the target.
+element with the id. In Chromium on htmx 4.0.2 (tests/test_interactions_browser.py)
+each does; innerHTML, beforeend, afterbegin, beforebegin and afterend leave two,
+and innerMorph keeps one but drops the reply's content.
 E022 reads each {% url %} as Django's lexer does (not in a comment or {% verbatim %}),
 skips a name built at run time, and reverses the name through Django's resolver
 with a placeholder for each argument, chosen by the converter the pattern
@@ -88,7 +90,7 @@ _OUTER_SWAPS = {"outerHTML", "outerMorph", "outerSync"}  # one element carries t
 # keyword whose argument is a CSS selector (closest, find, findAll, next, previous), a fixed target
 # (this, document, window, body, host, bare next or previous) or plain CSS. group(1) is the CSS part.
 _EXTENDED_SELECTOR = re.compile(r"(?:global )?(?:(?:closest|find|findAll|next|previous) )?(.*)", re.S)
-_KEEPS_THE_TARGET = {"innerHTML", "innerMorph", "afterbegin", "beforeend", "beforebegin", "afterend"}  # reply in or beside it
+_KEEPS_THE_TARGET = {"innerHTML", "afterbegin", "beforeend", "beforebegin", "afterend"}  # reply in or beside it: two ids
 
 
 def _should_run(app_configs) -> bool:
@@ -596,7 +598,12 @@ def _control_messages(it, node, attr: str, where: str) -> list:
             if swap is None
             else f"its hx-swap is {swap!r}"
         )
-        keeps = f' That leaves two elements with id="{partial}".' if style in _KEEPS_THE_TARGET else ""
+        if style in _KEEPS_THE_TARGET:
+            keeps = f' That leaves two elements with id="{partial}".'
+        elif style == "innerMorph":  # measured on htmx 4.0.2: the morph leaves the target as it was
+            keeps = f' innerMorph keeps one element with id="{partial}" and leaves its old content: the reply does not reach the page.'
+        else:
+            keeps = ""
         messages.append(
             Error(
                 f"{tag}: {it.name}() replies with its whole partial, root and all, so the control must use an outer "

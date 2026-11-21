@@ -10,6 +10,7 @@ __version__ = "0.1.0"
 
 from .errors import (
     HxBareResponse,
+    HxEmptyRefusal,
     HxError,
     HxFragmentIntoPage,
     HxLintError,
@@ -34,5 +35,5 @@ __all__ = [
     "HxResponse", "HxRedirectResponse", "HxMixin", "interaction",
     "HxError", "HxProtocolError", "HxPageIntoFragment", "HxFragmentIntoPage", "HxRedirectIntoFragment",
     "HxNoSwap", "HxBareResponse", "HxUnknownPartial", "HxPartialRootId", "HxMessagesUnconfigured", "HxLintError", "HxRedirectError",
-    "HxUndefinedVariable",
+    "HxUndefinedVariable", "HxEmptyRefusal",
 ]

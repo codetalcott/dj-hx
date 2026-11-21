@@ -12,18 +12,28 @@ to a verb signature, a setting, an error, a check id or a lint rule must be mirr
 
 ## Commands
 
-The checked-in `.venv` has Django 6.0, pytest, ruff and playwright.
+No virtualenv is checked in: `.venv/` is gitignored, and an old local one can point at a Python that is gone
+(this one's points at a removed Homebrew 3.13). Build one outside the repo (CI instead runs
+`pip install -e ".[dev,browser,partials]"` on each Python/Django pair, then `playwright install --with-deps chromium`):
 
 ```
-.venv/bin/python -m pytest                      # 351 tests, ~5s
-.venv/bin/python -m pytest -m "not browser"     # 344, skipping Chromium
-.venv/bin/python -m pytest -m browser           # the 7 Playwright tests alone
-.venv/bin/python -m pytest tests/test_verbs.py::test_text_escapes
-.venv/bin/ruff check .
+uv venv <venv> && uv pip install -p <venv>/bin/python "django~=6.1.0" pytest pytest-django ruff "playwright==1.64.0"
+<venv>/bin/python -m playwright install chromium   # below Django 6, add django-template-partials
+
+<venv>/bin/python -m pytest -q                      # 384 tests, ~11 s
+<venv>/bin/python -m pytest -q -m "not browser"     # 354, ~1 s, skipping Chromium
+<venv>/bin/python -m pytest -q -m browser           # the 30 Playwright tests alone, ~9 s
+<venv>/bin/python -m pytest tests/test_verbs.py::test_text_escapes
+<venv>/bin/ruff check .
 ```
 
-The browser tests `importorskip` Playwright, so they vanish rather than fail where it is missing; this
-venv has it installed, so a bare `pytest` run includes them.
+Counts and times measured 2026-11-20 on an Apple M4: Python 3.13.6, Django 6.1.3, Playwright 1.64.0.
+`pytest.ini` puts the repo and `example/` on the path, so no `PYTHONPATH` is needed. On macOS 27.2 here,
+Playwright 1.65.2's headless shell crash-loops ("icudtl.dat not found in bundle"); pin `playwright==1.64.0`
+locally. CI installs its own and is unaffected.
+
+The browser tests `importorskip` Playwright, so they vanish rather than fail where it is missing; with the
+install above a bare `pytest` run includes them, and the count says whether they ran.
 
 `pytest.ini` sets `DJANGO_SETTINGS_MODULE=tests.settings` and puts `example/` on the path, so the suite
 runs against the example project with an in-memory database and `DEBUG` off.
@@ -76,7 +86,9 @@ top-level name its templates read: `tests/urlconfs/lib.py`'s `PAGE` carries `ext
 
 **Ordering matters.** `HxMiddleware` must run its response phase before `MessageMiddleware` stores
 messages, which means it is listed *after* it. [checks.py](dj_hx/checks.py) enforces that as `dj_hx.E002`;
-the check ids W001-W025 are documented in that module's docstring.
+the check ids are documented in that module's docstring: W001 to W008 for settings, middleware, the lint and `HxMixin`,
+E009 to E017, W018, W019, E020 and I021 for interactions, E022 and I023 for `{% url %}`, and W024 and W025
+for events.
 
 **The lint has two surfaces over one rule set.** [hxlint.py](dj_hx/hxlint.py) works on rendered HTML
 strings. [templates.py](dj_hx/templates.py) strips Django template syntax (line numbers preserved,
@@ -90,7 +102,9 @@ one included. Keep one copy of that rule.
 `@interaction`, the registry (by handler name) and the wrapper view (method guard, refusals as 422,
 the return-type and reply-key guards). Its 200 and 422 are built by `fragment()` and checked by
 `check_root_id()`, and its facts go out through `.trigger()`; only the 405 is a plain Django
-`HttpResponseNotAllowed`, which the guard does not judge (it reads 2xx, 3xx and 204). Each decorator appends its
+`HttpResponseNotAllowed`, which the guard does not judge (it reads 2xx, 3xx and 204). A refusal whose message
+is empty or blank is recorded on its 422 as `HxEmptyRefusal` (through `verbs._record`, so it is logged and
+`HxTestClient` raises it; never raised in production). Each decorator appends its
 route to the module's `urlpatterns`, which [urls.py](dj_hx/urls.py) serves (`include("dj_hx.urls")`,
 namespace `dj_hx`); [templatetags/hx.py](dj_hx/templatetags/hx.py) is `{% act %}`, which reverses
 from keyword arguments only. [apps.py](dj_hx/apps.py)'s `ready()` imports every project app's `views`
@@ -177,6 +191,18 @@ is genuinely Django-specific; the core is vendored from hx-flask (see below).
   neither) for the `@login_required` test.
 - `tests/test_contact_app.py` and `tests/test_browser.py` run against `example/`, mirroring hx-flask's
   suite for a like-for-like comparison.
+- `tests/desk/` is the app `tests/test_interactions_browser.py` drives in Chromium. It is installed (label
+  `desk`) for its label and its static files: htmx 4.0.2 and _hyperscript 0.9.94, vendored with their npm
+  sources and sha256 in `static/desk/README.md`, while `example/` stays on htmx 4.0.0. Its interactions
+  are in `handlers.py`, not `views.py`, so `ready()` never registers them: the `desk` fixture (conftest)
+  imports it afresh with the rota app's interactions set aside, routes them, serves `pages/` from disk with
+  `tests.desk.urls` as the root, and puts the rota app back after. `test_interactions.py` asserts the
+  desk passes every check, so each control the browser measures is one the checks accept; a swap the checks
+  reject is set on the control from the test, in the page. The browser tests wait for htmx with
+  `finished(page, n)`, which counts `htmx:finally:request` on `document` (htmx dispatches there when the
+  swap removed the control), and hold a write in the browser until the test releases it (`hold_writes`).
+- `browser` (one Chromium per module, with `DJANGO_ALLOW_ASYNC_UNSAFE` set while it runs) and `page` are
+  conftest's, shared by both browser modules.
 - `tests/test_undefined_variables.py` covers the client's undefined-variable check, through the views in
   `tests/urlconfs/undefined.py`. `locmem(templates, dirs=[...])` adds a filesystem loader over `dirs`,
   so a test can include one of Django's own templates from site-packages.

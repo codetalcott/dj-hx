@@ -31,6 +31,9 @@ Interactions: one handler bound to one template partial, by name.
   that forgets (``HxUndefinedVariable``).
 - A declared refusal, an exception in ``refuses``, re-renders the partial with
   ``error=str(exc)`` and status 422, so the handler writes no ``try``. Any other exception is a 500.
+  One whose message is empty or blank is recorded as ``HxEmptyRefusal``: its reply shows nothing. A
+  refusal is a response, so under ``ATOMIC_REQUESTS`` the writes made before the raise are committed;
+  raise before writing, or call ``transaction.set_rollback(True)`` before raising.
 - ``triggers`` names the facts a successful reply announces, ``.trigger(name)`` for each.
 - A request with any other method gets a 405.
 - dj-hx's ``ready()`` imports each project app's ``views`` module, so every route exists before
@@ -59,7 +62,8 @@ from django.http import HttpResponseNotAllowed
 from django.urls import NoReverseMatch, path
 from django.urls.converters import IntConverter
 
-from .verbs import HxResponse, check_root_id, fragment
+from .errors import HxEmptyRefusal
+from .verbs import HxResponse, _record, check_root_id, fragment
 
 __all__ = ["interaction"]
 
@@ -95,7 +99,10 @@ class Interaction:
         try:
             reply = self.func(request, **kwargs)
         except self.refuses as exc:
-            return self._render(request, kwargs, {"error": str(exc)}).with_status(422)
+            response = self._render(request, kwargs, {"error": str(exc)}).with_status(422)
+            if not str(exc).strip():  # recorded, not raised: a template could show something for error == ""
+                _record(request, response, self._empty_refusal(exc))
+            return response
         if reply is not None and not isinstance(reply, dict):
             raise ImproperlyConfigured(
                 f"{self.name}() returned {type(reply).__name__}; an interaction returns a dict of context keys, or "
@@ -107,6 +114,15 @@ class Interaction:
         for name in self.triggers:
             response.trigger(name)
         return response
+
+    def _empty_refusal(self, exc: BaseException) -> HxEmptyRefusal:
+        kind = type(exc).__name__
+        return HxEmptyRefusal(
+            f"{self.name}() refused with {kind}, whose message is {'blank' if str(exc) else 'empty'}, so its 422 reply sets "
+            f"error to {str(exc)!r} and "
+            "the partial's {% if error %} shows nothing to read: the control seems to do nothing. Raise it with a "
+            f'message for the user: raise {kind}("...").'
+        )
 
     def _render(self, request, kwargs, reply: dict) -> HxResponse:
         # `error` is the layer's: a refusal writes it, and any other reply reads None unless context= or the handler sets it.

@@ -1,0 +1,42 @@
+{% extends "layout.html" %}{% load hx %}
+{% block content %}
+<h1>The desk</h1>
+<p data-testid="notices" _="on notified from body put 'A member was notified.' into me">No one notified yet.</p>
+
+{% partialdef notify inline %}
+<div id="notify">
+  {% for member in members %}<button data-testid="notify-{{ member.id }}" hx-post="{% act 'notify' member=member.id %}" hx-target="#notify" hx-swap="outerHTML">Notify {{ member.name }}</button>
+  {% endfor %}
+  <!-- A url-tag control, which the start-up checks do not judge, sends GET to a POST interaction: a 405. -->
+  <button data-testid="stale-get" hx-get="{% url 'dj_hx:notify' member=3 %}" hx-target="#notify" hx-swap="outerHTML">Check Ada</button>
+  {% if notified %}<p class="done" data-testid="notified">Notified {{ notified }}.</p>{% endif %}
+  {% if error %}<p class="error" data-testid="refusal">{{ error }}</p>{% endif %}
+</div>
+{% endpartialdef %}
+
+{% partialdef signoff inline %}
+<form id="signoff" method="post" hx-action="{% act 'sign_off' member=lead %}" hx-target="#signoff" hx-swap="outerHTML">
+  <button data-testid="sign-off">Sign off</button>{% if signed %} <span class="done" data-testid="signed">Signed off.</span>{% endif %}
+</form>
+{% endpartialdef %}
+
+{% partialdef morphed inline %}
+<div id="morphed"><button data-testid="morph" hx-post="{% act 'morph' %}" hx-target="#morphed" hx-swap="outerMorph">Morph</button> <span class="replies">{{ replies.morph }}</span></div>
+{% endpartialdef %}
+
+{% partialdef synced inline %}
+<div id="synced" data-replies="{{ replies.sync }}"><button data-testid="sync" hx-post="{% act 'sync' %}" hx-target="#synced" hx-swap="outerSync">Sync</button> <span class="replies">{{ replies.sync }}</span></div>
+{% endpartialdef %}
+
+{% partialdef selfswap inline %}
+<div id="selfswap" data-testid="selfswap" hx-post="{% act 'selfswap' %}" hx-swap="outerHTML">Replace me <span class="replies">{{ replies.selfswap }}</span></div>
+{% endpartialdef %}
+
+{% partialdef title inline %}
+<div id="title" hx-target:inherited="this" hx-swap:inherited="outerHTML"><h2>{{ title }}</h2><button data-testid="retitle" hx-post="{% act 'retitle' %}">Next title</button> <span class="replies">{{ replies.retitle }}</span></div>
+{% endpartialdef %}
+
+{% partialdef nearest inline %}
+<div id="nearest"><p><button data-testid="nearest" hx-post="{% act 'nearest' %}" hx-target="closest #nearest" hx-swap="outerHTML">Nearest</button> <span class="replies">{{ replies.nearest }}</span></p></div>
+{% endpartialdef %}
+{% endblock %}

@@ -44,6 +44,10 @@ class HxPartialRootId(HxError):
     """A partial rendered into ``<hx-partial>`` has no root element carrying ``id=<name>``."""
 
 
+class HxEmptyRefusal(HxError):
+    """An interaction's declared refusal has an empty or blank message, so its 422 reply shows nothing to read."""
+
+
 class HxMessagesUnconfigured(HxError):
     """Messages were added on a fragment response and ``HX_MESSAGES_TEMPLATE`` is unset."""
 

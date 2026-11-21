@@ -104,7 +104,9 @@ event fired without a target lands on `document` after a delete swap, where a
   namespace, and `{% act 'notify' contest=... member=... %}` (`{% load hx %}`)
   writes one into a control, from keyword arguments only. A declared refusal
   is a 422 with `error`; success a 200 with the declared triggers; another
-  method a 405. Every reply carries `error`: `None` on success unless the
+  method a 405. A refusal whose message is empty or blank is recorded as
+  `HxEmptyRefusal` (its reply shows nothing to read), which `HxTestClient`
+  raises. Every reply carries `error`: `None` on success unless the
   handler or the context sets it. A handler returns a dict or `None`, and every
   key it returns must already be in the context (`error` always is). dj-hx's
   `ready()` imports each project app's `views` module, so every route exists
@@ -132,7 +134,9 @@ event fired without a target lands on `document` after a delete swap, where a
   CSS part is that, `closest #<partial>` and its siblings as htmx 4.0.2's
   target resolver reads them, or no `hx-target` or `hx-target="this"` on that
   element) and uses an outer swap, `outerHTML`,
-  `outerMorph` or `outerSync` as read in htmx 4.0.2's swap code (E013), reading
+  `outerMorph` or `outerSync` as read in htmx 4.0.2's swap code (E013, whose
+  message says what the swap does instead: a second element with the id, or
+  for `innerMorph` a reply that never reaches the page), reading
   htmx 4's `:inherited` on ancestors, and judging a templated id or `hx-target`
   by its literal parts (`id="row-{{ pk }}"` cannot be `#notify`;
   `id="{{ name }}"` is skipped, and so is
@@ -167,8 +171,20 @@ event fired without a target lands on `document` after a delete swap, where a
   (hx-flask's `mapcore.unpaired_events`), and they are Warnings, because a
   JavaScript file, a template in site-packages or a helper the view calls can
   be the other side.
+- README's status policy for interactions: `noSwap: [204, 304, "40x", "5xx"]`
+  in the layout's `htmx-config`, and one hyperscript alert that ignores 422,
+  hides itself when the next request starts, and is hidden with
+  `style="display: none"`, since `show` never clears the `hidden` attribute.
+  It also says that a refusal is a response, so `ATOMIC_REQUESTS` commits the
+  writes made before it (raise first, or `transaction.set_rollback(True)`),
+  and that protection on an app's own include never reaches its interactions.
+- `tests/desk`, a page of interactions that passes every check, driven in
+  Chromium on htmx 4.0.2 and _hyperscript 0.9.94 (vendored with their npm
+  sha256): feedback only after the reply, a refusal that keeps the controls,
+  the status policy against a 405, a 404 and a 500, and each htmx behaviour
+  checks E011 to E013 accept, measured once.
 - The example: contact.app on the ORM, same routes, templates and tests as
-  hx-flask; 156 tests plus 7 in Chromium, on Django 4.2, 5.2, 6.0 and 6.1.
+  hx-flask, in Chromium too, on Django 4.2, 5.2, 6.0 and 6.1.
 - Site-packages, which the lint, the map, the checks and `ready()` all skip,
   is one rule (`templates.in_site_packages`): sysconfig's `purelib` and
   `platlib` plus the `site-packages` and `dist-packages` directories `site`
