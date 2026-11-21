@@ -924,7 +924,7 @@ def swapping(swap):
 
 
 TWO_IDS = 'That leaves two elements with id="notify".'
-DROPPED = 'innerMorph keeps one element with id="notify" and leaves its old content: the reply does not reach the page.'
+THROWS = "With innerMorph, htmx 4.0.2 throws (HierarchyRequestError, logged as htmx:error) and the reply never reaches the page."
 
 
 # What each rejected swap does is measured in Chromium on htmx 4.0.2 by tests/test_interactions_browser.py.
@@ -935,7 +935,7 @@ DROPPED = 'innerMorph keeps one element with id="notify" and leaves its old cont
         (swapping("innerHTML"), "its hx-swap is 'innerHTML'", TWO_IDS),
         (swapping("beforeend"), "its hx-swap is 'beforeend'", TWO_IDS),
         (swapping("afterend"), "its hx-swap is 'afterend'", TWO_IDS),
-        (swapping("innerMorph"), "its hx-swap is 'innerMorph'", DROPPED),
+        (swapping("innerMorph"), "its hx-swap is 'innerMorph'", THROWS),
         (
             '{% load hx %}\n<div hx-swap="outerHTML"><button hx-post="' + NOTIFY + '" hx-target="#notify">Go</button></div>',
             "the plain hx-swap on <div> above it does not reach it in htmx 4",
@@ -953,7 +953,7 @@ def test_e013_a_control_that_does_not_swap_outer(startup, template, says, effect
     message = the(messages, "dj_hx.E013")
     assert "so the control must use an outer swap (outerHTML, outerMorph or outerSync)" in message.msg
     assert says in message.msg
-    assert [sentence for sentence in (TWO_IDS, DROPPED) if sentence in message.msg] == ([effect] if effect else [])
+    assert [sentence for sentence in (TWO_IDS, THROWS) if sentence in message.msg] == ([effect] if effect else [])
     assert 'hx-swap="outerHTML"' in message.hint
 
 

@@ -52,7 +52,8 @@ target, outerMorph morphs the target itself, and outerSync copies the reply
 root's attributes onto it and takes the root's children, so each leaves one
 element with the id. In Chromium on htmx 4.0.2 (tests/test_interactions_browser.py)
 each does; innerHTML, beforeend, afterbegin, beforebegin and afterend leave two,
-and innerMorph keeps one but drops the reply's content.
+and on innerMorph htmx throws (HierarchyRequestError, logged as htmx:error), so
+the reply never reaches the page.
 E022 reads each {% url %} as Django's lexer does (not in a comment or {% verbatim %}),
 skips a name built at run time, and reverses the name through Django's resolver
 with a placeholder for each argument, chosen by the converter the pattern
@@ -600,8 +601,8 @@ def _control_messages(it, node, attr: str, where: str) -> list:
         )
         if style in _KEEPS_THE_TARGET:
             keeps = f' That leaves two elements with id="{partial}".'
-        elif style == "innerMorph":  # measured on htmx 4.0.2: the morph leaves the target as it was
-            keeps = f' innerMorph keeps one element with id="{partial}" and leaves its old content: the reply does not reach the page.'
+        elif style == "innerMorph":  # measured on htmx 4.0.2: the swap throws partway through
+            keeps = " With innerMorph, htmx 4.0.2 throws (HierarchyRequestError, logged as htmx:error) and the reply never reaches the page."
         else:
             keeps = ""
         messages.append(

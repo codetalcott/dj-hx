@@ -3,10 +3,12 @@ Interactions in Chromium, against the desk app (tests/desk) on htmx 4.0.2 and _h
 versions the start-up checks' rulings were read from (their sources and hashes: tests/desk/static/desk/).
 
 What a reply does to the page: feedback only after it, a refusal's message with the controls kept, and
-README's status policy (``noSwap`` and the layout's alert) against a 405, a 404 and a 500. Then the htmx
-behaviours checks E011 to E013 accept, each measured once: an outer morph and an outer sync (E013), a
-self-replacing control, click-to-edit's ``hx-target:inherited="this"`` and ``closest #<partial>`` (E012),
-and a ``<form method="post" hx-action>`` (E011). tests/test_interactions.py shows the desk passes every check.
+README's status policy (``noSwap`` and the layout's alert) against a 405, a 404, a 500 and a request that
+gets no reply. Then six of the forms checks E011 to E013 accept, each measured once: an outer morph and an
+outer sync (E013), a self-replacing control, click-to-edit's ``hx-target:inherited="this"`` and
+``closest #<partial>`` (E012), and a ``<form method="post" hx-action>`` (E011); the other forms they accept
+are read from htmx 4.0.2's source. Last, what the swaps E013 rejects do instead. tests/test_interactions.py
+shows the desk passes every check.
 """
 
 from urllib.parse import urlparse
@@ -132,6 +134,7 @@ def test_without_the_status_policy_an_error_wipes_the_controls(page, live, desk,
     finished(page, 1)
     assert reply.value.status == status
     expect(one(page, "notify")).to_have_count(0)  # htmx 4 swapped the error's body over the region
+    assert page.console_errors == []
 
 
 def test_an_alert_hidden_with_the_hidden_attribute_never_shows(page, live, desk):
@@ -143,6 +146,7 @@ def test_an_alert_hidden_with_the_hidden_attribute_never_shows(page, live, desk)
     finished(page, 1)
     assert alert.evaluate("alert => alert.style.display") == ""  # `show me` ran: it cleared the inline none
     expect(alert).to_be_hidden()  # and left the hidden attribute alone
+    assert page.console_errors == []
 
 
 def test_the_alert_clears_on_the_next_request(page, live, desk):
@@ -150,6 +154,23 @@ def test_the_alert_clears_on_the_next_request(page, live, desk):
     page.get_by_test_id("stale-get").click()
     finished(page, 1)
     expect(page.locator("#trouble")).to_be_visible()
+    page.get_by_test_id("notify-3").click()
+    finished(page, 2)
+    expect(page.locator("#trouble")).to_be_hidden()
+    expect(page.get_by_test_id("notified")).to_have_text("Notified Ada.")
+    assert page.console_errors == []
+
+
+def test_the_alert_shows_when_the_request_never_gets_a_reply_and_clears_on_the_next(page, live, desk):
+    # A failed fetch (the server down, a timeout) has no status: htmx 4.0.2 fires htmx:error, not htmx:response:error.
+    open_desk(page, live)
+    page.route("**/x/desk/notify/3/", lambda route: route.abort(), times=1)
+    page.get_by_test_id("notify-3").click()
+    finished(page, 1)
+    expect(page.locator("#trouble")).to_be_visible()
+    expect(page.locator("#notify button")).to_have_text(["Notify Ada", "Notify Bo", "Check Ada"])
+    assert desk.DESK["notified"] == set()  # the request never reached the server
+    assert [error[:18] for error in page.console_errors] == ["htmx: htmx:error: "]  # htmx logs the error it fires
     page.get_by_test_id("notify-3").click()
     finished(page, 2)
     expect(page.locator("#trouble")).to_be_hidden()
@@ -200,6 +221,7 @@ def test_an_outer_sync_reply_copies_the_root_attributes(page, live, desk):
     page.get_by_test_id("sync").click()
     finished(page, 1)
     expect(one(page, "synced")).to_have_attribute("data-replies", "1")
+    assert page.console_errors == []
 
 
 # --------------------------------------------- what the swaps E013 rejects do instead
@@ -218,13 +240,16 @@ def test_a_swap_that_keeps_the_target_leaves_two_elements_with_the_id(page, live
     page.get_by_test_id("morph").click()
     finished(page, 1)
     expect(one(page, "morphed")).to_have_count(2)  # the reply's root, inside or beside the target
+    assert page.console_errors == []
 
 
-def test_an_inner_morph_keeps_one_element_with_the_id_and_drops_the_reply(page, live, desk):
+def test_an_inner_morph_makes_htmx_throw_and_the_reply_never_reaches_the_page(page, live, desk):
     open_desk(page, live)
     swap_with(page, "morph", "innerMorph")
     page.get_by_test_id("morph").click()
     finished(page, 1)
     assert desk.DESK["replies"]["morph"] == 1  # the server replied with 1
-    expect(one(page, "morphed")).to_have_count(1)
-    expect(page.locator("#morphed .replies")).to_have_text("0")  # the page still shows what it had
+    [error] = page.console_errors
+    assert error.startswith("htmx: htmx:error: ") and "HierarchyRequestError" in error  # the swap threw
+    expect(page.locator("#morphed .replies")).to_have_text("0")  # and the reply's 1 is nowhere on the page
+    expect(page.locator("#trouble")).to_be_visible()  # the layout's alert hears htmx:error

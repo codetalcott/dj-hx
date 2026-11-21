@@ -136,7 +136,8 @@ event fired without a target lands on `document` after a delete swap, where a
   element) and uses an outer swap, `outerHTML`,
   `outerMorph` or `outerSync` as read in htmx 4.0.2's swap code (E013, whose
   message says what the swap does instead: a second element with the id, or
-  for `innerMorph` a reply that never reaches the page), reading
+  for `innerMorph` an htmx `HierarchyRequestError`, so the reply never reaches
+  the page), reading
   htmx 4's `:inherited` on ancestors, and judging a templated id or `hx-target`
   by its literal parts (`id="row-{{ pk }}"` cannot be `#notify`;
   `id="{{ name }}"` is skipped, and so is
@@ -172,17 +173,22 @@ event fired without a target lands on `document` after a delete swap, where a
   JavaScript file, a template in site-packages or a helper the view calls can
   be the other side.
 - README's status policy for interactions: `noSwap: [204, 304, "40x", "5xx"]`
-  in the layout's `htmx-config`, and one hyperscript alert that ignores 422,
-  hides itself when the next request starts, and is hidden with
-  `style="display: none"`, since `show` never clears the `hidden` attribute.
+  in the layout's `htmx-config`, and one hyperscript alert. It shows on any
+  error status but 422 and on `htmx:error` (a request that gets no reply, a
+  swap that throws), hides itself when the next request starts, and is hidden
+  with `style="display: none"`, since `show` never clears the `hidden`
+  attribute.
   It also says that a refusal is a response, so `ATOMIC_REQUESTS` commits the
   writes made before it (raise first, or `transaction.set_rollback(True)`),
   and that protection on an app's own include never reaches its interactions.
 - `tests/desk`, a page of interactions that passes every check, driven in
   Chromium on htmx 4.0.2 and _hyperscript 0.9.94 (vendored with their npm
   sha256): feedback only after the reply, a refusal that keeps the controls,
-  the status policy against a 405, a 404 and a 500, and each htmx behaviour
-  checks E011 to E013 accept, measured once.
+  the status policy against a 405, a 404, a 500 and a request that gets no
+  reply, and six of the forms checks E011 to E013 accept, each measured once:
+  `outerMorph`, `outerSync`, a self-replacing control, inherited `this`,
+  `closest #<partial>` and `<form method="post" hx-action>`. The other forms
+  they accept are read from htmx 4.0.2's source.
 - The example: contact.app on the ORM, same routes, templates and tests as
   hx-flask, in Chromium too, on Django 4.2, 5.2, 6.0 and 6.1.
 - Site-packages, which the lint, the map, the checks and `ready()` all skip,

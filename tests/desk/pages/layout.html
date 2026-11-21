@@ -11,7 +11,8 @@
 {% partialdef messages inline %}<div id="messages">{% for message in messages %}<p class="flash">{{ message }}</p>{% endfor %}</div>{% endpartialdef %}
 <p id="trouble" role="alert" style="display: none"
    _="on htmx:before:request from body hide me end
-      on htmx:response:error from body if event.detail.ctx.response.status is not 422 show me">Something went wrong on the server. Please try again.</p>
+      on htmx:error from body show me end
+      on htmx:response:error from body if event.detail.ctx.response.status is not 422 show me">Something went wrong. Please try again.</p>
 <main>{% block content %}{% endblock %}</main>
 </body>
 </html>

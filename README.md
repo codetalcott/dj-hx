@@ -338,7 +338,8 @@ The rules:
     element with the id, as read in htmx 4.0.2's swap code and measured). Without `hx-swap`, htmx 4
     swaps `innerHTML` and nests a second element with the partial's id inside the first, as
     `beforeend`, `afterbegin`, `beforebegin` and `afterend` leave a second one beside it or inside
-    it; `innerMorph` keeps one element with the id and drops the reply's content.
+    it; on `innerMorph` htmx 4.0.2 throws (`HierarchyRequestError`, logged as `htmx:error`) and the
+    reply never reaches the page.
   - Each attribute is the control's own or an ancestor's `:inherited` one; a plain attribute on an
     ancestor does not reach it in htmx 4.
 
@@ -369,7 +370,8 @@ and the controls are gone (measured for each). A site with interactions puts thi
 <body hx-headers:inherited='{"X-CSRFToken": "{{ csrf_token }}"}'>
   <p id="trouble" role="alert" style="display: none"
      _="on htmx:before:request from body hide me end
-        on htmx:response:error from body if event.detail.ctx.response.status is not 422 show me">Something went wrong on the server. Please try again.</p>
+        on htmx:error from body show me end
+        on htmx:response:error from body if event.detail.ctx.response.status is not 422 show me">Something went wrong. Please try again.</p>
 ```
 
 - **`noSwap`** keeps the controls on a 404, a 405 or a 500, while a 422 refusal still swaps (each
@@ -378,8 +380,10 @@ and the controls are gone (measured for each). A site with interactions puts thi
   from that code, not measured).
 - **One generic listener**, written once in the layout, says something went wrong.
   `htmx:response:error` fires for every status of 400 or above, a refusal's 422 included, so it
-  leaves 422 to the partial's own `{% if error %}`. It hides itself again when the next request
-  starts.
+  leaves 422 to the partial's own `{% if error %}`. A request that gets no reply (the server down, a
+  timeout) has no status: htmx 4.0.2 fires `htmx:error` instead, as it does when a swap throws, so
+  the alert hears that too (measured with a request failed at the network, and with `innerMorph`'s throw). It
+  hides itself again when the next request starts.
 - **Hidden with `style="display: none"`, never the `hidden` attribute.** Hyperscript's `show`
   clears only an inline `display`, so an alert hidden with `hidden` never appears (measured).
 - **A fact an interaction announces in `triggers=`** reaches the regions that care through a
@@ -420,7 +424,7 @@ by `HxTestClient`. Nothing is gated on `DEBUG` that a test needs.
 | A declared refusal whose message is empty or blank (`raise NotOnRota()`), so the 422 reply's `{% if error %}` shows nothing and the click seems to do nothing | `HxEmptyRefusal`, recorded on the 422, which still goes out: logged, and raised by `HxTestClient`, naming the handler and the exception to give a message |
 | An interaction's reply sets a key its context does not define | `ImproperlyConfigured`, naming the key and the context function: define each there with its default. `error` is always defined, because every reply carries it |
 | `{% act %}` with a positional argument, a keyword the handler does not take, a missing one, or a name no interaction has | `TemplateSyntaxError` at render, naming the handler's parameters, or listing the interactions there are; at start-up, checks `dj_hx.E009` (no such interaction) and `E010` (the arguments), naming template:line |
-| An `{% act %}` control that sends another method than its interaction answers (for `hx-action`: its `hx-method`, an ancestor's `hx-method:inherited`, its `method` attribute, else GET; a submit button's `formmethod` is not read), that does not target the element with id `<partial name>` (`hx-target="#<partial name>"`, its own or an ancestor's `hx-target:inherited`, or an htmx 4.0.2 extended selector whose CSS part is that, such as `closest #<partial name>`; or no `hx-target`, or `hx-target="this"`, on the element with that id), or whose `hx-swap` (its own or inherited) is not an outer swap (`outerHTML`, `outerMorph` or `outerSync`, read from htmx 4.0.2's swap code and measured in Chromium) | checks `dj_hx.E011`, `E012` and `E013`, naming template:line and the attribute to write; a plain `hx-target` or `hx-swap` on an ancestor is named as not reaching the control. E013 says what the swap does instead: two elements with the id (`innerHTML`, `beforeend`, `afterbegin`, `beforebegin`, `afterend`), or, for `innerMorph`, one element that keeps its old content |
+| An `{% act %}` control that sends another method than its interaction answers (for `hx-action`: its `hx-method`, an ancestor's `hx-method:inherited`, its `method` attribute, else GET; a submit button's `formmethod` is not read), that does not target the element with id `<partial name>` (`hx-target="#<partial name>"`, its own or an ancestor's `hx-target:inherited`, or an htmx 4.0.2 extended selector whose CSS part is that, such as `closest #<partial name>`; or no `hx-target`, or `hx-target="this"`, on the element with that id), or whose `hx-swap` (its own or inherited) is not an outer swap (`outerHTML`, `outerMorph` or `outerSync`, read from htmx 4.0.2's swap code and measured in Chromium) | checks `dj_hx.E011`, `E012` and `E013`, naming template:line and the attribute to write; a plain `hx-target` or `hx-swap` on an ancestor is named as not reaching the control. E013 says what the swap does instead: two elements with the id (`innerHTML`, `beforeend`, `afterbegin`, `beforebegin`, `afterend`), or, for `innerMorph`, an htmx 4.0.2 `HierarchyRequestError` (logged as `htmx:error`), so the reply never reaches the page |
 | An interaction no project template writes an `{% act %}` for (a `{% url 'dj_hx:…' %}` or hand-written path is not counted: E011 to E013 cannot check it), whose partial does not load, or whose partial's root element is not `id="<partial name>"` | checks `dj_hx.E014`, `E015` (with `HxUnknownPartial`'s reason) and `E016` (the start-up twin of `HxPartialRootId`, judged where the source shows the root). E014 skips an interaction whose handler's module is in site-packages: its controls are in that app's templates, which are never read |
 | An interaction registered after `dj_hx.urls` was first read, so its route is the bare view and the decorators above it do not apply | check `dj_hx.E017`, naming the module to import before the URLconf is loaded |
 | Interactions registered, but `dj_hx.urls` not included | check `dj_hx.E020`; `{% act %}` raises `ImproperlyConfigured`; both name `path("", include("dj_hx.urls"))` |
@@ -526,8 +530,13 @@ python -m pytest -m browser      # in Chromium (pip install playwright; playwrig
 
 The browser tests also drive `tests/desk`, one page of interactions on htmx
 4.0.2 and _hyperscript 0.9.94 (vendored, with their npm sources and sha256
-beside them), which passes every check: the status policy and the htmx
-behaviours checks E011 to E013 accept are measured there.
+beside them), which passes every check. The status policy is measured there,
+and so are six of the forms checks E011 to E013 accept: `outerMorph`,
+`outerSync`, a self-replacing control, click-to-edit's inherited `this`,
+`closest #<partial>` and `<form method="post" hx-action>`. The others they
+accept (`find`, `findAll`, `next`, `previous` and `global` selectors, an
+ancestor's `hx-target:inherited="#x"`, `hx-method` and `hx-method:inherited`,
+swap modifiers) are accepted from htmx 4.0.2's source, not measured.
 
 ## htmx 4 facts this depends on
 
@@ -543,9 +552,10 @@ that file.
 - Only 204 and 304 skip the swap (L202). A 422 body swaps with no client configuration, and so do a
   404, a 405 and a 5xx, which is why interactions want the status policy.
 
-The interaction layer's facts are measured on htmx 4.0.2 in Chromium instead,
-by `tests/test_interactions_browser.py`: the status policy, and the swaps,
-targets and `hx-action` method checks E011 to E013 accept.
+The interaction layer's status policy is measured on htmx 4.0.2 in Chromium
+instead, by `tests/test_interactions_browser.py`, and so are the six control
+forms named under The example; the other forms checks E011 to E013 accept are
+read from htmx 4.0.2's source.
 
 ## License
 

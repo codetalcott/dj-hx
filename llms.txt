@@ -295,11 +295,14 @@ controls are gone:
 <meta name="htmx-config" content='{"noSwap": [204, 304, "40x", "5xx"]}'>   {# in <head>; "40x" is 400-409, so 422 still swaps #}
 <p id="trouble" role="alert" style="display: none"
    _="on htmx:before:request from body hide me end
+      on htmx:error from body show me end
       on htmx:response:error from body if event.detail.ctx.response.status is not 422 show me">Something went wrong.</p>
 ```
 
 - One generic alert in the layout. `htmx:response:error` fires for every status >= 400, 422 included, so it
-  skips 422 (the partial shows the refusal); it hides itself when the next request starts.
+  skips 422 (the partial shows the refusal). A request with no reply (server down, a network error, a
+  timeout) or a swap that throws fires `htmx:error` instead, so it hears that too. It hides itself when the
+  next request starts.
 - Hide it with `style="display: none"`, NEVER the `hidden` attribute: hyperscript's `show` clears only an
   inline `display`, so a `hidden` alert never appears.
 - Hear a `triggers=` fact with `_="on notified from body ..."` or `hx-trigger="notified from:body"`. It runs
@@ -528,7 +531,7 @@ System checks (tag `dj_hx`):
 | E010 | `{% act %}`'s arguments are not its handler's parameters (positional, unknown or missing) |
 | E011 | an `{% act %}` control's verb (`hx-get` ... `hx-delete`; or `hx-action` with its `hx-method`, an ancestor's `hx-method:inherited`, its `method` attribute, else GET; `formmethod` not read) is not the interaction's method |
 | E012 | an `{% act %}` control does not target the element with id `<partial>`: neither `hx-target="#<partial>"` (own or an ancestor's `:inherited`; also `closest`, `find`, `findAll`, `next` or `previous #<partial>`, with or without `global `, as htmx 4.0.2's target resolver reads them) nor no `hx-target` / `hx-target="this"` on that element. A comma list, bare `next`/`previous`, `document`, `window`, `body`, `host` and other CSS are Errors |
-| E013 | an `{% act %}` control's `hx-swap` (own or `:inherited`) is not an outer swap (`outerHTML`, `outerMorph`, `outerSync`, per htmx 4.0.2's swap code). Measured on htmx 4.0.2: htmx 4's default `innerHTML`, and `beforeend`, `afterbegin`, `beforebegin`, `afterend`, leave a second element with the id; `innerMorph` keeps one and drops the reply's content |
+| E013 | an `{% act %}` control's `hx-swap` (own or `:inherited`) is not an outer swap (`outerHTML`, `outerMorph`, `outerSync`, per htmx 4.0.2's swap code). Measured on htmx 4.0.2: htmx 4's default `innerHTML`, and `beforeend`, `afterbegin`, `beforebegin`, `afterend`, leave a second element with the id; on `innerMorph` htmx throws (`HierarchyRequestError`, logged as `htmx:error`) and the reply never reaches the page |
 | E014 | an interaction has no control: no project template writes its `{% act %}` (a `{% url 'dj_hx:…' %}` or hand-written path is not counted: E011-E013 cannot check it); skipped for a handler whose module is in site-packages, whose templates are never read |
 | E015 | an interaction's partial does not load (`HxUnknownPartial`'s reason) |
 | E016 | an interaction's partial does not start with an element carrying `id="<partial>"`, where the source shows its root |
