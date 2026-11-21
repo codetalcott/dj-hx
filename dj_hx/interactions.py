@@ -292,6 +292,14 @@ def act_mismatch(it: Interaction, positional: int, keywords) -> str | None:
     return None
 
 
+def act_not_included(name) -> str:
+    """What ``{% act %}`` raises, and ``hx_map`` reports, when no URLconf includes ``dj_hx.urls``."""
+    return (
+        f"{{% act '{name}' %}} reverses {name}()'s route in the dj_hx namespace, which no URLconf registers: "
+        f"dj_hx.urls is not included. Include it once, at the site root: {INCLUDE}."
+    )
+
+
 def namespace_missing(exc: NoReverseMatch) -> bool:
     """True when ``exc`` says no URLconf registers the ``dj_hx`` namespace: ``dj_hx.urls`` is not included."""
     return "'dj_hx' is not a registered namespace" in str(exc)

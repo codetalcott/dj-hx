@@ -53,7 +53,11 @@ event fired without a target lands on `document` after a delete swap, where a
   `.retarget()` or `.reswap()`, naming the controls whose templates no longer
   predict the DOM effect. `--by-template` reads the map from the other end.
   A hyperscript listener (`_="on x from body ..."`) pairs with a view's
-  `.trigger("x")` like an `hx-trigger`.
+  `.trigger("x")` like an `hx-trigger`. An `{% act %}` control resolves
+  through the interaction registry, as a `{% url %}` control resolves through
+  the URLconf: the interaction answers its method with its partial and
+  announces its `triggers=`, and an `{% act %}` naming no interaction, or
+  without `dj_hx.urls` included, is an error.
   Whether or not a view calls a verb, it errors on a read of the `HX-Trigger`
   request header, which htmx 4 does not send, and on `request.POST` read on
   DELETE, which htmx 4 sends as query parameters; it warns on a read of

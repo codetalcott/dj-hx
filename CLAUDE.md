@@ -15,8 +15,8 @@ to a verb signature, a setting, an error, a check id or a lint rule must be mirr
 The checked-in `.venv` has Django 6.0, pytest, ruff and playwright.
 
 ```
-.venv/bin/python -m pytest                      # 280 tests, ~5s
-.venv/bin/python -m pytest -m "not browser"     # 273, skipping Chromium
+.venv/bin/python -m pytest                      # 286 tests, ~5s
+.venv/bin/python -m pytest -m "not browser"     # 279, skipping Chromium
 .venv/bin/python -m pytest -m browser           # the 7 Playwright tests alone
 .venv/bin/python -m pytest tests/test_verbs.py::test_text_escapes
 .venv/bin/ruff check .
@@ -107,7 +107,10 @@ for that parameter (the namespace walk mirrors `reverse()`'s), never from the ro
 
 **The map is split by framework.** [mapcore.py](dj_hx/mapcore.py) is framework-neutral: template scan,
 the AST visitor that finds verb calls, the control-vs-handler checks. [hxmap.py](dj_hx/hxmap.py) is the
-Django adapter: URLconf walk, `{% url %}` and `resolve()`. New map logic belongs in `mapcore` unless it
+Django adapter: URLconf walk, `{% url %}` and `resolve()`, and `{% act %}` through the registry: an
+interaction is found by the callback `dj_hx.urls.urlpatterns` routes it to (identity, not name), its handler
+is scanned rather than a decorator's closure, and `_as_interaction()` records its partial and `triggers=`.
+The `__ACT<n>__` markers index one `acts` list shared by every template. New map logic belongs in `mapcore` unless it
 is genuinely Django-specific; the core is vendored from hx-flask (see below).
 
 ## Vendored files: do not edit in place

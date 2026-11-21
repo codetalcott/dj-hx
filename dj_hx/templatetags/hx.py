@@ -9,7 +9,7 @@ from django.core.exceptions import ImproperlyConfigured
 from django.template import TemplateSyntaxError
 from django.urls import NoReverseMatch, reverse
 
-from ..interactions import INCLUDE, act_mismatch, act_unknown, namespace_missing, registry
+from ..interactions import act_mismatch, act_not_included, act_unknown, namespace_missing, registry
 
 register = template.Library()
 
@@ -33,7 +33,4 @@ def act(interaction_name, /, *args, **kwargs):
     except NoReverseMatch as exc:
         if not namespace_missing(exc):
             raise
-        raise ImproperlyConfigured(
-            f"{{% act '{name}' %}} reverses {name}()'s route in the dj_hx namespace, which no URLconf registers: "
-            f"dj_hx.urls is not included. Include it once, at the site root: {INCLUDE}."
-        ) from exc
+        raise ImproperlyConfigured(act_not_included(name)) from exc

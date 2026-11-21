@@ -339,7 +339,7 @@ by `HxTestClient`. Nothing is gated on `DEBUG` that a test needs.
 | `partial=` names a partial the template does not define | `HxUnknownPartial`, listing the partials it does |
 | An htmx request without `HX-Request-Type` | `HxProtocolError`: this needs htmx 4. `HX_REQUEST_TYPE_FALLBACK = "full"` answers with the page instead, for a proxy that strips the header; the guard still records it |
 | htmx 2 idioms in the HTML: `hx-ext`, implicit inheritance, htmx 2 event names in `hx-on` or `hx-trigger`, camelCase or kebab-case (`hx-on::after-request`), `show:#x:top` | the lint, on every test-client response, in the middleware log under `DEBUG`, in `manage.py hx_lint`, and as check `dj_hx.W005` |
-| A partial control pointing at a page-only view, or a boosted link at a fragment-only one | `manage.py hx_map` |
+| A partial control pointing at a page-only view, or a boosted link at a fragment-only one (an interaction is fragment-only) | `manage.py hx_map` |
 | A control pointing at a view that calls no verb; a view that calls `.retarget()` or `.reswap()` | `manage.py hx_map`, as warnings |
 | `HxMiddleware` missing, listed before `MessageMiddleware`, `HX_MESSAGES_TEMPLATE` unset or unresolvable, no partials on Django < 6, `HxMixin` after a Django base | checks `dj_hx.W001`, `E002`, `W003`, `W004`, `W006`, `E007` |
 | `HX_EXTENSIONS` names an extension htmx 4 does not ship, or is a string | check `dj_hx.W008`; htmx's registered name (`sse`) and the file name (`hx-sse`) both count |
@@ -404,9 +404,12 @@ Site-packages, wherever dj-hx skips it (`hx_lint`, `hx_map`, the checks,
 
 `hx_map` classifies every control as full or partial by htmx 4's own rule
 (the target is `body`, `hx-select` is present, or the element is boosted),
-resolves it through `{% url %}` or the literal path, and checks it against the
-verbs its view calls, with `if request.method == "DELETE":` branches
-attributed to that method. It also pairs `.trigger("x")` with
+resolves it through `{% url %}`, `{% act %}` or the literal path, and checks it
+against the verbs its view calls, with `if request.method == "DELETE":` branches
+attributed to that method. An `{% act %}` control resolves through the
+interaction registry to its interaction, which answers its one method with its
+partial (`fragment()`) and announces its `triggers=`; one naming no interaction,
+or written while `dj_hx.urls` is not included, is an error. It also pairs `.trigger("x")` with
 `hx-trigger="x from:body"` in both directions, and with a hyperscript listener
 (`_="on x from body ..."`); a listener for a browser event such as `click` is never
 asked to be announced by a view.

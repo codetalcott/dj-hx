@@ -4,9 +4,11 @@
 Handlers come from the URLconf (``dj_hx.urlconf``); a view class contributes
 one scan per HTTP method it defines, a function view is scanned whole with
 ``if request.method == "POST":`` branches attributed to that method. Controls
-resolve through ``{% url 'name' %}`` (the name) or a literal path
-(``django.urls.resolve``). Only views and templates outside site-packages are
-scanned.
+resolve through ``{% url 'name' %}`` (the name), ``{% act 'name' %}`` (the
+interaction registry) or a literal path (``django.urls.resolve``). An
+interaction is known by the callback ``dj_hx.urls`` routes it to: its handler is
+scanned, and it replies with its partial through ``fragment()`` and announces its
+``triggers=``. Only views and templates outside site-packages are scanned.
 """
 
 from __future__ import annotations
@@ -19,7 +21,7 @@ from django.urls import Resolver404, resolve
 
 from . import mapcore
 from .mapcore import ALL_METHODS, URLFOR, Handler, Map
-from .templates import in_site_packages, strip_template_syntax, template_sources
+from .templates import ACT_MARK, in_site_packages, strip_template_syntax, template_sources
 from .urlconf import RoutedView, iter_routed_views
 
 __all__ = ["build_map", "print_map"]
@@ -76,11 +78,35 @@ def _endpoint(routed: RoutedView) -> str:
     return f"{cb.__module__}.{getattr(cb, '__qualname__', getattr(cb, '__name__', '?'))}"
 
 
-def _scan_handlers(urlconf=None) -> tuple[dict[str, Handler], dict[int, Handler]]:
+def _interactions_by_callback() -> dict:
+    """Each registered interaction, by the callback ``dj_hx.urls`` routes it to."""
+    from .interactions import registry, urlpatterns
+
+    return {id(p.callback): registry[p.name] for p in urlpatterns if p.name in registry}
+
+
+def _as_interaction(h: Handler, it) -> None:
+    """What an interaction answers its method with: its partial, through ``fragment()``, then its ``triggers=``."""
+    h.verbs.add("fragment")
+    h.by_method.setdefault(it.method, set()).add("fragment")
+    h.methods = {it.method}  # any other method gets a 405
+    h.templates.add(f"{it.template}#{it.partial}")
+    h.announces |= set(it.triggers)
+    h.json_returns.clear()  # the dict a handler returns is its partial's context, not a JSON reply
+
+
+def _scan_handlers(urlconf=None) -> tuple[dict[str, Handler], dict[int, Handler], dict[str, Handler | None]]:
+    """The handlers, the same by callback, and each routed interaction's handler (None: in site-packages)."""
     handlers: dict[str, Handler] = {}
     by_callback: dict[int, Handler] = {}
+    interactions = _interactions_by_callback()
+    routed_interactions: dict[str, Handler | None] = {}
     for routed in iter_routed_views(urlconf):
-        target = routed.view_class or inspect.unwrap(routed.callback)
+        it = interactions.get(id(routed.callback))
+        if it is not None:
+            routed_interactions.setdefault(it.name, None)
+        # an interaction's handler, which a decorator above @interaction without functools.wraps would hide
+        target = it.func if it is not None else routed.view_class or inspect.unwrap(routed.callback)
         if _in_site_packages(target):
             continue
         endpoint = _endpoint(routed)
@@ -109,20 +135,43 @@ def _scan_handlers(urlconf=None) -> tuple[dict[str, Handler], dict[int, Handler]
                     h.by_method.setdefault(ALL_METHODS, set()).add("render" if partial else "page")
                     if template:
                         h.templates.add(f"{template}#{partial}" if partial and "." not in partial else (partial or template))
+            elif it is not None:
+                _scan(h, it.func, verb_names)
+                _as_interaction(h, it)
             else:
                 _scan(h, routed.callback, verb_names)
         h.rules.append("/" + routed.route)
         by_callback[id(routed.callback)] = h
-    return handlers, by_callback
+        if it is not None and routed_interactions[it.name] is None:
+            routed_interactions[it.name] = h
+    return handlers, by_callback, routed_interactions
+
+
+def _act_endpoint(act, routed: dict[str, Handler | None]) -> tuple[str | None, str | None]:
+    """An ``{% act %}`` control's interaction, through the registry, as ``resolve_control`` answers."""
+    from .interactions import act_not_included, act_unknown, registry
+
+    if act.name is None or act.stored_as:
+        return None, "computed URL; cannot resolve statically"
+    if act.name not in registry:
+        return None, act_unknown(act.name)
+    if act.name not in routed:
+        return None, act_not_included(act.name)
+    h = routed[act.name]
+    return (h.endpoint, None) if h is not None else (None, None)  # None: an interaction in site-packages
 
 
 def build_map(urlconf=None, sources: dict[str, str] | None = None) -> Map:
-    handlers, by_callback = _scan_handlers(urlconf)
+    handlers, by_callback, interactions = _scan_handlers(urlconf)
     short = {}
     for ep, h in handlers.items():
         short.setdefault(ep.rsplit(":", 1)[-1], h)
+    acts = []  # one list for every template, so each __ACT<n>__ marker names one tag
 
     def resolve_control(url: str, method: str) -> tuple[str | None, str | None]:
+        act = ACT_MARK.match(url)
+        if act:
+            return _act_endpoint(acts[int(act.group(1))], interactions)
         if url.startswith(URLFOR):
             name = url[len(URLFOR):].split("?", 1)[0].split("#", 1)[0]
             h = handlers.get(name) or short.get(name)
@@ -151,7 +200,7 @@ def build_map(urlconf=None, sources: dict[str, str] | None = None) -> Map:
         return h.endpoint, None
 
     raw = sources if sources is not None else template_sources()
-    prepared = {name: strip_template_syntax(src, url_marker=True) for name, src in raw.items()}
+    prepared = {name: strip_template_syntax(src, url_marker=True, acts=acts) for name, src in raw.items()}
     controls, listeners, script_names, _ = mapcore.scan_templates(prepared, resolve_control)
     return mapcore.check(handlers, controls, listeners, script_names)
 

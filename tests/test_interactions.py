@@ -7,6 +7,7 @@ that defines its own interactions takes ``scratch``, which puts the registry bac
 
 import functools
 import inspect
+import io
 import itertools
 import json
 import re
@@ -25,7 +26,8 @@ from django.utils.module_loading import module_has_submodule
 
 import dj_hx.urls  # noqa: F401  binds the routes now, after ready(), before any `scratch` snapshot of them
 from dj_hx import HxFragmentIntoPage, HxPartialRootId, HxRedirectIntoFragment, checks, interaction
-from dj_hx.interactions import bind_routes, registry, urlpatterns
+from dj_hx.hxmap import build_map, print_map
+from dj_hx.interactions import act_not_included, bind_routes, registry, urlpatterns
 from dj_hx.templates import in_site_packages
 from dj_hx.testing import assert_no_hx_check_issues, hx_check_messages
 from tests.conftest import locmem, on_disk
@@ -595,6 +597,65 @@ def test_act_names_the_include_when_dj_hx_urls_is_not_included():
         r"dj_hx\.urls is not included\. Include it once, at the site root: path\(\"\", include\(\"dj_hx\.urls\"\)\)\.",
     ):
         render_act("{% act 'notify' contest='spring' member=3 %}")
+
+
+# ------------------------------------------------------------------- hx_map
+
+MAPPED = {
+    "rota.html": '{% load hx %}<div id="notify"><button hx-post="{% act \'notify\' contest=c member=m %}" '
+    'hx-target="#notify" hx-swap="outerHTML">Notify</button></div>',
+    "reviewers.html": '{% load hx %}<div id="approval"><button hx-post="{% act \'approve\' member=m %}" '
+    'hx-target="#approval" hx-swap="outerHTML">Approve</button></div>',
+}
+
+
+def test_hx_map_pairs_an_act_control_with_its_interaction(rota):
+    # through the registry, as {% url %} pairs a control with its view: no longer a "computed URL"
+    m = build_map(sources=MAPPED)
+    assert [(c.file, c.endpoint, c.scope) for c in m.controls] == [
+        ("rota.html", "dj_hx:notify", "partial"),
+        ("reviewers.html", "dj_hx:approve", "partial"),
+    ]
+    assert m.errors == [] and not [w for w in m.warnings if "computed URL" in w]
+    notify = m.handlers["dj_hx:notify"]
+    assert (notify.verbs, notify.templates, notify.announces) == ({"fragment"}, {"rota.html#notify"}, {"notified", "rota-changed"})
+    # approve() is routed through views.staff_only, which has no functools.wraps: the map still scans the handler
+    assert m.handlers["dj_hx:approve"].label == "approve()"
+
+
+@pytest.mark.parametrize(
+    "template, says",
+    [
+        ('<div hx-post="{% act \'notify\' contest=c member=m %}" hx-target="body">x</div>', "[error] x.html:1 <div> wants a page (hx-target=body) but notify() only calls fragment"),
+        ("<div hx-post=\"{% act 'notfy' %}\" hx-target=\"#notify\">x</div>", "[error] x.html:1 <div> POST __ACT0__: {% act 'notfy' %} names no interaction"),
+        ('<div hx-post="{% act which %}" hx-target="#notify">x</div>', "[warning] x.html:1 <div> POST __ACT0__: computed URL"),
+    ],
+    ids=["full-control", "no-such-interaction", "variable-name"],
+)
+def test_hx_map_checks_an_act_control_against_its_interaction(rota, template, says):
+    out = io.StringIO()
+    print_map(out=out, sources={"x.html": "{% load hx %}" + template})
+    assert says in out.getvalue()
+
+
+def test_hx_map_says_an_act_control_has_no_route_when_dj_hx_urls_is_not_included():
+    # tests/settings.py routes the example project's URLconf, which does not include dj_hx.urls
+    m = build_map(sources=MAPPED)
+    assert m.errors[0] == f"rota.html:1 <button> POST __ACT0__: {act_not_included('notify')}"
+
+
+def test_hx_map_reads_an_interactions_one_method(scratch, rota):
+    def purge(request):
+        request.POST.get("all")  # htmx 4 sends DELETE values as query parameters
+        return {"value": "purged"}
+
+    interaction("DELETE", partial="scratch.html#box", context=box_context, route="t/purge")(purge)
+    m = build_map(sources={})
+    assert m.handlers["dj_hx:purge"].methods == {"DELETE"}
+    assert [e for e in m.errors if e.startswith("purge() reads request.POST on DELETE")]
+    # a GET control reaching it gets a 405, and the dict it returns is its context: no JSON error
+    m = build_map(sources={"x.html": '{% load hx %}<p hx-get="{% act \'purge\' %}" hx-target="#box">x</p>'})
+    assert not [e for e in m.errors if "JSON" in e]
 
 
 # ------------------------------------------------------------ the start-up checks
