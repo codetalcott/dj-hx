@@ -15,8 +15,8 @@ to a verb signature, a setting, an error, a check id or a lint rule must be mirr
 The checked-in `.venv` has Django 6.0, pytest, ruff and playwright.
 
 ```
-.venv/bin/python -m pytest                      # 286 tests, ~5s
-.venv/bin/python -m pytest -m "not browser"     # 279, skipping Chromium
+.venv/bin/python -m pytest                      # 298 tests, ~5s
+.venv/bin/python -m pytest -m "not browser"     # 291, skipping Chromium
 .venv/bin/python -m pytest -m browser           # the 7 Playwright tests alone
 .venv/bin/python -m pytest tests/test_verbs.py::test_text_escapes
 .venv/bin/ruff check .
@@ -61,7 +61,7 @@ must not be able to 500 in production.
 
 **Ordering matters.** `HxMiddleware` must run its response phase before `MessageMiddleware` stores
 messages, which means it is listed *after* it. [checks.py](dj_hx/checks.py) enforces that as `dj_hx.E002`;
-the check ids W001-I023 are documented in that module's docstring.
+the check ids W001-W025 are documented in that module's docstring.
 
 **The lint has two surfaces over one rule set.** [hxlint.py](dj_hx/hxlint.py) works on rendered HTML
 strings. [templates.py](dj_hx/templates.py) strips Django template syntax (line numbers preserved,
@@ -103,7 +103,10 @@ the n-th tag `__ACT<n>__` so its holding element is found in hxlint's tree, and 
 for `{% partialdef %}` bodies. E022 reads `{% url %}` through `url_tags()`, which is Django's own lexer:
 a tag in `{% verbatim %}` or across lines is text to Django, and `strip_template_syntax` would read both.
 It reverses through `django.urls.reverse()`, taking each placeholder from the converter the resolver holds
-for that parameter (the namespace walk mirrors `reverse()`'s), never from the route string.
+for that parameter (the namespace walk mirrors `reverse()`'s), never from the route string. W024 and W025
+take `hxmap.map_with_interactions()` and call `mapcore.unpaired_events()` on it, the pairing `hx_map` warns
+from: there is no second trigger or listener collector. An interaction the map has no handler for (not
+routed, or in site-packages) is added from the registry, so its `triggers=` still count.
 
 **The map is split by framework.** [mapcore.py](dj_hx/mapcore.py) is framework-neutral: template scan,
 the AST visitor that finds verb calls, the control-vs-handler checks. [hxmap.py](dj_hx/hxmap.py) is the

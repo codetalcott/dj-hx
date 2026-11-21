@@ -127,6 +127,14 @@ event fired without a target lands on `document` after a delete swap, where a
   installs. A route with a custom converter or a `re_path` group gets an Info
   instead (I023); a name built at run time, or a tag in a comment or
   `{% verbatim %}`, is skipped.
+- Event checks, from `manage.py check`: an event a view announces with
+  `.trigger()` (as `hx_map` finds it) or an interaction declares in
+  `triggers=` that no project template listens for (W024), and an event a
+  template listens for that nothing announces (W025), browser events and the
+  names scripts send left out. They call the pairing `hx_map` warns from
+  (hx-flask's `mapcore.unpaired_events`), and they are Warnings, because a
+  JavaScript file, a template in site-packages or a helper the view calls can
+  be the other side.
 - The example: contact.app on the ORM, same routes, templates and tests as
   hx-flask; 156 tests plus 7 in Chromium, on Django 4.2, 5.2, 6.0 and 6.1.
 - Site-packages, which the lint, the map, the checks and `ready()` all skip,

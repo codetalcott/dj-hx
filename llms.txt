@@ -450,7 +450,7 @@ one (`pip install --user`) included.
 included, is an error) or the literal path, and errors when a partial control reaches a view that only calls `page`, or a full
 control reaches one that only calls `fragment`/`text`/`removed`; `navigate` says nothing about shape, so a
 view that calls it and `page` is still page-only. `if request.method == "DELETE":` branches
-are attributed to that method. It pairs `.trigger("x")` with `hx-trigger="x from:body"` or a hyperscript `_="on x from body ..."` both ways (a listener for a browser event such as `click` is never asked to be announced) and warns
+are attributed to that method. It pairs `.trigger("x")` with `hx-trigger="x from:body"` or a hyperscript `_="on x from body ..."` both ways (a listener for a browser event such as `click` is never asked to be announced; checks W024 and W025 report the same pairing) and warns
 on `hx-delete` controls that send no values to a handler that reads them. Whether or not a view calls a
 verb, it errors when the view reads the `HX-Trigger` request header (`request.headers`, `request.META`),
 which htmx 4 does not send, or reads `request.POST` on DELETE, which htmx 4 sends as query parameters
@@ -483,6 +483,8 @@ System checks (tag `dj_hx`):
 | I021 | an `{% act %}` the checks cannot tie to one element's verb attribute (script, text, another attribute, `as`, a variable name) |
 | E022 | a `{% url %}` with a quoted name in a project template does not reverse with the arguments it passes: no such name (close ones listed), a namespace no URLconf installs, the wrong positional count or keywords, or both kinds mixed; `{% url ... as var %}` included (there the failure is a silent empty string). Each argument is reversed with a placeholder for its route's converter (`int` 1; `str`, `slug`, `path` "a"; `uuid` all zeros). A name built at run time (a variable, a filter), or a tag in a comment or `{% verbatim %}`, is skipped |
 | I023 | a `{% url %}` not checked: its route takes a custom converter or a `re_path` group, which has no placeholder |
+| W024 | an event a view announces with `.trigger()` (as `hx_map` finds it) or an interaction declares in `triggers=` that no project template listens for (`hx-trigger`, `hx-on`, hyperscript `on`); an interaction in site-packages is not warned about |
+| W025 | an event a project template listens for that nothing announces; browser events and the names a script or `hx-on` handler in the templates sends are left out. W024 and W025 are Warnings because a JavaScript file, a template in site-packages or a helper the view calls can be the other side |
 
 `HxMiddleware` also: adds `Vary` to every response, runs the guard, bridges pending messages onto partial
 2xx HTML responses (peeking before consuming), logs findings as warnings on the `dj_hx` logger, and under

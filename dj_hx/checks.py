@@ -32,6 +32,8 @@ E020     Error    Interactions are registered but dj_hx.urls is not included
 I021     Info     An {% act %} the checks cannot tie to a control's attributes
 E022     Error    A {% url %} with a quoted name does not reverse with its arguments
 I023     Info     A {% url %} not checked: its route takes a converter with no placeholder
+W024     Warning  An event a view or interaction announces that no template listens for
+W025     Warning  An event a template listens for that nothing announces
 =======  =======  ==========================================================
 
 E009 to E016, I021, E022 and I023 read the project's template files as hx_lint
@@ -52,6 +54,14 @@ declares there: int 1; str, slug and path "a"; uuid 00000000-0000-0000-0000-0000
 Positional and keyword arguments are counted apart, and {% url ... as var %} is
 checked too, because there a failed reverse stores "" instead of raising. A
 custom converter or a re_path group gets I023 instead.
+W024 and W025 pair the events views announce with .trigger() (as hx_map finds
+them) and interactions declare in triggers= with the listeners in the project's
+templates (hx-trigger, hx-on, hyperscript on), through mapcore.unpaired_events(),
+the pairing hx_map warns from. A browser event, and a name a script or hx-on
+handler in the templates sends, is never asked to be announced. They are
+Warnings because a scan cannot see every side: a JavaScript file, a template in
+site-packages, or a helper the view calls. An interaction in site-packages
+announces its triggers= but is not warned about.
 """
 
 from __future__ import annotations
@@ -576,16 +586,13 @@ def _interaction_messages(it, controlled: set, sources: dict) -> list:
     skips an interaction whose handler's module is in site-packages: its controls are in that app's
     templates, which the scan never reads.
     """
-    import sys
-
     from .errors import HxUnknownPartial
     from .interactions import act_form
-    from .templates import in_site_packages, partial_sources
+    from .templates import partial_sources
     from .verbs import _get_partial
 
     where, messages = f"{it.view.__module__}.{it.name}", []
-    file = getattr(sys.modules.get(it.func.__module__), "__file__", None)
-    if it.name not in controlled and not (file and in_site_packages(file)):
+    if it.name not in controlled and not _installed(it):
         messages.append(
             Error(
                 f"{it.name}() has no control: no project template writes {{% act '{it.name}' %}}. A "
@@ -612,6 +619,16 @@ def _interaction_messages(it, controlled: set, sources: dict) -> list:
     if region is not None:
         messages += _root_messages(it, *region)
     return messages
+
+
+def _installed(it) -> bool:
+    """Whether the module that defines ``it``'s handler is in site-packages: its templates are never read."""
+    import sys
+
+    from .templates import in_site_packages
+
+    file = getattr(sys.modules.get(it.func.__module__), "__file__", None)
+    return bool(file) and in_site_packages(file)
 
 
 def _root_messages(it, line: int, body: str) -> list:
@@ -824,3 +841,61 @@ def _url_messages(tag, where: str) -> list:
         "Pass one value for each parameter of the route, all by position or all by keyword: "
         f"{{% url '{tag.name}'{''.join(f' {p}=...' for p in first)} %}}.",
     )
+
+
+_UNSEEN = (
+    "This is a Warning because a scan of the project's templates and views cannot see every side: a JavaScript "
+    "file, a template in site-packages, or a helper the view calls can {}. If one does, silence dj_hx.{}."
+)
+
+
+@register("dj_hx", Tags.templates)
+def check_events(app_configs=None, **kwargs):
+    """
+    The events views and interactions announce against the listeners in the project's templates, both
+    ways, through mapcore.unpaired_events(), the pairing hx_map warns from (W024, W025).
+    """
+    if not _should_run(app_configs):
+        return []
+    from .hxmap import map_with_interactions
+    from .interactions import registry
+    from .mapcore import Handler, unpaired_events
+
+    m, routed = map_with_interactions()
+    handlers, owner = dict(m.handlers), {}
+    for it in registry.values():
+        h = routed.get(it.name)
+        if h is None:  # not routed (E020), or in site-packages: its triggers= are announced all the same
+            h = handlers[f"interaction:{it.name}"] = Handler(it.name, name=it.name, announces=set(it.triggers))
+        owner[id(h)] = it
+    unannounced, unheard = unpaired_events(handlers, m.listeners, m.script_names)
+    messages = []
+    for event, by in unheard.items():
+        for h in by:
+            it = owner.get(id(h))
+            if it is not None and _installed(it):
+                continue  # its listeners are in that app's templates, which are never read
+            who, how = (f"{it.name}()", "in its triggers=") if it else (h.label, "with .trigger()")
+            messages.append(
+                Warning(
+                    f"{who} announces '{event}' {how}, but no project template listens for it (hx-trigger, hx-on or "
+                    f"a hyperscript 'on {event}').",
+                    hint=f'Listen where the change should show: hx-trigger="{event} from:body", or '
+                    f'_="on {event} from body ..."; or stop announcing it. ' + _UNSEEN.format("listen", "W024"),
+                    obj=f"{it.view.__module__}.{it.name}" if it else h.endpoint,
+                    id="dj_hx.W024",
+                )
+            )
+    for event, heard in unannounced.items():
+        where = ", ".join(f"{li.file}:{li.line}" for li in heard)
+        messages.append(
+            Warning(
+                f"'{event}' is listened for ({where}), but no view announces it with .trigger(), no interaction "
+                "declares it in triggers=, and no script in the templates names it.",
+                hint=f"Announce it, with triggers=({event!r},) on the interaction or .trigger({event!r}) on the "
+                "view's response, or correct the name. " + _UNSEEN.format("send it", "W025"),
+                obj=f"{heard[0].file}:{heard[0].line}",
+                id="dj_hx.W025",
+            )
+        )
+    return messages

@@ -17,6 +17,7 @@ import types
 import pytest
 from django.apps import apps
 from django.contrib.auth.decorators import login_required
+from django.core.checks import WARNING
 from django.core.exceptions import ImproperlyConfigured
 from django.http import HttpResponse
 from django.template import Context, Template, TemplateSyntaxError
@@ -661,9 +662,10 @@ def test_hx_map_reads_an_interactions_one_method(scratch, rota):
 # ------------------------------------------------------------ the start-up checks
 
 # The rota app's templates on disk, which the template checks read. Every interaction has a control;
-# approve()'s takes its target and swap from an ancestor's :inherited ones.
+# approve()'s takes its target and swap from an ancestor's :inherited ones. The layout hears notify()'s triggers.
 CHECKED = {
-    "layout.html": '{% partialdef messages inline %}<div id="messages">{% for m in messages %}<p>{{ m }}</p>{% endfor %}</div>{% endpartialdef %}',
+    "layout.html": '{% partialdef messages inline %}<div id="messages">{% for m in messages %}<p>{{ m }}</p>{% endfor %}</div>{% endpartialdef %}\n'
+    '<p id="rota-status" _="on notified from body put \'Notified\' into me end on rota-changed from body add .stale to me"></p>',
     "rota.html": ROTA,
     "reviewers.html": """{% load hx %}{% partialdef reviewer inline %}<div id="reviewer"><button hx-post="{% act 'notify_reviewer' member=member %}" hx-target="#reviewer" hx-swap="outerHTML">Notify</button></div>{% endpartialdef %}
 {% partialdef signoff inline %}<div id="signoff"><button hx-post="{% act 'sign_off' member=member %}" hx-target="#signoff" hx-swap="outerHTML">Sign off</button></div>{% endpartialdef %}
@@ -1150,6 +1152,85 @@ def test_i021_an_act_the_checks_cannot_tie_to_a_control(startup, template, says)
     messages = startup(**{"extra.html": template})
     assert found(messages) == [("dj_hx.I021", "extra.html:2")]
     assert says in the(messages, "dj_hx.I021").msg and "SILENCED_SYSTEM_CHECKS" in the(messages, "dj_hx.I021").hint
+
+
+# notify() declares triggers=("notified", "rota-changed"); CHECKED's layout listens for both.
+HEARS_NOTIFIED = "<p _=\"on notified from body put 'Notified' into me\"></p>"
+
+
+def test_w024_an_interactions_trigger_no_template_listens_for(startup):
+    messages = startup(**{"layout.html": CHECKED["layout.html"].split("\n")[0] + "\n" + HEARS_NOTIFIED})
+    assert found(messages) == [("dj_hx.W024", "tests.interactions_app.views.notify")]
+    warning = the(messages, "dj_hx.W024")
+    assert warning.level == WARNING
+    assert warning.msg == (
+        "notify() announces 'rota-changed' in its triggers=, but no project template listens for it (hx-trigger, "
+        "hx-on or a hyperscript 'on rota-changed')."
+    )
+    assert 'hx-trigger="rota-changed from:body"' in warning.hint and "a JavaScript file" in warning.hint
+
+
+@pytest.mark.parametrize(
+    "template, says",
+    [
+        ('<p _="on rota-changd from body add .stale to me"></p>', "'rota-changd' is listened for (extra.html:2)"),
+        (control(NOTIFY, rest='hx-trigger="rota-reset from:body" hx-target="#notify" hx-swap="outerHTML"'), "'rota-reset'"),
+        ('<p hx-on:rota-cleared="this.remove()"></p>', "'rota-cleared'"),
+    ],
+    ids=["hyperscript", "hx-trigger", "hx-on"],
+)
+def test_w025_a_listener_nothing_announces(startup, template, says):
+    messages = startup(**{"extra.html": "{% load hx %}\n" + template.removeprefix("{% load hx %}\n")})
+    assert found(messages) == [("dj_hx.W025", "extra.html:2")]
+    warning = the(messages, "dj_hx.W025")
+    assert warning.level == WARNING and warning.msg.startswith(says)
+    assert warning.msg.endswith(
+        "but no view announces it with .trigger(), no interaction declares it in triggers=, and no script in the "
+        "templates names it."
+    )
+    assert "cannot see every side" in warning.hint
+
+
+@pytest.mark.parametrize(
+    "template",
+    [
+        '<p _="on click add .x to me end on mouseover add .y to me"></p>',
+        '<p hx-on:close="this.remove()"></p>',
+        '<button _="on click send refreshed to me end on refreshed add .x to me">x</button>',
+        '<p _="on refreshed from body add .x to me"></p><script>document.body.dispatchEvent(new Event("refreshed"))</script>',
+    ],
+    ids=["browser-events", "browser-event-hx-on", "hyperscript-send", "script-dispatch"],
+)
+def test_w025_leaves_out_browser_events_and_the_names_scripts_send(startup, template):
+    assert found(startup(**{"extra.html": template})) == []
+
+
+def test_w024_and_w025_count_triggers_of_an_interaction_dj_hx_urls_does_not_route(tmp_path):
+    # The example project's URLconf: E020, and notify()'s triggers= still pair with the layout's listeners. The one
+    # pairing Warning is the example's own contacts(), whose listener is in index.html, not among these templates.
+    with checked_on_disk(tmp_path, {}), override_settings(ROOT_URLCONF="contactapp.urls"):
+        messages = hx_check_messages()
+    assert [(m.id, m.obj) for m in messages if m.id in ("dj_hx.W024", "dj_hx.W025")] == [("dj_hx.W024", "contacts")]
+    assert "dj_hx.E020" in [m.id for m in messages]
+
+
+@pytest.mark.parametrize("installed", [True, False], ids=["site-packages", "project"])
+def test_w024_skips_an_interaction_whose_handler_is_in_site_packages(scratch, startup, tmp_path, monkeypatch, installed):
+    import site
+
+    user_site = tmp_path / "site-packages"
+    monkeypatch.setattr(site, "getusersitepackages", lambda: str(user_site))
+    module = types.ModuleType("shelf.views")
+    module.__file__ = str((user_site if installed else tmp_path / "project") / "shelf" / "views.py")
+    monkeypatch.setitem(sys.modules, module.__name__, module)
+
+    def shelve(request):
+        return None
+
+    shelve.__module__ = module.__name__
+    interaction("POST", partial="rota.html#notify", context=nothing, route="t/shelve", triggers=("shelved",))(shelve)
+    messages = startup(**{"extra.html": control("{% act 'shelve' %}")})
+    assert [m for m in found(messages) if m[0] == "dj_hx.W024"] == ([] if installed else [("dj_hx.W024", "shelf.views.shelve")])
 
 
 def test_assert_no_hx_check_issues_counts_an_info(tmp_path):

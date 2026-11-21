@@ -24,7 +24,7 @@ from .mapcore import ALL_METHODS, URLFOR, Handler, Map
 from .templates import ACT_MARK, in_site_packages, strip_template_syntax, template_sources
 from .urlconf import RoutedView, iter_routed_views
 
-__all__ = ["build_map", "print_map"]
+__all__ = ["build_map", "map_with_interactions", "print_map"]
 
 _HTTP_METHODS = ("get", "post", "put", "patch", "delete")
 
@@ -162,6 +162,14 @@ def _act_endpoint(act, routed: dict[str, Handler | None]) -> tuple[str | None, s
 
 
 def build_map(urlconf=None, sources: dict[str, str] | None = None) -> Map:
+    return map_with_interactions(urlconf, sources)[0]
+
+
+def map_with_interactions(urlconf=None, sources: dict[str, str] | None = None) -> tuple[Map, dict[str, Handler | None]]:
+    """
+    The map, and the handler it holds for each interaction the URLconf routes, by name: None for one in
+    site-packages, which the map does not scan. An interaction missing from the second is not routed.
+    """
     handlers, by_callback, interactions = _scan_handlers(urlconf)
     short = {}
     for ep, h in handlers.items():
@@ -202,7 +210,7 @@ def build_map(urlconf=None, sources: dict[str, str] | None = None) -> Map:
     raw = sources if sources is not None else template_sources()
     prepared = {name: strip_template_syntax(src, url_marker=True, acts=acts) for name, src in raw.items()}
     controls, listeners, script_names, _ = mapcore.scan_templates(prepared, resolve_control)
-    return mapcore.check(handlers, controls, listeners, script_names)
+    return mapcore.check(handlers, controls, listeners, script_names), interactions
 
 
 def print_map(check: bool = True, out=None, urlconf=None, sources=None, by_template: bool = False) -> int:

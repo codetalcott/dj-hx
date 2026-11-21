@@ -195,6 +195,20 @@ def test_i023_a_url_whose_route_takes_a_converter_without_a_placeholder(tmp_path
     assert messages[0].msg == says and "SILENCED_SYSTEM_CHECKS" in messages[0].hint
 
 
+def test_w024_a_views_trigger_no_template_listens_for(tmp_path):
+    # contacts() announces contacts-changed with .trigger(), as hx_map finds it; index.html is not here to listen
+    (tmp_path / "page.html").write_text("<p>no listener</p>")
+    with override_settings(TEMPLATES=on_disk(tmp_path)):
+        messages = [m for m in hx_check_messages() if m.id == "dj_hx.W024"]
+    assert [(m.obj, m.msg) for m in messages] == [
+        (
+            "contacts",
+            "contacts() announces 'contacts-changed' with .trigger(), but no project template listens for it "
+            "(hx-trigger, hx-on or a hyperscript 'on contacts-changed').",
+        )
+    ]
+
+
 def test_checks_stay_quiet_when_dj_hx_is_not_installed():
     with override_settings(INSTALLED_APPS=[a for a in settings.INSTALLED_APPS if a != "dj_hx"], HX_MESSAGES_TEMPLATE=None):
         assert ids() == []
