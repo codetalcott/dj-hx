@@ -196,6 +196,10 @@ def in_site_packages(path) -> bool:
         except Exception:  # AttributeError where an old virtualenv's site.py lacks it
             continue
         roots += [str(d) for d in ([found] if isinstance(found, str) else found) if Path(d).name in _SITE_NAMES]
+    if isinstance(path, str):
+        # A template's origin name can be a SafeString, and pathlib below Python 3.12 refuses to intern a str
+        # subclass; str.__str__ gives the plain string (SafeString's own __str__ returns itself).
+        path = str.__str__(path)
     path = Path(path).resolve()
     return any(path.is_relative_to(root) for root in _resolved(tuple(roots)))
 

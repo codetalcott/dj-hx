@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 from django.test import override_settings
 from django.urls import path
+from django.utils.safestring import SafeString
 
 from dj_hx.hxmap import build_map, print_map
 from dj_hx.templates import in_site_packages
@@ -217,6 +218,12 @@ def test_in_site_packages_without_the_site_functions_an_old_virtualenv_lacks(tmp
     monkeypatch.delattr(site, "getusersitepackages")
     assert in_site_packages(Path(sysconfig.get_paths()["purelib"]) / "django" / "__init__.py")
     assert not in_site_packages(tmp_path / "project" / "views.py")
+
+
+def test_in_site_packages_takes_a_name_django_marked_safe():
+    # A locmem template's origin name is its template name, a SafeString when a tag wrote it; below Python
+    # 3.12 pathlib interns a one-part name and refuses a str subclass (TypeError: can't intern SafeString).
+    assert not in_site_packages(SafeString("child.html"))
 
 
 def test_the_map_skips_a_view_installed_in_user_site_packages(user_site):
