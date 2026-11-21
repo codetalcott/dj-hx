@@ -15,8 +15,8 @@ to a verb signature, a setting, an error, a check id or a lint rule must be mirr
 The checked-in `.venv` has Django 6.0, pytest, ruff and playwright.
 
 ```
-.venv/bin/python -m pytest                      # 253 tests, ~5s
-.venv/bin/python -m pytest -m "not browser"     # 246, skipping Chromium
+.venv/bin/python -m pytest                      # 275 tests, ~5s
+.venv/bin/python -m pytest -m "not browser"     # 268, skipping Chromium
 .venv/bin/python -m pytest -m browser           # the 7 Playwright tests alone
 .venv/bin/python -m pytest tests/test_verbs.py::test_text_escapes
 .venv/bin/ruff check .
@@ -61,7 +61,7 @@ must not be able to 500 in production.
 
 **Ordering matters.** `HxMiddleware` must run its response phase before `MessageMiddleware` stores
 messages, which means it is listed *after* it. [checks.py](dj_hx/checks.py) enforces that as `dj_hx.E002`;
-the check ids W001-I021 are documented in that module's docstring.
+the check ids W001-I023 are documented in that module's docstring.
 
 **The lint has two surfaces over one rule set.** [hxlint.py](dj_hx/hxlint.py) works on rendered HTML
 strings. [templates.py](dj_hx/templates.py) strips Django template syntax (line numbers preserved,
@@ -97,7 +97,10 @@ reads `hx-action`'s method through `mapcore.action_method()`, as `hx_map` does, 
 element `hx-target="this"` names through `Node.resolving()`; both are hx-flask's, so change them there. The
 template checks read each `{% act %}` through `strip_template_syntax(source, acts=[...])`, which marks
 the n-th tag `__ACT<n>__` so its holding element is found in hxlint's tree, and `partial_sources()`
-for `{% partialdef %}` bodies.
+for `{% partialdef %}` bodies. E022 reads `{% url %}` through `url_tags()`, which is Django's own lexer:
+a tag in `{% verbatim %}` or across lines is text to Django, and `strip_template_syntax` would read both.
+It reverses through `django.urls.reverse()`, taking each placeholder from the converter the resolver holds
+for that parameter (the namespace walk mirrors `reverse()`'s), never from the route string.
 
 **The map is split by framework.** [mapcore.py](dj_hx/mapcore.py) is framework-neutral: template scan,
 the AST visitor that finds verb calls, the control-vs-handler checks. [hxmap.py](dj_hx/hxmap.py) is the

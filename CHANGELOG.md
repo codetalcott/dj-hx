@@ -67,8 +67,8 @@ event fired without a target lands on `document` after a delete swap, where a
 - `HX_EXTENSIONS` takes the name htmx registers an extension under (`sse`,
   `ws`, `upsert`) or its file name (`hx-sse`); check W008 names one that is
   neither, and a string where a tuple belongs.
-- Checks W001, E002, W003, W004, W005, W006, E007, W008, and the interaction
-  checks E009 to I021 below.
+- Checks W001, E002, W003, W004, W005, W006, E007, W008, the interaction
+  checks E009 to I021, and the template-wide checks from E022, below.
 - Interactions: `@interaction(method, partial=, context=, refuses=, triggers=,
   route=)` binds a handler to one partial, and the reply is always that
   partial, through `fragment()`, from the context function the page uses too.
@@ -112,6 +112,16 @@ event fired without a target lands on `document` after a delete swap, where a
   Warnings for a decorator above `@interaction` without `functools.wraps`
   (W018) and for one below it (W019); an Info for an `{% act %}` no element's
   verb attribute holds (I021), which `assert_no_hx_check_issues()` counts.
+- `{% url %}` checks, from `manage.py check`: every `{% url %}` with a quoted
+  name in the project's templates reverses with the arguments it passes
+  (E022), through Django's resolver with a placeholder for the converter each
+  argument's route declares, positional and keyword arguments counted apart.
+  `{% url ... as var %}` is checked too, since there a failed reverse is a
+  silent empty string. The message names template:line and the route, and
+  lists close names for one that does not exist or a namespace no URLconf
+  installs. A route with a custom converter or a `re_path` group gets an Info
+  instead (I023); a name built at run time, or a tag in a comment or
+  `{% verbatim %}`, is skipped.
 - The example: contact.app on the ORM, same routes, templates and tests as
   hx-flask; 156 tests plus 7 in Chromium, on Django 4.2, 5.2, 6.0 and 6.1.
 - The shared core, vendored: `hxlint.py`, `hx_vocab.py` and `mapcore.py`, the

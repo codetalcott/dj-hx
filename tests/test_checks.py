@@ -5,9 +5,11 @@ has no interactions, so the rota app's are set aside here; tests/test_interactio
 
 import pytest
 from django.conf import settings
+from django.core.checks import ERROR, INFO
 from django.test import override_settings
 
 from dj_hx.testing import assert_no_hx_check_issues, hx_check_messages
+from tests.conftest import on_disk
 
 pytestmark = pytest.mark.usefixtures("no_interactions")
 
@@ -76,6 +78,121 @@ def test_w008_for_an_extension_name_the_lint_does_not_know():
     with override_settings(HX_EXTENSIONS="sse, ws"):
         messages = hx_check_messages()
     assert [m.id for m in messages] == ["dj_hx.W008"] and "('sse', 'ws')" in messages[0].hint
+
+
+# ------------------------------------------------------------------ {% url %}: E022, I023
+
+
+def url_messages(directory, source):
+    """E022 and I023 for one template, page.html, under tests/urlconfs/reversing.py."""
+    (directory / "page.html").write_text(source)
+    with override_settings(ROOT_URLCONF="tests.urlconfs.reversing", TEMPLATES=on_disk(directory)):
+        return [m for m in hx_check_messages() if m.id in ("dj_hx.E022", "dj_hx.I023")]
+
+
+REVERSES = """<a href="{% url 'home' %}">home</a>
+<a href="{% url 'contacts_edit' contact.id %}">int</a> <a href="{% url "contacts_edit" contact_id=contact.id %}">by keyword</a>
+<a href="{% url 'page' page.title %}">str</a> <a href="{% url 'tag' tag=t.slug %}">slug</a>
+<a href="{% url 'file' f.path %}">path</a> <a href="{% url 'token' token=t.uuid %}">uuid</a>
+<a href="{% url 'shop:cart' store=s.id %}">a namespace whose prefix takes one</a> <a href="{% url 'shop:item' s.id i.slug %}">item</a>
+{% url 'contacts_edit' contact.id as edit %}<a href="{{ edit }}">as</a>"""
+
+
+def test_e022_is_quiet_when_every_url_reverses_with_its_converters_placeholders(tmp_path):
+    # int -> 1; str, slug and path -> "a"; uuid -> 00000000-...; read from the resolver, through the namespace
+    assert url_messages(tmp_path, REVERSES) == []
+
+
+@pytest.mark.parametrize(
+    "tag, says",
+    [
+        (
+            "{% url 'contacts_edit' %}",
+            "{% url 'contacts_edit' %} passes no arguments, but 'contacts_edit' is /contacts/<int:contact_id>/edit/, "
+            "which takes contact_id, so the page raises NoReverseMatch at render.",
+        ),
+        ("{% url 'contacts_edit' contact.id 2 %}", "passes 2 positional arguments, but 'contacts_edit' is"),
+        ("{% url 'contacts_edit' pk=contact.id %}", "passes the keyword pk, but 'contacts_edit' is"),
+        ("{% url 'shop:cart' %}", "passes no arguments, but 'shop:cart' is /stores/<int:store>/cart/, which takes store"),
+        (
+            "{% url 'contacts_edit' contact.id page=2 %}",
+            "{% url 'contacts_edit' %} passes 1 positional and 1 keyword argument; reverse() refuses the mix, so the "
+            "page raises ValueError at render.",
+        ),
+        (
+            "{% url 'contact_edit' contact.id %}",
+            "{% url 'contact_edit' %} names no URL pattern (did you mean 'contacts_edit'?), so the page raises "
+            "NoReverseMatch at render.",
+        ),
+        ("{% url 'shop:crat' store=s.id %}", "{% url 'shop:crat' %} names no URL pattern (did you mean 'shop:cart'"),
+        (
+            "{% url 'shops:cart' store=s.id %}",
+            "{% url 'shops:cart' %} names the namespace 'shops', which no URLconf installs (did you mean 'shop'?), so "
+            "the page raises NoReverseMatch at render.",
+        ),
+        (
+            "{% url 'contacts_edit' as edit %}",
+            "so {% url ... as edit %} stores an empty string in edit instead of raising, and whatever reads it gets no URL.",
+        ),
+        ("{% url 'archive' %}", "passes no arguments, but 'archive' is /archive/<yyyy:year>/, which takes year"),
+        ("{% comment %}{% url 'home' 1 %}{% endcomment %}{% url 'home' 1 %}", "passes 1 positional argument, but 'home'"),
+    ],
+    ids=[
+        "missing", "extra", "wrong-keyword", "namespaced", "mixed", "no-such-name", "no-such-name-in-namespace",
+        "no-such-namespace", "as", "custom-converter-missing", "after-a-comment",
+    ],
+)
+def test_e022_a_url_that_does_not_reverse(tmp_path, tag, says):
+    messages = url_messages(tmp_path, f'<p>a link</p>\n<a href="{tag}">x</a>')
+    assert [(m.id, m.level, m.obj) for m in messages] == [("dj_hx.E022", ERROR, "page.html:2")]
+    assert says in messages[0].msg
+
+
+def test_e022_says_how_to_write_the_tag(tmp_path):
+    [message] = url_messages(tmp_path, "{% url 'shop:item' %}")
+    assert message.hint == (
+        "Pass one value for each parameter of the route, all by position or all by keyword: "
+        "{% url 'shop:item' store=... item=... %}."
+    )
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "{% url view_name %}",
+        "{% url 'nowher'|add:'e' %}",
+        "{# {% url 'nowhere' %} #}",
+        "{% comment 'old' %}{% url 'nowhere' %}{% endcomment %}",
+        "{% verbatim %}{% url 'nowhere' %}{% endverbatim %}",
+        "{% verbatim js %}{% url 'nowhere' %}{% endverbatim js %}",
+        "{% url 'nowhere'\n %}",
+    ],
+    ids=["variable", "filter", "comment", "comment-tag", "verbatim", "named-verbatim", "across-lines"],
+)
+def test_e022_skips_a_name_built_at_run_time_and_what_django_does_not_read_as_a_tag(tmp_path, source):
+    assert url_messages(tmp_path, source) == []
+
+
+@pytest.mark.parametrize(
+    "tag, says",
+    [
+        (
+            "{% url 'archive' 2024 %}",
+            "{% url 'archive' %} is not checked: 'archive' is /archive/<yyyy:year>/, and dj-hx has no placeholder "
+            "value for the converter of year, FourDigitYear.",
+        ),
+        (
+            "{% url 'legacy' code='ABC' %}",
+            "{% url 'legacy' %} is not checked: 'legacy' is /legacy/<code>/, and dj-hx has no placeholder value for "
+            "code, a regular-expression group (re_path).",
+        ),
+    ],
+    ids=["custom-converter", "re_path"],
+)
+def test_i023_a_url_whose_route_takes_a_converter_without_a_placeholder(tmp_path, tag, says):
+    messages = url_messages(tmp_path, f'<p>a link</p>\n<a href="{tag}">x</a>')
+    assert [(m.id, m.level, m.obj) for m in messages] == [("dj_hx.I023", INFO, "page.html:2")]  # not checked, not wrong
+    assert messages[0].msg == says and "SILENCED_SYSTEM_CHECKS" in messages[0].hint
 
 
 def test_checks_stay_quiet_when_dj_hx_is_not_installed():

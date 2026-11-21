@@ -30,10 +30,12 @@ W018     Warning  The module attribute routed does not unwrap to its interaction
 W019     Warning  A decorator sits below @interaction
 E020     Error    Interactions are registered but dj_hx.urls is not included
 I021     Info     An {% act %} the checks cannot tie to a control's attributes
+E022     Error    A {% url %} with a quoted name does not reverse with its arguments
+I023     Info     A {% url %} not checked: its route takes a converter with no placeholder
 =======  =======  ==========================================================
 
-E009 to E016 and I021 read the project's template files as hx_lint does, never
-site-packages. A computed hx-swap or hx-method is not judged. A templated id or
+E009 to E016, I021, E022 and I023 read the project's template files as hx_lint
+does, never site-packages. A computed hx-swap or hx-method is not judged. A templated id or
 hx-target is judged by its literal parts (``_could_equal``): skipped only when it
 could equal the expected value (id="{{ name }}"), an Error otherwise
 (id="row-{{ pk }}").
@@ -41,6 +43,13 @@ E013's outer swaps, read from htmx 4.0.2's swap code: outerHTML replaces the
 target, outerMorph morphs the target itself, and outerSync copies the reply
 root's attributes onto it and takes the root's children, so each leaves one
 element with the id. innerMorph morphs the reply, root and all, into the target.
+E022 reads each {% url %} as Django's lexer does (not in a comment or {% verbatim %}),
+skips a name built at run time, and reverses the name through Django's resolver
+with a placeholder for each argument, chosen by the converter the pattern
+declares there: int 1; str, slug and path "a"; uuid 00000000-0000-0000-0000-000000000000.
+Positional and keyword arguments are counted apart, and {% url ... as var %} is
+checked too, because there a failed reverse stores "" instead of raising. A
+custom converter or a re_path group gets I023 instead.
 """
 
 from __future__ import annotations
@@ -620,3 +629,189 @@ def _root_messages(it, line: int, body: str) -> list:
         at = line + html.count("\n", 0, len(html) - len(content))
         return [Error(_shown(str(exc)), obj=f"{it.template}:{at}", id="dj_hx.E016")]
     return []
+
+
+@register("dj_hx", Tags.templates, Tags.urls)
+def check_url_tags(app_configs=None, **kwargs):
+    """
+    Every ``{% url %}`` with a quoted name in the project's templates reverses with the arguments it
+    passes (E022), or names the converter that keeps it from being checked (I023).
+    """
+    if not _should_run(app_configs):
+        return []
+    from django.conf import settings
+    from django.urls import get_resolver
+
+    from .templates import template_sources, url_tags
+
+    if not getattr(settings, "ROOT_URLCONF", None):
+        return []
+    try:
+        get_resolver().reverse_dict  # imports the URLconf; Django's own checks report one that does not load
+    except Exception:
+        return []
+    messages = []
+    for template, source in template_sources().items():
+        for tag in url_tags(source):
+            if tag.name is not None:  # a name built at run time is the page's to resolve
+                messages += _url_messages(tag, f"{template}:{tag.line}")
+    return messages
+
+
+def _placeholder(converter):
+    """What one of Django's own converters is reversed with; None for any other, or a re_path group (None)."""
+    from django.urls import converters as c
+
+    return {
+        c.IntConverter: 1,
+        c.StringConverter: "a",
+        c.SlugConverter: "a",
+        c.PathConverter: "a",
+        c.UUIDConverter: "00000000-0000-0000-0000-000000000000",
+    }.get(type(converter))
+
+
+def _url_patterns(name: str):
+    """
+    ``(patterns, None)``: what ``reverse(name)`` chooses among, as ``(route, params, converters)``, read
+    from the resolver through the namespaces as ``reverse()`` walks them. ``(None, (namespace, inside,
+    known))`` when a namespace on the way is not installed.
+    """
+    from django.urls import get_resolver
+    from django.urls.resolvers import get_ns_resolver
+
+    resolver = get_resolver()
+    *path, view = name.split(":")
+    inside, ns_pattern, ns_converters = [], "", {}
+    for namespace in path:
+        instances = resolver.app_dict.get(namespace)
+        if instances and namespace not in instances:
+            namespace = instances[0]  # an application namespace reverses to its default instance
+        if namespace not in resolver.namespace_dict:
+            return None, (namespace, inside, sorted({*resolver.namespace_dict, *resolver.app_dict}))
+        extra, resolver = resolver.namespace_dict[namespace]
+        inside.append(namespace)
+        ns_pattern += extra
+        ns_converters.update(resolver.pattern.converters)
+    if ns_pattern:
+        resolver = get_ns_resolver(ns_pattern, resolver, tuple(ns_converters.items()))
+    patterns = [
+        (route, params, converters)
+        for possibilities, _, _, converters in resolver.reverse_dict.getlist(view)
+        for route, params in possibilities
+    ]
+    return patterns, None
+
+
+def _url_names(resolver, prefix: str = "") -> list[str]:
+    """Every name ``{% url %}`` can reverse under ``resolver``, namespaced as a tag writes it."""
+    names = [prefix + key for key in resolver.reverse_dict if isinstance(key, str)]
+    for namespace, (_, inner) in resolver.namespace_dict.items():
+        names += _url_names(inner, f"{prefix}{namespace}:")
+    return names
+
+
+def _route_shown(route: str, params, converters) -> str:
+    """``/contacts/<int:contact_id>/edit/``: a pattern as path() writes it."""
+    from django.urls.converters import get_converters
+
+    names = {type(c): n for n, c in get_converters().items()}
+    return "/" + route % {
+        p: f"<{names[type(converters[p])]}:{p}>" if type(converters.get(p)) in names else f"<{p}>" for p in params
+    }
+
+
+def _url_messages(tag, where: str) -> list:
+    """E022 or I023 for one ``{% url %}``: reversed with a placeholder for each argument it passes."""
+    import difflib
+
+    from django.urls import NoReverseMatch, get_resolver, reverse
+
+    shown = f"{{% url '{tag.name}' %}}"
+    fails = (
+        f"so {{% url ... as {tag.stored_as} %}} stores an empty string in {tag.stored_as} instead of raising, and "
+        "whatever reads it gets no URL"
+        if tag.stored_as
+        else "so the page raises NoReverseMatch at render"
+    )
+
+    def error(msg, hint):
+        return [Error(msg, hint=hint, obj=where, id="dj_hx.E022")]
+
+    if tag.positional and tag.keywords:
+        return error(
+            f"{shown} passes {tag.positional} positional and {len(tag.keywords)} keyword "
+            f"argument{'s' if len(tag.keywords) > 1 else ''}; reverse() refuses the mix, so the page raises "
+            "ValueError at render.",
+            "Pass every argument by keyword, or every one by position.",
+        )
+    patterns, missing = _url_patterns(tag.name)
+    if missing:
+        namespace, inside, known = missing
+        close = difflib.get_close_matches(namespace, known, n=3, cutoff=0.6)
+        return error(
+            f"{shown} names the namespace {namespace!r}"
+            + (f" inside {':'.join(inside)!r}" if inside else "")
+            + ", which no URLconf installs"
+            + (f" (did you mean {' or '.join(map(repr, close))}?)" if close else "")
+            + f", {fails}.",
+            f"Include the URLconf whose app_name is {namespace!r} (path('...', include('<app>.urls'))), or give "
+            f"include() namespace={namespace!r}; or correct the namespace in the tag.",
+        )
+    if not patterns:
+        close = difflib.get_close_matches(tag.name, _url_names(get_resolver()), n=3, cutoff=0.6)
+        return error(
+            f"{shown} names no URL pattern"
+            + (f" (did you mean {' or '.join(map(repr, close))}?)" if close else "")
+            + f", {fails}.",
+            f"Correct the name in the tag, or name the pattern: path(..., name={tag.name.rsplit(':', 1)[-1]!r}).",
+        )
+    unchecked = []
+    for route, params, converters in patterns:
+        passed = params[: tag.positional] if tag.positional else [k for k in tag.keywords if k in params]
+        values = {p: _placeholder(converters.get(p)) for p in passed}
+        if None in values.values():
+            unchecked.append((route, params, converters, next(p for p, v in values.items() if v is None)))
+            continue
+        args = [values.get(p, "a") for p in params[: tag.positional]] + ["a"] * (tag.positional - len(params))
+        kwargs = {k: values.get(k, "a") for k in tag.keywords}
+        try:
+            reverse(tag.name, args=args, kwargs=kwargs)
+        except NoReverseMatch:
+            continue
+        return []
+    if unchecked:
+        route, params, converters, param = unchecked[0]
+        converter = converters.get(param)
+        what = (
+            f"the converter of {param}, {type(converter).__name__}"
+            if converter is not None
+            else f"{param}, a regular-expression group (re_path)"
+        )
+        return [
+            Info(
+                f"{shown} is not checked: {tag.name!r} is {_route_shown(route, params, converters)}, and dj-hx has no "
+                f"placeholder value for {what}.",
+                hint="Only int, str, slug, path and uuid parameters are reversed with a placeholder. Silence "
+                "dj_hx.I023 in SILENCED_SYSTEM_CHECKS where a route takes another.",
+                obj=where,
+                id="dj_hx.I023",
+            )
+        ]
+    if tag.positional:
+        passes = f"{tag.positional} positional argument{'s' if tag.positional > 1 else ''}"
+    elif tag.keywords:
+        passes = f"the keyword{'s' if len(tag.keywords) > 1 else ''} {', '.join(tag.keywords)}"
+    else:
+        passes = "no arguments"
+    routes = [(_route_shown(route, params, conv), ", ".join(params) or "nothing") for route, params, conv in patterns]
+    if len(routes) == 1:
+        takes = f"{routes[0][0]}, which takes {routes[0][1]}"
+    else:
+        takes = "any of " + "; ".join(f"{shown_route} (takes {params})" for shown_route, params in routes)
+    first = patterns[0][1]
+    return error(
+        f"{shown} passes {passes}, but {tag.name!r} is {takes}, {fails}.",
+        "Pass one value for each parameter of the route, all by position or all by keyword: "
+        f"{{% url '{tag.name}'{''.join(f' {p}=...' for p in first)} %}}.",
+    )

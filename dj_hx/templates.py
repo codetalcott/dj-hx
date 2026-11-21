@@ -22,6 +22,8 @@ __all__ = [
     "URLFOR",
     "ACT_MARK",
     "ActTag",
+    "UrlTag",
+    "url_tags",
     "in_site_packages",
     "template_directories",
     "iter_template_files",
@@ -40,6 +42,7 @@ _TAG = re.compile(r"\{%.*?%\}", re.S)
 _URL_TAG = re.compile(r"\{%\s*url\s+(['\"])([\w:.-]+)\1(.*?)%\}", re.S)
 _ACT_TAG = re.compile(r"\{%\s*act\s+(.*?)%\}", re.S)
 _KEYWORD = re.compile(r"^\w+=")  # as Django's token_kwargs reads a tag argument
+_QUOTED = re.compile(r"'[^'\\]*(?:\\.[^'\\]*)*'" r'|"[^"\\]*(?:\\.[^"\\]*)*"')  # Django's constant_string, untranslated
 _PARTIALDEF = re.compile(r"\{%\s*(partialdef|endpartialdef)\b(.*?)%\}", re.S)
 _BLOCK_TAGS = re.compile(
     r"^(?:if|elif|else|endif|for|empty|endfor|block|endblock|extends|load|with|endwith|"
@@ -59,6 +62,49 @@ class ActTag:
     keywords: tuple[str, ...]
     positional: int
     stored_as: str | None  # the variable of ``{% act ... as url %}``, which writes nothing where it stands
+
+
+@dataclass(frozen=True)
+class UrlTag:
+    """One ``{% url %}`` tag of a template's source, as check E022 reads it."""
+
+    line: int
+    name: str | None  # None when the name is built at run time: a variable, or a filter on the name
+    positional: int
+    keywords: tuple[str, ...]
+    stored_as: str | None  # the variable of ``{% url ... as var %}``, where a failed reverse stores ""
+
+
+def url_tags(source: str) -> list[UrlTag]:
+    """
+    Every ``{% url %}`` tag in a template's source, read by Django's own lexer and split as its url
+    tag splits one. A tag in a comment or in ``{% verbatim %}`` is not a tag, and neither is one
+    written across lines, which Django renders as text.
+    """
+    from django.template.base import Lexer, TokenType
+
+    found: list[UrlTag] = []
+    commented = False
+    for token in Lexer(source).tokenize():
+        if token.token_type is not TokenType.BLOCK:
+            continue
+        if commented:  # {% comment %} skips every token up to its {% endcomment %}, as the parser does
+            commented = token.contents != "endcomment"
+            continue
+        bits = token.split_contents()
+        if bits[:1] == ["comment"]:
+            commented = True
+            continue
+        if bits[:1] != ["url"] or len(bits) < 2:
+            continue
+        name, arguments = bits[1], bits[2:]
+        stored_as = None
+        if len(arguments) >= 2 and arguments[-2] == "as":
+            stored_as, arguments = arguments[-1], arguments[:-2]
+        keywords = tuple(bit.split("=", 1)[0] for bit in arguments if _KEYWORD.match(bit))
+        quoted = _QUOTED.fullmatch(name)
+        found.append(UrlTag(token.lineno, name[1:-1] if quoted else None, len(arguments) - len(keywords), keywords, stored_as))
+    return found
 
 
 def _keep_lines(match, filler: str) -> str:

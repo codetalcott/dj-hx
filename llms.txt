@@ -280,7 +280,7 @@ urlpatterns = [..., path("", include("dj_hx.urls"))]   # once, at the site root
 | `HX_REQUEST_TYPE_FALLBACK = "full"` | Answer htmx requests missing `HX-Request-Type` as this type instead of raising. Proxies only. |
 | `HX_LINT_IGNORE = ("implicit-inheritance",)` | Lint rules to silence everywhere (test client, middleware, `hx_lint`, W005). |
 | `HX_EXTENSIONS = ("hx-live", "sse")` | Extensions the pages load, for the lint (also detected from `<script src>`). The file name (`hx-sse`) or the name htmx registers (`sse`, as in `htmx.config.extensions`); W008 flags any other. |
-| `SILENCED_SYSTEM_CHECKS = ["dj_hx.W005"]` | Standard Django; the check ids are below. |
+| `SILENCED_SYSTEM_CHECKS = ["dj_hx.W005"]` | Standard Django; the check ids are below. An Error's id can be silenced too, as while working through E022's first run on an existing site. |
 
 ### Errors
 
@@ -403,7 +403,7 @@ def test_dj_hx_is_configured():
     assert_no_hx_check_issues()               # pytest never runs system checks; this does
 ```
 
-`assert_no_hx_check_issues()` fails on any dj-hx check message, Infos (I021) included;
+`assert_no_hx_check_issues()` fails on any dj-hx check message, Infos (I021, I023) included;
 `include_warnings=False` keeps Errors only.
 
 What the client enforces on every request, including plain `client.get`:
@@ -475,6 +475,8 @@ System checks (tag `dj_hx`):
 | W019 | a decorator sits below `@interaction` (the handler has `__wrapped__`) |
 | E020 | interactions are registered but `dj_hx.urls` is not included |
 | I021 | an `{% act %}` the checks cannot tie to one element's verb attribute (script, text, another attribute, `as`, a variable name) |
+| E022 | a `{% url %}` with a quoted name in a project template does not reverse with the arguments it passes: no such name (close ones listed), a namespace no URLconf installs, the wrong positional count or keywords, or both kinds mixed; `{% url ... as var %}` included (there the failure is a silent empty string). Each argument is reversed with a placeholder for its route's converter (`int` 1; `str`, `slug`, `path` "a"; `uuid` all zeros). A name built at run time (a variable, a filter), or a tag in a comment or `{% verbatim %}`, is skipped |
+| I023 | a `{% url %}` not checked: its route takes a custom converter or a `re_path` group, which has no placeholder |
 
 `HxMiddleware` also: adds `Vary` to every response, runs the guard, bridges pending messages onto partial
 2xx HTML responses (peeking before consuming), logs findings as warnings on the `dj_hx` logger, and under
@@ -559,7 +561,7 @@ as `HxRedirectIntoFragment`. Always build URLs with `{% url %}`, or `{% act %}` 
 - [dj_hx/urls.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/urls.py): the URLconf that serves every interaction
 - [dj_hx/templatetags/hx.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/templatetags/hx.py): `{% act %}`
 - [dj_hx/testing.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/testing.py): `HxTestClient`, `assert_no_hx_check_issues`
-- [dj_hx/checks.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/checks.py): W001 to I021
+- [dj_hx/checks.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/checks.py): W001 to I023
 - [dj_hx/errors.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/errors.py): every exception
 - [dj_hx/hxlint.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/hxlint.py): the htmx 4 lint (vendored from hx-flask)
 - [dj_hx/hx_vocab.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/hx_vocab.py): the htmx 4.0.0 vocabulary, generated

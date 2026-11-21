@@ -354,6 +354,12 @@ by `HxTestClient`. Nothing is gated on `DEBUG` that a test needs.
 | Interactions registered, but `dj_hx.urls` not included | check `dj_hx.E020`; `{% act %}` raises `ImproperlyConfigured`; both name `path("", include("dj_hx.urls"))` |
 | A decorator above `@interaction` written without `functools.wraps`, so nothing can see that it wraps the interaction; a decorator below `@interaction` (the handler has `__wrapped__`) | checks `dj_hx.W018` (use `functools.wraps`) and `W019` (view decorators belong above `@interaction`) |
 | An `{% act %}` the checks cannot tie to one element's verb attribute: in a `<script>` or text, in another attribute, stored with `as`, or naming its interaction with a variable | check `dj_hx.I021`, an Info naming template:line; a quoted name and its keywords are still checked. `assert_no_hx_check_issues()` counts it, so silence it by id where it is deliberate |
+| A `{% url 'name' … %}` in a project template that does not reverse: a name no pattern has (close names are listed), a namespace no URLconf installs, positional arguments or keywords the route does not take, or both kinds mixed; `{% url … as var %}` included, where the failure is silent (`var` is an empty string) | check `dj_hx.E022`, naming template:line and the route the name has. Each argument is reversed with a placeholder for the converter its route declares (`int` 1; `str`, `slug` and `path` "a"; `uuid` all zeros), so a route with a custom converter or a `re_path` group is not checked: Info `dj_hx.I023` names it. A name built at run time (a variable, a filter on it) is skipped, and so is a tag in a comment or `{% verbatim %}` |
+
+On an existing site the first `manage.py check` is a worklist, `dj_hx.E022` above all, since it
+reads every `{% url %}` in the project's templates. An Error fails `manage.py check` and keeps
+`runserver` from starting. While you work through the list, `SILENCED_SYSTEM_CHECKS = ["dj_hx.E022"]`
+silences one id, Errors included; take it out again to check the rest.
 
 ## Testing
 
@@ -370,8 +376,9 @@ def test_dj_hx_is_configured():
 ```
 
 `assert_no_hx_check_issues()` fails on any dj-hx check message, Infos included (`dj_hx.I021`, a
-control the checks could not tie to its interaction); `include_warnings=False` keeps Errors only,
-and `SILENCED_SYSTEM_CHECKS` silences one id.
+control the checks could not tie to its interaction; `dj_hx.I023`, a `{% url %}` they could not
+reverse with a placeholder); `include_warnings=False` keeps Errors only, and `SILENCED_SYSTEM_CHECKS`
+silences one id.
 
 Every `text/html` response is linted (`HxLintError` on an error-level
 finding, a warning otherwise; `lint_ignore=(...)` or `HX_LINT_IGNORE`
