@@ -41,7 +41,9 @@ does, never site-packages. A computed hx-swap or hx-method is not judged. A
 templated id or hx-target is judged by its literal parts (``_could_equal``):
 skipped only when it could equal the expected value (id="{{ name }}"), an Error
 otherwise (id="row-{{ pk }}"). A block tag in an id, and the text it wraps, is
-computed too (id="{% if p %}{{ p }}-{% endif %}notify" is skipped). E014 skips
+computed too (id="{% if p %}{{ p }}-{% endif %}notify" is skipped). E012 reads an
+extended hx-target (closest, find, findAll, next or previous, after an optional
+"global ") by its CSS part, as htmx 4.0.2's target resolver does. E014 skips
 an interaction whose handler's module is in site-packages
 (``templates.in_site_packages``): its controls are in that app's templates,
 which the scan never reads.
@@ -77,6 +79,10 @@ HOOKS = ("render_to_response", "form_invalid", "form_valid")
 _ELEMENT = re.compile(r"<[a-zA-Z]")
 _ELSEWHERE = re.compile(r"\{%\s*(?:include|partial)\b")  # a tag that renders another template or partial in place
 _OUTER_SWAPS = {"outerHTML", "outerMorph", "outerSync"}  # one element carries the id after the swap (htmx 4.0.2)
+# htmx 4.0.2's target resolver (#be): an optional "global " prefix, then, per comma-separated part, a
+# keyword whose argument is a CSS selector (closest, find, findAll, next, previous), a fixed target
+# (this, document, window, body, host, bare next or previous) or plain CSS. group(1) is the CSS part.
+_EXTENDED_SELECTOR = re.compile(r"(?:global )?(?:(?:closest|find|findAll|next|previous) )?(.*)", re.S)
 _KEEPS_THE_TARGET = {"innerHTML", "innerMorph", "afterbegin", "beforeend", "beforebegin", "afterend"}  # reply in or beside it
 
 
@@ -496,7 +502,7 @@ def _could_equal(value: str, literal: str) -> bool:
     An id holds no whitespace, so whitespace left in ``value`` is a block tag, and the text from the
     first such tag to the last is inside {% if %} or {% for %}, which may not render: that span is one
     computed part (id="{% if p %}{{ p }}-{% endif %}notify" renders "notify"). A selector keeps its
-    real spaces safe this way: "closest #notify" and "#notify div" still cannot equal "#notify".
+    real spaces safe this way: "#notify div" and ".list #notify" still cannot equal "#notify".
     """
     from .hxlint import JINJA
 
@@ -546,13 +552,15 @@ def _control_messages(it, node, attr: str, where: str) -> list:
         )
     # htmx 4.0.2 targets the control itself when no hx-target reaches it, and the element declaring
     # hx-target="this" for "this" (its #K and #z); either is right when that element has the partial's id.
+    # Otherwise the selector is right when its CSS part is #<partial>, bare or after closest, find,
+    # findAll, next or previous, with or without "global " (#be): it reaches that element or nothing.
     target = node.resolved("hx-target")
     value = (target or "").strip()
     targeted = node if target is None else node.resolving("hx-target") if value == "this" else None
     if targeted is not None:
         right = _could_equal(targeted.attrs.get("id") or "", partial)
     else:
-        right = _could_equal(value, f"#{partial}")
+        right = _could_equal(_EXTENDED_SELECTOR.fullmatch(value).group(1).strip(), f"#{partial}")
     if not right:
         if target is None:
             says = (

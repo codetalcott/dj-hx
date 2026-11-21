@@ -880,6 +880,37 @@ def test_e012_takes_a_control_that_targets_the_element_with_the_partials_id(star
     assert found(startup(**{"extra.html": template})) == []
 
 
+@pytest.mark.parametrize(
+    "selector",
+    [
+        "closest #notify",
+        "find #notify",
+        "findAll #notify",
+        "next #notify",
+        "previous #notify",
+        "global #notify",
+        "global closest #notify",
+        "closest #{{ name }}",
+    ],
+)
+def test_e012_takes_an_extended_selector_whose_css_part_is_the_partials_id(startup, selector):
+    # htmx 4.0.2's target resolver (#be) strips "global ", then reads closest/find/findAll/next/previous X as a
+    # search for the CSS selector X: with X #notify it reaches the element with the partial's id, or nothing
+    assert found(startup(**{"extra.html": control(NOTIFY, rest=f'hx-target="{selector}" hx-swap="outerHTML"')})) == []
+
+
+@pytest.mark.parametrize(
+    "selector",
+    ["closest #other", "closest .card", "closest #row-{{ pk }}", "#notify, #other", "next", "previous", "document"],
+)
+def test_e012_an_extended_selector_that_does_not_name_the_partial(startup, selector):
+    # another id or a class; a comma list, whose first match is whichever comes first; bare next or previous,
+    # the sibling whatever its id; a fixed target
+    messages = startup(**{"extra.html": control(NOTIFY, rest=f'hx-target="{selector}" hx-swap="outerHTML"')})
+    assert found(messages) == [("dj_hx.E012", "extra.html:2")]
+    assert f"its hx-target is '{selector}'".replace("{{ pk }}", "{{…}}") in the(messages, "dj_hx.E012").msg
+
+
 def test_e012_and_e013_read_an_ancestors_inherited_target_and_swap(startup):
     template = '{% load hx %}\n<div hx-target:inherited="#notify" hx-swap:inherited="outerHTML swap:100ms"><button hx-post="' + NOTIFY + '">Go</button></div>'
     assert found(startup(**{"extra.html": template})) == []
@@ -918,10 +949,9 @@ def test_e011_to_e013_do_not_judge_a_computed_value(startup, verb, rest):
             'it has no hx-target, so htmx 4 targets the control itself, a <button> with id="{%…%}{{…}}-{%…%}row", '
             'which would need id="notify"',
         ),
-        (control(NOTIFY, rest='hx-target="closest #notify" hx-swap="outerHTML"'), "its hx-target is 'closest #notify'"),
         (control(NOTIFY, rest='hx-target="#notify div" hx-swap="outerHTML"'), "its hx-target is '#notify div'"),
     ],
-    ids=["row-id-no-target", "item-id-click-to-edit", "row-selector", "if-built-id", "closest-selector", "descendant-selector"],
+    ids=["row-id-no-target", "item-id-click-to-edit", "row-selector", "if-built-id", "descendant-selector"],
 )
 def test_e012_judges_a_templated_id_or_selector_by_its_literal_parts(startup, template, says):
     messages = startup(**{"extra.html": template})

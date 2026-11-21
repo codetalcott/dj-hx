@@ -264,8 +264,9 @@ urlpatterns = [..., path("", include("dj_hx.urls"))]   # once, at the site root
   whose verb attribute holds it, resolving each attribute as htmx 4.0.2 does. The verb must send the
   interaction's method (`hx-action` sends its `hx-method`, an ancestor's `hx-method:inherited`, its
   `method` attribute, else GET; a submit button's `formmethod` is not read). The control must target the
-  element with the partial's id: `hx-target="#<partial>"`, or no `hx-target` / `hx-target="this"` on the
-  element carrying the id (`this` is the element that declares it). `hx-swap` must be an outer swap
+  element with the partial's id: `hx-target="#<partial>"` (or an htmx 4.0.2 extended selector whose CSS
+  part is that: `closest`, `find`, `findAll`, `next`, `previous`, optionally after `global `), or no
+  `hx-target` / `hx-target="this"` on the element carrying the id (`this` is the element that declares it). `hx-swap` must be an outer swap
   (`outerHTML`, `outerMorph` or `outerSync`). Each attribute is the control's own or an ancestor's
   `:inherited` one; a plain attribute on an ancestor does not count. A computed `hx-swap` or `hx-method` is
   not judged; a templated id or `hx-target` is judged by its literal parts and skipped only when it could
@@ -472,7 +473,7 @@ System checks (tag `dj_hx`):
 | E009 | `{% act %}` in a project template names no interaction (lists those there are) |
 | E010 | `{% act %}`'s arguments are not its handler's parameters (positional, unknown or missing) |
 | E011 | an `{% act %}` control's verb (`hx-get` ... `hx-delete`; or `hx-action` with its `hx-method`, an ancestor's `hx-method:inherited`, its `method` attribute, else GET; `formmethod` not read) is not the interaction's method |
-| E012 | an `{% act %}` control does not target the element with id `<partial>`: neither `hx-target="#<partial>"` (own or an ancestor's `:inherited`) nor no `hx-target` / `hx-target="this"` on that element |
+| E012 | an `{% act %}` control does not target the element with id `<partial>`: neither `hx-target="#<partial>"` (own or an ancestor's `:inherited`; also `closest`, `find`, `findAll`, `next` or `previous #<partial>`, with or without `global `, as htmx 4.0.2's target resolver reads them) nor no `hx-target` / `hx-target="this"` on that element. A comma list, bare `next`/`previous`, `document`, `window`, `body`, `host` and other CSS are Errors |
 | E013 | an `{% act %}` control's `hx-swap` (own or `:inherited`) is not an outer swap (`outerHTML`, `outerMorph`, `outerSync`, per htmx 4.0.2's swap code); htmx 4's default `innerHTML`, and `innerMorph`, nest a second element with the id |
 | E014 | an interaction has no control: no project template writes its `{% act %}` (a `{% url 'dj_hx:…' %}` or hand-written path is not counted: E011-E013 cannot check it); skipped for a handler whose module is in site-packages, whose templates are never read |
 | E015 | an interaction's partial does not load (`HxUnknownPartial`'s reason) |

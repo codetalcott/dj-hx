@@ -104,8 +104,10 @@ event fired without a target lands on `document` after a delete swap, where a
   project's templates names an interaction (E009) with its handler's
   parameters (E010), and its control sends the interaction's method (E011,
   with `hx-action`'s method resolved as htmx 4.0.2 does), targets the element
-  with the partial's id (E012: `#<partial>`, or no `hx-target` or
-  `hx-target="this"` on that element) and uses an outer swap, `outerHTML`,
+  with the partial's id (E012: `#<partial>`, or an extended selector whose
+  CSS part is that, `closest #<partial>` and its siblings as htmx 4.0.2's
+  target resolver reads them, or no `hx-target` or `hx-target="this"` on that
+  element) and uses an outer swap, `outerHTML`,
   `outerMorph` or `outerSync` as read in htmx 4.0.2's swap code (E013), reading
   htmx 4's `:inherited` on ancestors, and judging a templated id or `hx-target`
   by its literal parts (`id="row-{{ pk }}"` cannot be `#notify`;
