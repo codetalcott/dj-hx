@@ -13,32 +13,27 @@ from __future__ import annotations
 
 import ast
 import inspect
-import sysconfig
 import textwrap
-from pathlib import Path
 
 from django.urls import Resolver404, resolve
 
 from . import mapcore
 from .mapcore import ALL_METHODS, URLFOR, Handler, Map
-from .templates import strip_template_syntax, template_sources
+from .templates import in_site_packages, strip_template_syntax, template_sources
 from .urlconf import RoutedView, iter_routed_views
 
 __all__ = ["build_map", "print_map"]
 
-_SITE = {Path(sysconfig.get_paths()[k]).resolve() for k in ("purelib", "platlib")}
 _HTTP_METHODS = ("get", "post", "put", "patch", "delete")
 
 
 def _in_site_packages(obj) -> bool:
+    """True for code outside the project: in site-packages (``templates.in_site_packages``), or with no source file."""
     try:
         file = inspect.getsourcefile(obj)
     except (TypeError, OSError):
         return True
-    if not file:
-        return True
-    path = Path(file).resolve()
-    return any(path.is_relative_to(s) for s in _SITE)
+    return not file or in_site_packages(file)
 
 
 def _verb_names(module) -> dict[str, str]:

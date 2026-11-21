@@ -43,6 +43,7 @@ _URL_TAG = re.compile(r"\{%\s*url\s+(['\"])([\w:.-]+)\1(.*?)%\}", re.S)
 _ACT_TAG = re.compile(r"\{%\s*act\s+(.*?)%\}", re.S)
 _KEYWORD = re.compile(r"^\w+=")  # as Django's token_kwargs reads a tag argument
 _QUOTED = re.compile(r"'[^'\\]*(?:\\.[^'\\]*)*'" r'|"[^"\\]*(?:\\.[^"\\]*)*"')  # Django's constant_string, untranslated
+_SITE_NAMES = ("site-packages", "dist-packages")
 _PARTIALDEF = re.compile(r"\{%\s*(partialdef|endpartialdef)\b(.*?)%\}", re.S)
 _BLOCK_TAGS = re.compile(
     r"^(?:if|elif|else|endif|for|empty|endfor|block|endblock|extends|load|with|endwith|"
@@ -175,11 +176,26 @@ def lint_template_source(source: str, file: str | None = None, extensions=()) ->
 
 
 def in_site_packages(path) -> bool:
-    """True for a path inside the interpreter's site-packages (``purelib`` or ``platlib``): not the project's."""
+    """
+    True for a path inside the interpreter's site-packages, so not the project's: sysconfig's
+    ``purelib`` and ``platlib``, and the ``site-packages`` or ``dist-packages`` directories that
+    ``site.getsitepackages()`` and ``site.getusersitepackages()`` report (distro layouts, ``pip
+    install --user``). On Windows ``getsitepackages()`` also lists the prefix itself, which can
+    hold the project, so only those two names count from ``site``. A virtualenv older than
+    ``getsitepackages()`` lacks it, so each ``site`` call is guarded.
+    """
+    import site
     import sysconfig
 
+    roots = [Path(sysconfig.get_paths()[k]) for k in ("purelib", "platlib")]
+    for name in ("getsitepackages", "getusersitepackages"):
+        try:
+            found = getattr(site, name)()
+        except Exception:  # AttributeError where an old virtualenv's site.py lacks it
+            continue
+        roots += [Path(d) for d in ([found] if isinstance(found, str) else found) if Path(d).name in _SITE_NAMES]
     path = Path(path).resolve()
-    return any(path.is_relative_to(Path(sysconfig.get_paths()[k]).resolve()) for k in ("purelib", "platlib"))
+    return any(path.is_relative_to(root.resolve()) for root in roots)
 
 
 def template_directories() -> list[Path]:

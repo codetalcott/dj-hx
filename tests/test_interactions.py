@@ -888,6 +888,25 @@ def test_e014_an_interaction_no_template_writes_an_act_for(startup, url):
     assert """hx-post="{% act 'sign_off' member=... %}" hx-target="#signoff" hx-swap="outerHTML\"""" in message.hint
 
 
+@pytest.mark.parametrize("installed", [True, False], ids=["site-packages", "project"])
+def test_e014_skips_an_interaction_whose_handler_is_in_site_packages(scratch, startup, tmp_path, monkeypatch, installed):
+    # Its controls are in that app's own templates, which the checks never read. pip install --user puts it here:
+    import site
+
+    user_site = tmp_path / "site-packages"
+    monkeypatch.setattr(site, "getusersitepackages", lambda: str(user_site))
+    module = types.ModuleType("shelf.views")
+    module.__file__ = str((user_site if installed else tmp_path / "project") / "shelf" / "views.py")
+    monkeypatch.setitem(sys.modules, module.__name__, module)
+
+    def shelve(request):
+        return None
+
+    shelve.__module__ = module.__name__
+    interaction("POST", partial="rota.html#notify", context=nothing, route="t/shelve")(shelve)
+    assert found(startup()) == ([] if installed else [("dj_hx.E014", "shelf.views.shelve")])
+
+
 @pytest.mark.parametrize(
     "partial, says",
     [

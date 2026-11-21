@@ -349,7 +349,7 @@ by `HxTestClient`. Nothing is gated on `DEBUG` that a test needs.
 | An interaction's reply sets a key its context does not define, a refusal's `error` included | `ImproperlyConfigured`, naming the key and the context function: define each there with its default |
 | `{% act %}` with a positional argument, a keyword the handler does not take, a missing one, or a name no interaction has | `TemplateSyntaxError` at render, naming the handler's parameters, or listing the interactions there are; at start-up, checks `dj_hx.E009` (no such interaction) and `E010` (the arguments), naming template:line |
 | An `{% act %}` control that sends another method than its interaction answers (for `hx-action`: its `hx-method`, an ancestor's `hx-method:inherited`, its `method` attribute, else GET; a submit button's `formmethod` is not read), that does not target the element with id `<partial name>` (`hx-target="#<partial name>"`, its own or an ancestor's `hx-target:inherited`; or no `hx-target`, or `hx-target="this"`, on the element with that id), or whose `hx-swap` (its own or inherited) is not an outer swap (`outerHTML`, `outerMorph` or `outerSync`, read from htmx 4.0.2's swap code) | checks `dj_hx.E011`, `E012` and `E013`, naming template:line and the attribute to write; a plain `hx-target` or `hx-swap` on an ancestor is named as not reaching the control |
-| An interaction no project template writes an `{% act %}` for (a `{% url 'dj_hx:…' %}` or hand-written path is not counted: E011 to E013 cannot check it), whose partial does not load, or whose partial's root element is not `id="<partial name>"` | checks `dj_hx.E014`, `E015` (with `HxUnknownPartial`'s reason) and `E016` (the start-up twin of `HxPartialRootId`, judged where the source shows the root) |
+| An interaction no project template writes an `{% act %}` for (a `{% url 'dj_hx:…' %}` or hand-written path is not counted: E011 to E013 cannot check it), whose partial does not load, or whose partial's root element is not `id="<partial name>"` | checks `dj_hx.E014`, `E015` (with `HxUnknownPartial`'s reason) and `E016` (the start-up twin of `HxPartialRootId`, judged where the source shows the root). E014 skips an interaction whose handler's module is in site-packages: its controls are in that app's templates, which are never read |
 | An interaction registered after `dj_hx.urls` was first read, so its route is the bare view and the decorators above it do not apply | check `dj_hx.E017`, naming the module to import before the URLconf is loaded |
 | Interactions registered, but `dj_hx.urls` not included | check `dj_hx.E020`; `{% act %}` raises `ImproperlyConfigured`; both name `path("", include("dj_hx.urls"))` |
 | A decorator above `@interaction` written without `functools.wraps`, so nothing can see that it wraps the interaction; a decorator below `@interaction` (the handler has `__wrapped__`) | checks `dj_hx.W018` (use `functools.wraps`) and `W019` (view decorators belong above `@interaction`) |
@@ -396,6 +396,11 @@ manage.py hx_map [--no-check] [--by-template]          # controls <-> views <-> 
 `--by-template` reads the same map from the other end: every template and
 partial a view names, the views that render it, and the controls that reach
 them, for when you are editing a partial and need to know who serves it.
+
+Site-packages, wherever dj-hx skips it (`hx_lint`, `hx_map`, the checks,
+`ready()`), is sysconfig's `purelib` and `platlib` plus the `site-packages` and
+`dist-packages` directories Python's `site` module reports, the user one that
+`pip install --user` fills included.
 
 `hx_map` classifies every control as full or partial by htmx 4's own rule
 (the target is `body`, `hx-select` is present, or the element is boosted),

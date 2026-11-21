@@ -106,7 +106,8 @@ event fired without a target lands on `document` after a delete swap, where a
   htmx 4's `:inherited` on ancestors, and judging a templated id or `hx-target`
   by its literal parts (`id="row-{{ pk }}"` cannot be `#notify`;
   `id="{{ name }}"` is skipped); every interaction has an `{% act %}` control (E014;
-  a `{% url %}` or hand-written path is not counted), a partial
+  a `{% url %}` or hand-written path is not counted, and an interaction whose
+  handler is in site-packages is skipped), a partial
   that loads (E015) and whose root carries its id (E016); `dj_hx.urls` routes
   each interaction to what its module holds (E017) and is included (E020).
   Warnings for a decorator above `@interaction` without `functools.wraps`
@@ -124,6 +125,10 @@ event fired without a target lands on `document` after a delete swap, where a
   `{% verbatim %}`, is skipped.
 - The example: contact.app on the ORM, same routes, templates and tests as
   hx-flask; 156 tests plus 7 in Chromium, on Django 4.2, 5.2, 6.0 and 6.1.
+- Site-packages, which the lint, the map, the checks and `ready()` all skip,
+  is one rule (`templates.in_site_packages`): sysconfig's `purelib` and
+  `platlib` plus the `site-packages` and `dist-packages` directories `site`
+  reports, the user one included.
 - The shared core, vendored: `hxlint.py`, `hx_vocab.py` and `mapcore.py`, the
   framework-neutral map engine, from hx-flask (one or two import lines differ),
   `urlconf.py` from dj-fixi; `tools/sync_shared.py` and a pin test.

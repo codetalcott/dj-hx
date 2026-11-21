@@ -38,7 +38,9 @@ E009 to E016, I021, E022 and I023 read the project's template files as hx_lint
 does, never site-packages. A computed hx-swap or hx-method is not judged. A templated id or
 hx-target is judged by its literal parts (``_could_equal``): skipped only when it
 could equal the expected value (id="{{ name }}"), an Error otherwise
-(id="row-{{ pk }}").
+(id="row-{{ pk }}"). E014 skips an interaction whose handler's module is in
+site-packages (``templates.in_site_packages``): its controls are in that app's
+templates, which the scan never reads.
 E013's outer swaps, read from htmx 4.0.2's swap code: outerHTML replaces the
 target, outerMorph morphs the target itself, and outerSync copies the reply
 root's attributes onto it and takes the root's children, so each leaves one
@@ -569,14 +571,21 @@ def _control_messages(it, node, attr: str, where: str) -> list:
 
 
 def _interaction_messages(it, controlled: set, sources: dict) -> list:
-    """E014 to E016: the interaction has a control, and its partial loads and starts with its id."""
+    """
+    E014 to E016: the interaction has a control, and its partial loads and starts with its id. E014
+    skips an interaction whose handler's module is in site-packages: its controls are in that app's
+    templates, which the scan never reads.
+    """
+    import sys
+
     from .errors import HxUnknownPartial
     from .interactions import act_form
-    from .templates import partial_sources
+    from .templates import in_site_packages, partial_sources
     from .verbs import _get_partial
 
     where, messages = f"{it.view.__module__}.{it.name}", []
-    if it.name not in controlled:
+    file = getattr(sys.modules.get(it.func.__module__), "__file__", None)
+    if it.name not in controlled and not (file and in_site_packages(file)):
         messages.append(
             Error(
                 f"{it.name}() has no control: no project template writes {{% act '{it.name}' %}}. A "

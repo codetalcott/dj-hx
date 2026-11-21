@@ -440,6 +440,10 @@ manage.py hx_map [--no-check] [--by-template]          # controls <-> views <-> 
 `--by-template` inverts the map: every template and partial a view names, who renders it, and the
 controls that reach them.
 
+Site-packages, wherever dj-hx skips it (`hx_lint`, `hx_map`, the checks, `ready()`), is sysconfig's
+`purelib` and `platlib` plus the `site-packages` and `dist-packages` directories `site` reports, the user
+one (`pip install --user`) included.
+
 `hx_map` classifies each control as full or partial by htmx 4's rule, resolves it through `{% url %}` or
 the literal path, and errors when a partial control reaches a view that only calls `page`, or a full
 control reaches one that only calls `fragment`/`text`/`removed`; `navigate` says nothing about shape, so a
@@ -467,7 +471,7 @@ System checks (tag `dj_hx`):
 | E011 | an `{% act %}` control's verb (`hx-get` ... `hx-delete`; or `hx-action` with its `hx-method`, an ancestor's `hx-method:inherited`, its `method` attribute, else GET; `formmethod` not read) is not the interaction's method |
 | E012 | an `{% act %}` control does not target the element with id `<partial>`: neither `hx-target="#<partial>"` (own or an ancestor's `:inherited`) nor no `hx-target` / `hx-target="this"` on that element |
 | E013 | an `{% act %}` control's `hx-swap` (own or `:inherited`) is not an outer swap (`outerHTML`, `outerMorph`, `outerSync`, per htmx 4.0.2's swap code); htmx 4's default `innerHTML`, and `innerMorph`, nest a second element with the id |
-| E014 | an interaction has no control: no project template writes its `{% act %}` (a `{% url 'dj_hx:…' %}` or hand-written path is not counted: E011-E013 cannot check it) |
+| E014 | an interaction has no control: no project template writes its `{% act %}` (a `{% url 'dj_hx:…' %}` or hand-written path is not counted: E011-E013 cannot check it); skipped for a handler whose module is in site-packages, whose templates are never read |
 | E015 | an interaction's partial does not load (`HxUnknownPartial`'s reason) |
 | E016 | an interaction's partial does not start with an element carrying `id="<partial>"`, where the source shows its root |
 | E017 | `dj_hx.urls` routes an interaction to other than what its module holds: it was registered after `dj_hx.urls` was first read, or the module rebound the name since |

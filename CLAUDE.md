@@ -15,8 +15,8 @@ to a verb signature, a setting, an error, a check id or a lint rule must be mirr
 The checked-in `.venv` has Django 6.0, pytest, ruff and playwright.
 
 ```
-.venv/bin/python -m pytest                      # 275 tests, ~5s
-.venv/bin/python -m pytest -m "not browser"     # 268, skipping Chromium
+.venv/bin/python -m pytest                      # 280 tests, ~5s
+.venv/bin/python -m pytest -m "not browser"     # 273, skipping Chromium
 .venv/bin/python -m pytest -m browser           # the 7 Playwright tests alone
 .venv/bin/python -m pytest tests/test_verbs.py::test_text_escapes
 .venv/bin/ruff check .
@@ -66,7 +66,10 @@ the check ids W001-I023 are documented in that module's docstring.
 **The lint has two surfaces over one rule set.** [hxlint.py](dj_hx/hxlint.py) works on rendered HTML
 strings. [templates.py](dj_hx/templates.py) strips Django template syntax (line numbers preserved,
 `{{ }}` and value tags become a sentinel the rules skip) so the same rules run over source for
-`hx_lint` and check `dj_hx.W005`. Template discovery never walks site-packages.
+`hx_lint` and check `dj_hx.W005`. Template discovery never walks site-packages, which
+`templates.in_site_packages` judges for every caller (template discovery, `ready()`, `hx_map`, E014):
+sysconfig's purelib/platlib plus the `site-packages`/`dist-packages` directories `site` reports, the user
+one included. Keep one copy of that rule.
 
 **Interactions are one handler bound to one partial.** [interactions.py](dj_hx/interactions.py) holds
 `@interaction`, the registry (by handler name) and the wrapper view (method guard, refusals as 422,
