@@ -1351,10 +1351,20 @@ def test_w025_a_listener_nothing_announces(startup, template, says):
         '<p hx-on:close="this.remove()"></p>',
         '<button _="on click send refreshed to me end on refreshed add .x to me">x</button>',
         '<p _="on refreshed from body add .x to me"></p><script>document.body.dispatchEvent(new Event("refreshed"))</script>',
+        # hyperscript's observers: an IntersectionObserver and a MutationObserver, not events a view sends
+        '<p _="on intersection(intersecting) having threshold 0.5 if intersecting add .seen to me"></p>',
+        '<p _="on mutation of @data-count put \'changed\' into me"></p>',
+        # an extension's event (htmx 4's hx-sse fires sse:<name>): a colon name, as htmx:* is
+        '<p hx-get="{% url \'dj_hx:notify\' contest=\'spring\' member=3 %}" hx-trigger="sse:message" hx-target="this"></p>',
+        # a name built in the template is not one the scan can pair
+        '<p _="on {{ event_name }} from body add .seen to me"></p>',
     ],
-    ids=["browser-events", "browser-event-hx-on", "hyperscript-send", "script-dispatch"],
+    ids=[
+        "browser-events", "browser-event-hx-on", "hyperscript-send", "script-dispatch", "hyperscript-intersection",
+        "hyperscript-mutation", "extension-event", "templated-name",
+    ],
 )
-def test_w025_leaves_out_browser_events_and_the_names_scripts_send(startup, template):
+def test_w025_leaves_out_browser_side_events_and_the_names_scripts_send(startup, template):
     assert found(startup(**{"extra.html": template})) == []
 
 
