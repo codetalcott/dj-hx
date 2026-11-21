@@ -656,6 +656,7 @@ def test_hx_map_reads_an_interactions_one_method(scratch, rota):
     assert [e for e in m.errors if e.startswith("purge() reads request.POST on DELETE")]
     # a GET control reaching it gets a 405, and the dict it returns is its context: no JSON error
     m = build_map(sources={"x.html": '{% load hx %}<p hx-get="{% act \'purge\' %}" hx-target="#box">x</p>'})
+    assert [(c.method, c.endpoint) for c in m.controls] == [("GET", "dj_hx:purge")]
     assert not [e for e in m.errors if "JSON" in e]
 
 

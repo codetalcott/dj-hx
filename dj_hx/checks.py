@@ -37,13 +37,14 @@ W025     Warning  An event a template listens for that nothing announces
 =======  =======  ==========================================================
 
 E009 to E016, I021, E022 and I023 read the project's template files as hx_lint
-does, never site-packages. A computed hx-swap or hx-method is not judged. A templated id or
-hx-target is judged by its literal parts (``_could_equal``): skipped only when it
-could equal the expected value (id="{{ name }}"), an Error otherwise
-(id="row-{{ pk }}"). A block tag in an id, and the text it wraps, is computed
-too (id="{% if p %}{{ p }}-{% endif %}notify" is skipped). E014 skips an interaction whose handler's module is in
-site-packages (``templates.in_site_packages``): its controls are in that app's
-templates, which the scan never reads.
+does, never site-packages. A computed hx-swap or hx-method is not judged. A
+templated id or hx-target is judged by its literal parts (``_could_equal``):
+skipped only when it could equal the expected value (id="{{ name }}"), an Error
+otherwise (id="row-{{ pk }}"). A block tag in an id, and the text it wraps, is
+computed too (id="{% if p %}{{ p }}-{% endif %}notify" is skipped). E014 skips
+an interaction whose handler's module is in site-packages
+(``templates.in_site_packages``): its controls are in that app's templates,
+which the scan never reads.
 E013's outer swaps, read from htmx 4.0.2's swap code: outerHTML replaces the
 target, outerMorph morphs the target itself, and outerSync copies the reply
 root's attributes onto it and takes the root's children, so each leaves one

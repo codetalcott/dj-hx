@@ -152,6 +152,7 @@ is genuinely Django-specific; the core is vendored from hx-flask (see below).
   interactions takes the `scratch` fixture in `tests/test_interactions.py`, which restores the registry.
   Its `startup` fixture writes the rota app's templates to disk and returns the check messages; the
   W018 on `approve()` is there on purpose (`views.staff_only` has no `functools.wraps`).
+  Its layout listens for `notify()`'s two `triggers=`, so W024 stays quiet; a test that drops one expects it.
   `tests/settings.py` also adds `django.contrib.auth` and `AuthenticationMiddleware` (the example has
   neither) for the `@login_required` test.
 - `tests/test_contact_app.py` and `tests/test_browser.py` run against `example/`, mirroring hx-flask's
