@@ -30,6 +30,7 @@ from __future__ import annotations
 import inspect
 import json as _json
 import logging
+import sys
 import threading
 import warnings
 from collections.abc import Mapping
@@ -253,6 +254,12 @@ def _debug_processor_names() -> frozenset[str]:
     return frozenset({"debug", "sql_queries"}) if configured else frozenset()
 
 
+def _is_session(current) -> bool:
+    """A Django session, which is request data but not a Mapping; never imported here, so no app is needed."""
+    sessions = sys.modules.get("django.contrib.sessions.backends.base")  # a session exists only once it is imported
+    return sessions is not None and isinstance(current, sessions.SessionBase)
+
+
 def _is_index(bit: str) -> bool:
     try:
         int(bit)
@@ -266,9 +273,10 @@ def _is_a_slip(variable: str, current, node, debug_names: frozenset[str]) -> boo
     Whether a failed lookup is the template author's to fix: a top-level name nobody supplies, or an
     attribute an object lacks (``{{ user.emial }}``, ``{{ items.length }}``). Not counted, because the
     outcome depends on the request's data: a lookup on None (``{{ obj.rel.name }}`` with no ``rel``), a key a
-    mapping lacks (``{% if not request.GET.stage %}``, so a misspelt dict key is silent too), an index past
-    the end of a sequence (``items.0`` on ``[]``; a string's index still counts), whatever
-    ``{% firstof %}`` reads, and the names the debug context processor sets only under DEBUG.
+    mapping or the session lacks (``{% if not request.GET.stage %}``, ``request.session.cart``, so a misspelt
+    dict key is silent too), an index past the end of a sequence (``items.0`` on ``[]``; a string's index
+    still counts), whatever ``{% firstof %}`` reads, and the names the debug context processor sets only
+    under DEBUG.
     """
     from django.template.context import BaseContext
     from django.template.defaulttags import FirstOfNode
@@ -277,7 +285,7 @@ def _is_a_slip(variable: str, current, node, debug_names: frozenset[str]) -> boo
         return False
     if isinstance(current, BaseContext):
         return variable not in debug_names
-    if current is None or isinstance(current, Mapping):
+    if current is None or isinstance(current, Mapping) or _is_session(current):
         return False
     if _is_index(variable) and hasattr(current, "__getitem__") and not isinstance(current, (str, bytes)):
         return False

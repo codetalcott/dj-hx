@@ -52,7 +52,8 @@ event fired without a target lands on `document` after a delete swap, where a
   sees none of the first two), lowering that logger's level for the request
   alone and passing on to other handlers only what they got before. Skipped,
   because the outcome depends on the data: a lookup on None, a key a mapping
-  lacks (`request.GET`), an index past the end of a sequence, what `{% firstof %}`
+  or the session lacks (`request.GET`, `request.session`), an index past the
+  end of a sequence, what `{% firstof %}`
   reads, the debug context processor's `debug` and `sql_queries`, and a
   response built from an exception; so a misspelt dict key or index stays
   silent, as in Django. Not seen: templates in site-packages or built from a

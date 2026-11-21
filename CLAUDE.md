@@ -15,8 +15,8 @@ to a verb signature, a setting, an error, a check id or a lint rule must be mirr
 The checked-in `.venv` has Django 6.0, pytest, ruff and playwright.
 
 ```
-.venv/bin/python -m pytest                      # 348 tests, ~5s
-.venv/bin/python -m pytest -m "not browser"     # 341, skipping Chromium
+.venv/bin/python -m pytest                      # 349 tests, ~5s
+.venv/bin/python -m pytest -m "not browser"     # 342, skipping Chromium
 .venv/bin/python -m pytest -m browser           # the 7 Playwright tests alone
 .venv/bin/python -m pytest tests/test_verbs.py::test_text_escapes
 .venv/bin/ruff check .
@@ -69,8 +69,8 @@ includes an admin template, and a partial's bare name. So the place comes from t
 rendered on the stack (its `origin` and `token.lineno`), and `templates.in_site_packages` judges that
 origin. What counts is `_is_a_slip()`, read from Django's exception's `params == (bit, current)`: a
 top-level name (`current` is the Context) or an attribute an object lacks; a lookup on None, a mapping's
-key, an index past the end, `{% firstof %}` and the debug processor's names are skipped, and so is a
-response built from an exception. Every view a test requests through `HxTestClient` must supply every
+or the session's key, an index past the end, `{% firstof %}` and the debug processor's names are skipped,
+and so is a response built from an exception. Every view a test requests through `HxTestClient` must supply every
 top-level name its templates read: `tests/urlconfs/lib.py`'s `PAGE` carries `extra` for the inline
 `extra` partial of the in-memory `index.html`.
 

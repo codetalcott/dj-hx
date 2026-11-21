@@ -42,6 +42,7 @@ TEMPLATES = {
     "card.html": "<h2>{{ title }}</h2>{% if subtitle %}<p>{{ subtitle }}</p>{% endif %}<p>{{ holder.nmae }}</p>",
     "none_in_chain.html": "<p>{{ holder.rel.name }}</p>",
     "mapping.html": "{% if not request.GET.stage %}<p>no stage</p>{% endif %}\n<p>{{ labels.nmae }}</p>",
+    "session.html": "{% if request.session.cart %}<p>cart</p>{% endif %}<p>ok</p>",
     "indexes.html": "{% if empty.0 %}x{% endif %}<p>{{ empty.0.name }}{{ pair.2 }}{{ nothing_yet.0.first }}</p>",
     "firstof.html": '<p>{% firstof unset also.unset "z" %}</p>',
     "debug.html": "{% if debug %}<p>{{ sql_queries|length }}</p>{% endif %}<p>ok</p>",
@@ -130,6 +131,11 @@ def test_a_lookup_on_none_is_not_counted(client):
 def test_a_key_a_mapping_lacks_is_not_counted_so_a_misspelt_key_is_silent(client):
     # request.GET is a QueryDict; labels a dict, whose misspelt key is silent: the accepted cost.
     assert client.get("/u/show/mapping.html").content == b"<p>no stage</p>\n<p></p>"
+
+
+def test_a_key_the_session_lacks_is_not_counted(client):
+    # A session is request data, like request.GET, though SessionBase is not a Mapping.
+    assert client.get("/u/show/session.html").content == b"<p>ok</p>"
 
 
 def test_an_index_past_the_end_of_a_sequence_is_not_counted(client):

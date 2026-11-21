@@ -430,10 +430,10 @@ What the client enforces on every request, including plain `client.get`:
     pass it in the include's `with`, `... subtitle=None`), and `{{ obj.attr }}` for an attribute a non-None
     object lacks that is not a mapping key or an index (`{{ user.emial }}`, `{{ items.length }}` on a list).
   - Skipped, because the outcome depends on the data: a lookup on None (`obj.rel.name` with no `rel`), a key
-    a `Mapping` lacks (`request.GET.stage`; so a misspelt dict key is silent, as in Django), an index past the
-    end of a sequence (`items.0` on `[]`; a string's index still counts), anything `{% firstof %}` reads,
-    `debug` and `sql_queries` where the debug context processor is configured, and a response built from an
-    exception (the 500 page).
+    a `Mapping` or the session lacks (`request.GET.stage`, `request.session.cart`; so a misspelt dict key is
+    silent, as in Django), an index past the end of a sequence (`items.0` on `[]`; a string's index still
+    counts), anything `{% firstof %}` reads, `debug` and `sql_queries` where the debug context processor is
+    configured, and a response built from an exception (the 500 page).
   - Not seen: templates in site-packages or built from a string, a lookup that raised an exception Django
     silences (`DoesNotExist`), a render outside the request's context (a `ThreadPoolExecutor`, a plain thread,
     a streaming body consumed after the request). An `async def` view is checked.
