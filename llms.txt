@@ -269,7 +269,8 @@ urlpatterns = [..., path("", include("dj_hx.urls"))]   # once, at the site root
   (`outerHTML`, `outerMorph` or `outerSync`). Each attribute is the control's own or an ancestor's
   `:inherited` one; a plain attribute on an ancestor does not count. A computed `hx-swap` or `hx-method` is
   not judged; a templated id or `hx-target` is judged by its literal parts and skipped only when it could
-  equal the expected value (`id="{{ name }}"` is skipped, `id="row-{{ pk }}"` is an Error). An `{% act %}`
+  equal the expected value (`id="{{ name }}"` is skipped, `id="row-{{ pk }}"` is an Error). A block tag in
+  an id, and the text it wraps, counts as computed (`id="{% if p %}{{ p }}-{% endif %}notify"` is skipped). An `{% act %}`
   outside a verb attribute gets Info I021. The ids are in the checks table below.
 
 ### Settings

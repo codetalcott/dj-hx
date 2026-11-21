@@ -40,7 +40,8 @@ E009 to E016, I021, E022 and I023 read the project's template files as hx_lint
 does, never site-packages. A computed hx-swap or hx-method is not judged. A templated id or
 hx-target is judged by its literal parts (``_could_equal``): skipped only when it
 could equal the expected value (id="{{ name }}"), an Error otherwise
-(id="row-{{ pk }}"). E014 skips an interaction whose handler's module is in
+(id="row-{{ pk }}"). A block tag in an id, and the text it wraps, is computed
+too (id="{% if p %}{{ p }}-{% endif %}notify" is skipped). E014 skips an interaction whose handler's module is in
 site-packages (``templates.in_site_packages``): its controls are in that app's
 templates, which the scan never reads.
 E013's outer swaps, read from htmx 4.0.2's swap code: outerHTML replaces the
@@ -486,13 +487,23 @@ def _plain_on_ancestor(node, attr: str) -> str:
 
 def _could_equal(value: str, literal: str) -> bool:
     """
-    Whether ``value`` could render as ``literal``. strip_template_syntax leaves one JINJA marker per
-    computed part, after any newlines that part spanned, so ``value`` is judged by its literal parts,
-    in order, with anything between them. A value with no computed part could only be itself.
+    Whether ``value`` could render as ``literal``, an id or ``#id``. strip_template_syntax leaves one
+    JINJA marker per computed part, after any newlines that part spanned, and whitespace for each
+    block tag, so ``value`` is judged by its literal parts, in order, with anything between them. A
+    value with no computed part could only be itself.
+
+    An id holds no whitespace, so whitespace left in ``value`` is a block tag, and the text from the
+    first such tag to the last is inside {% if %} or {% for %}, which may not render: that span is one
+    computed part (id="{% if p %}{{ p }}-{% endif %}notify" renders "notify"). A selector keeps its
+    real spaces safe this way: "closest #notify" and "#notify div" still cannot equal "#notify".
     """
     from .hxlint import JINJA
 
-    parts = re.sub(rf"\n+(?={re.escape(JINJA)})", "", value).split(JINJA)
+    value = re.sub(rf"\n+(?={re.escape(JINJA)})", "", value)  # an expression's own newlines
+    tags = list(re.finditer(r"\s+", value))
+    if tags:
+        value = value[: tags[0].start()] + JINJA + value[tags[-1].end() :]
+    parts = value.split(JINJA)
     return re.fullmatch(".*".join(map(re.escape, parts)), literal, re.S) is not None
 
 
@@ -503,9 +514,14 @@ def _shown(value: str) -> str:
     return re.sub(rf"\n*{re.escape(JINJA)}", "{{…}}", value)
 
 
+def _shown_id(value: str) -> str:
+    """A stripped id as a message shows it: {{…}} for each computed part, {%…%} for each block tag (whitespace)."""
+    return re.sub(r"\s+", "{%…%}", _shown(value))
+
+
 def _described(element) -> str:
     found = element.attrs.get("id")
-    return f'a <{element.tag}> with id="{_shown(found)}"' if found else f"a <{element.tag}> with no id"
+    return f'a <{element.tag}> with id="{_shown_id(found)}"' if found else f"a <{element.tag}> with no id"
 
 
 def _control_messages(it, node, attr: str, where: str) -> list:
@@ -645,15 +661,16 @@ def _root_messages(it, line: int, body: str) -> list:
         return []  # computed output, or another template or partial, comes first
     root = next(iter(parse(html)[0].children), None)
     root_id = (root.attrs.get("id") or "") if root is not None else ""
-    if content.startswith("<") and JINJA in root_id and _could_equal(root_id, it.partial):
-        return []  # a templated id that could be the partial's
+    if content.startswith("<") and _could_equal(root_id, it.partial):
+        return []  # the partial's id, or a templated one that could be it
     try:
         check_root_id(
             html, it.partial, f"{it.template}#{it.partial}", role=f"the reply of {it.name}(), which replaces #{it.partial}"
         )
     except HxPartialRootId as exc:
         at = line + html.count("\n", 0, len(html) - len(content))
-        return [Error(_shown(str(exc)), obj=f"{it.template}:{at}", id="dj_hx.E016")]
+        message = str(exc).replace(f'id="{root_id}"', f'id="{_shown_id(root_id)}"') if root_id else str(exc)
+        return [Error(_shown(message), obj=f"{it.template}:{at}", id="dj_hx.E016")]
     return []
 
 

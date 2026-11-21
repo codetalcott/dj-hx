@@ -317,7 +317,9 @@ The rules:
   loads and starts with its id. A computed `hx-swap` or `hx-method` is not judged. A templated id or
   `hx-target` is judged by its literal parts, and skipped only when it could equal the expected
   value: `id="{{ name }}"` and `hx-target="#{{ name }}"` are skipped, while `id="row-{{ pk }}"` and
-  `hx-target="#row-{{ pk }}"` cannot be `notify` and are Errors. An `{% act %}` it cannot tie to
+  `hx-target="#row-{{ pk }}"` cannot be `notify` and are Errors. A block tag in an id, and what
+  it wraps, is computed too, since it may not render: `id="{% if p %}{{ p }}-{% endif %}notify"` is
+  skipped, `id="{% if p %}{{ p }}-{% endif %}row"` is an Error. An `{% act %}` it cannot tie to
   one element's verb attribute gets an Info (`dj_hx.I021`) saying so. The ids are in "What is loud" below.
 
 ## What is loud

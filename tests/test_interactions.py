@@ -912,8 +912,15 @@ def test_e011_to_e013_do_not_judge_a_computed_value(startup, verb, rest):
             'would need id="notify"',
         ),
         (control(NOTIFY, rest='hx-target="#row-{{ pk }}" hx-swap="outerHTML"'), "its hx-target is '#row-{{…}}'"),
+        (
+            '{% load hx %}\n<button id="{% if p %}{{ p }}-{% endif %}row" hx-post="' + NOTIFY + '" hx-swap="outerHTML">Go</button>',
+            'it has no hx-target, so htmx 4 targets the control itself, a <button> with id="{%…%}{{…}}-{%…%}row", '
+            'which would need id="notify"',
+        ),
+        (control(NOTIFY, rest='hx-target="closest #notify" hx-swap="outerHTML"'), "its hx-target is 'closest #notify'"),
+        (control(NOTIFY, rest='hx-target="#notify div" hx-swap="outerHTML"'), "its hx-target is '#notify div'"),
     ],
-    ids=["row-id-no-target", "item-id-click-to-edit", "row-selector"],
+    ids=["row-id-no-target", "item-id-click-to-edit", "row-selector", "if-built-id", "closest-selector", "descendant-selector"],
 )
 def test_e012_judges_a_templated_id_or_selector_by_its_literal_parts(startup, template, says):
     messages = startup(**{"extra.html": template})
@@ -929,8 +936,12 @@ def test_e012_judges_a_templated_id_or_selector_by_its_literal_parts(startup, te
         control(NOTIFY, rest='hx-target="#{{ name }}" hx-swap="outerHTML"'),
         '{% load hx %}\n<div id="{{ prefix }}notify" hx-post="' + NOTIFY + '" hx-swap="outerHTML">Go</div>',
         '{% load hx %}\n<div id="{{\n region }}" hx-post="' + NOTIFY + '" hx-swap="outerHTML">Go</div>',
+        # a block tag strips to whitespace, which an id cannot hold: what it wraps may not render
+        '{% load hx %}\n<div id="{% if p %}{{ p }}-{% endif %}notify" hx-post="' + NOTIFY + '" hx-swap="outerHTML">Go</div>',
+        '{% load hx %}\n<li id="{% if wide %}wide-{% endif %}notify" hx-target:inherited="this" hx-swap:inherited="outerHTML">'
+        '<button hx-post="' + NOTIFY + '">Go</button></li>',
     ],
-    ids=["id", "click-to-edit-id", "selector", "literal-suffix", "expression-across-lines"],
+    ids=["id", "click-to-edit-id", "selector", "literal-suffix", "expression-across-lines", "if-built-id", "if-built-literal-prefix"],
 )
 def test_e012_skips_a_templated_value_that_could_be_the_partials_id(startup, template):
     assert found(startup(**{"extra.html": template})) == []
@@ -995,8 +1006,12 @@ def test_e015_an_interaction_whose_partial_does_not_exist(scratch, startup, part
         ('<div id="notice">', ', so its root <div> must carry id="notify"; it has id="notice"'),
         ('Notify: <div id="notify">', ' but does not start with an element; it must be one element with id="notify"'),
         ('<div id="item-{{ pk }}">', ', so its root <div> must carry id="notify"; it has id="item-{{…}}"'),
+        (
+            '<div id="{% if p %}{{ p }}-{% endif %}notice">',
+            ', so its root <div> must carry id="notify"; it has id="{%…%}{{…}}-{%…%}notice"',
+        ),
     ],
-    ids=["no-id", "another-id", "text-first", "templated-id"],
+    ids=["no-id", "another-id", "text-first", "templated-id", "if-built-id"],
 )
 def test_e016_a_partial_whose_root_is_not_its_name(startup, root, says):
     messages = startup(**{"rota.html": ROTA.replace('<div id="notify">', root)})
@@ -1014,8 +1029,13 @@ def test_e016_a_partial_whose_root_is_not_its_name(startup, root, says):
         {"rota.html": ROTA.replace("{% partialdef notify inline %}", "{# {% partialdef notify inline %}<p>{% endpartialdef %} #}{% partialdef notify inline %}")},
         {"rota.html": ROTA.replace(NOTIFY_BODY, "{% if members %}" + NOTIFY_BODY + "{% endif %}")},
         {"rota.html": ROTA.replace('<div id="notify">', '<div id="notify"{% if notified %} class="done"{% endif %}>')},
+        {"rota.html": ROTA.replace('<div id="notify">', '<div id="{% if p %}{{ p }}-{% endif %}notify">')},
+        {"rota.html": ROTA.replace('<div id="notify">', '<div id="{% if wide %}wide-{% endif %}notify">')},
     ],
-    ids=["computed-id", "id-with-literal-suffix", "computed-first", "include", "commented-out", "block-tag-first", "tag-in-start-tag"],
+    ids=[
+        "computed-id", "id-with-literal-suffix", "computed-first", "include", "commented-out", "block-tag-first",
+        "tag-in-start-tag", "if-built-id", "if-built-literal-prefix",
+    ],
 )
 def test_e016_judges_only_a_root_the_source_shows(startup, templates):
     assert found(startup(**templates)) == []

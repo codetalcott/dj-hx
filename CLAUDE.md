@@ -15,8 +15,8 @@ to a verb signature, a setting, an error, a check id or a lint rule must be mirr
 The checked-in `.venv` has Django 6.0, pytest, ruff and playwright.
 
 ```
-.venv/bin/python -m pytest                      # 298 tests, ~5s
-.venv/bin/python -m pytest -m "not browser"     # 291, skipping Chromium
+.venv/bin/python -m pytest                      # 306 tests, ~5s
+.venv/bin/python -m pytest -m "not browser"     # 299, skipping Chromium
 .venv/bin/python -m pytest -m browser           # the 7 Playwright tests alone
 .venv/bin/python -m pytest tests/test_verbs.py::test_text_escapes
 .venv/bin/ruff check .

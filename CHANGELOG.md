@@ -109,7 +109,9 @@ event fired without a target lands on `document` after a delete swap, where a
   `outerMorph` or `outerSync` as read in htmx 4.0.2's swap code (E013), reading
   htmx 4's `:inherited` on ancestors, and judging a templated id or `hx-target`
   by its literal parts (`id="row-{{ pk }}"` cannot be `#notify`;
-  `id="{{ name }}"` is skipped); every interaction has an `{% act %}` control (E014;
+  `id="{{ name }}"` is skipped, and so is
+  `id="{% if p %}{{ p }}-{% endif %}notify"`: a block tag in an id, and what it
+  wraps, is computed); every interaction has an `{% act %}` control (E014;
   a `{% url %}` or hand-written path is not counted, and an interaction whose
   handler is in site-packages is skipped), a partial
   that loads (E015) and whose root carries its id (E016); `dj_hx.urls` routes
