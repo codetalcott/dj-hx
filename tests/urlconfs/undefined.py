@@ -2,6 +2,7 @@
 
 import threading
 
+from asgiref.sync import sync_to_async
 from contacts.models import Contact
 from django.core.exceptions import ObjectDoesNotExist
 from django.http import HttpResponse
@@ -81,6 +82,18 @@ def nested(request):
     return page(request, "clean.html", {"items": found})
 
 
+def nested_then_miss(request):
+    """Another client's request inside this one, then this request's own render, which reads a name nobody supplies."""
+    inner = HxTestClient(strict=False).get("/u/show/loose.html")
+    return page(request, "after_inner.html", {"items": inner.hx_findings[0].lookups})
+
+
+async def nested_async_then_miss(request):
+    """The same from an async view, its inner client run through sync_to_async."""
+    inner = await sync_to_async(HxTestClient(strict=False).get)("/u/show/loose.html")
+    return page(request, "after_inner.html", {"items": inner.hx_findings[0].lookups})
+
+
 def elsewhere(request):
     """A render on another thread while this request runs, as a live server's thread renders during a test."""
     thread = threading.Thread(target=lambda: get_template("loose.html").render({}))
@@ -98,5 +111,7 @@ urlpatterns = [
     path("u/async/", asynchronous),
     path("u/broken/", broken),
     path("u/nested/", nested),
+    path("u/nested-then-miss/", nested_then_miss),
+    path("u/nested-async-then-miss/", nested_async_then_miss),
     path("u/elsewhere/", elsewhere),
 ]

@@ -47,6 +47,7 @@ TEMPLATES = {
     "firstof.html": '<p>{% firstof unset also.unset "z" %}</p>',
     "debug.html": "{% if debug %}<p>{{ sql_queries|length }}</p>{% endif %}<p>ok</p>",
     "500.html": "<h1>Server error{{ nope }}</h1>",
+    "after_inner.html": "<p>{{ items|length }} {{ own_miss }}</p>",
 }
 
 LOOSE = [
@@ -220,6 +221,15 @@ def test_the_template_logger_is_put_back_after_every_request(client):
     HxTestClient().get("/u/show/clean.html")
     HxTestClient(strict=False).get("/u/show/loose.html")  # one client after another
     assert template_logger() == before
+
+
+@pytest.mark.parametrize("path", ["/u/nested-then-miss/", "/u/nested-async-then-miss/"], ids=["sync", "async"])
+def test_after_a_nested_client_the_outer_request_collects_its_own_lookups_again(client, path):
+    # The inner request's five lookups are its own, and once it is over the outer request's are the outer's:
+    # each request puts the context variable back as it found it, through sync_to_async too.
+    with pytest.raises(HxUndefinedVariable) as info:
+        client.get(path)
+    assert found(info) == ["after_inner.html:1: 'own_miss' in {{ own_miss }}"]
 
 
 def test_a_render_on_another_thread_is_not_this_requests(client):
