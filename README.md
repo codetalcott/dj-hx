@@ -349,7 +349,7 @@ by `HxTestClient`. Nothing is gated on `DEBUG` that a test needs.
 | `partial=` names a partial the template does not define | `HxUnknownPartial`, listing the partials it does |
 | An htmx request without `HX-Request-Type` | `HxProtocolError`: this needs htmx 4. `HX_REQUEST_TYPE_FALLBACK = "full"` answers with the page instead, for a proxy that strips the header; the guard still records it |
 | htmx 2 idioms in the HTML: `hx-ext`, implicit inheritance, htmx 2 event names in `hx-on` or `hx-trigger`, camelCase or kebab-case (`hx-on::after-request`), `show:#x:top` | the lint, on every test-client response, in the middleware log under `DEBUG`, in `manage.py hx_lint`, and as check `dj_hx.W005` |
-| A project template reads a name or an attribute that does not exist: `{{ x }}`, `{{ contact.nme }}`, `{% if x %}`, `{% for i in x %}`, `{{ x\|default:"" }}` (Django logs the lookup before the filter runs), or a name an `{% include … only %}` does not pass. Django renders each as nothing, without a word, and `string_if_invalid` never sees the ones `{% if %}` and `{% for %}` read | `HxTestClient` raises `HxUndefinedVariable` on the request, naming each variable and the template:line it is written in (the base of an `{% extends %}`, the included file, the file a partial is in). It reads Django's `django.template` DEBUG log while the request runs; `strict=False` records it on `response.hx_findings`, and `undefined=False` turns it off. Not counted: a template in site-packages (Django's, admin's, any pip-installed app's), one built from a string, which has no file (Django's `DEBUG` error pages are), and a lookup that raised an exception Django silences (a missing related object's `DoesNotExist`) |
+| A project template reads a name nobody supplies (`{{ x }}`, `{% if x %}`, `{% for i in x %}`, `{{ x\|default:"" }}`, since Django logs the lookup before the filter runs, or a name an `{% include %}` does not pass) or an attribute an object lacks (`{{ user.emial }}`, `{{ items.length }}`). Django renders each as nothing, without a word, and `string_if_invalid` never sees the ones `{% if %}` and `{% for %}` read | `HxTestClient` raises `HxUndefinedVariable` on the request, naming each variable and the template:line it is written in (the base of an `{% extends %}`, the included file, the file a partial is in), and for a name an included template reads, says to pass it in the include's `with` (`… subtitle=None`). It reads Django's `django.template` DEBUG log while the request runs; `strict=False` records it on `response.hx_findings`, and `undefined=False` turns it off. Skipped, because the outcome depends on the request's data: a lookup on None (`{{ obj.rel.name }}` with no `rel`), a key a mapping lacks (`{% if not request.GET.stage %}`), an index past the end of a sequence (`items.0` on `[]`), whatever `{% firstof %}` reads, `debug` and `sql_queries` where the debug context processor is configured (it sets them only under `DEBUG`), and a response Django built from an exception (its 500 page). The cost: a misspelt dict key or index is silent, as it is in Django today. Not seen either: a template in site-packages (Django's, admin's, any pip-installed app's), one built from a string, which has no file (Django's `DEBUG` error pages are), a lookup that raised an exception Django silences (a missing related object's `DoesNotExist`), and a render outside the request's own context: in a `ThreadPoolExecutor` or a plain thread, or a streaming response consumed after the request returns. An `async def` view is checked |
 | `logging.disable()` is in force, or the `django.template` logger is disabled (a `LOGGING` dict that leaves `disable_existing_loggers` at its default, `True`, disables it), so Django writes no record for the undefined-variable check to read | `HxTestClient` raises `ImproperlyConfigured` on the request, naming which; `undefined=False` goes without the check |
 | A partial control pointing at a page-only view, or a boosted link at a fragment-only one (an interaction is fragment-only) | `manage.py hx_map` |
 | A control pointing at a view that calls no verb; a view that calls `.retarget()` or `.reswap()` | `manage.py hx_map`, as warnings |
@@ -402,12 +402,17 @@ silence a rule). Recorded findings raise; `HxTestClient(strict=False)` turns
 that off. A 3xx to a full request must be chosen with `follow=`, because
 htmx's fetch follows it and the browser never sees it.
 
-A project template that reads a variable that does not exist raises
-`HxUndefinedVariable`, naming each one and its template:line, `{% if %}` and
-`{% for %}` included, which `string_if_invalid` never sees. The client reads
-Django's documented `django.template` DEBUG log while each request runs: it
-lowers that logger to DEBUG for the request and passes on to the other handlers
-only the records they received before, then puts the level back.
+A project template that reads a name nobody supplies, or an attribute an
+object lacks, raises `HxUndefinedVariable`, naming each one and its
+template:line, `{% if %}` and `{% for %}` included, which `string_if_invalid`
+never sees. A lookup whose outcome depends on the request's data is skipped (on
+None, a key a mapping such as `request.GET` lacks, an index past the end of a
+sequence, `{% firstof %}`; the "What is loud" row has the whole list), so a
+misspelt dict key stays silent, as in Django. The client reads Django's
+documented `django.template` DEBUG log in each request's own context, so an
+`async def` view is checked and a render in a thread pool or a plain thread is
+not. It lowers that logger to DEBUG for the request and passes on to the other
+handlers only the records they received before, then puts the level back.
 Put each name in the context the view renders with, with its default; a
 `|default` filter does not count, because Django logs the lookup before the
 filter runs. `HxTestClient(undefined=False)` turns the check off.

@@ -44,16 +44,24 @@ event fired without a target lands on `document` after a delete swap, where a
   `full=`, Django's three-state `follow` for 3xx on full requests, every
   `text/html` response linted, findings raised; `assert_no_hx_check_issues()`.
 - `HxTestClient` raises `HxUndefinedVariable` when a project template reads a
-  name or an attribute that does not exist, naming each and the template:line
-  it is written in. It reads Django's documented `django.template` DEBUG log
-  while each request runs, which records the lookups `{% if %}`, `{% for %}` and
-  `|default` swallow (`string_if_invalid` sees none of the first two), lowering
-  that logger's level for the request alone and passing on to other handlers
-  only what they got before. Templates in site-packages or built from a string,
-  and lookups that raise an exception Django silences, are not counted.
-  `undefined=False` turns it off and `strict=False` records it; a
-  `logging.disable()` or a disabled `django.template` logger, which would leave
-  it blind, raises `ImproperlyConfigured`.
+  name nobody supplies or an attribute an object lacks, naming each and the
+  template:line it is written in, and for a name an included template reads,
+  the include's `with` to pass it in. It reads Django's documented
+  `django.template` DEBUG log in each request's own context, which records the
+  lookups `{% if %}`, `{% for %}` and `|default` swallow (`string_if_invalid`
+  sees none of the first two), lowering that logger's level for the request
+  alone and passing on to other handlers only what they got before. Skipped,
+  because the outcome depends on the data: a lookup on None, a key a mapping
+  lacks (`request.GET`), an index past the end of a sequence, what `{% firstof %}`
+  reads, the debug context processor's `debug` and `sql_queries`, and a
+  response built from an exception; so a misspelt dict key or index stays
+  silent, as in Django. Not seen: templates in site-packages or built from a
+  string, lookups that raise an exception Django silences, and a render outside
+  the request's context (a thread pool, a plain thread, a streaming body read
+  after the request); an `async def` view is checked. `undefined=False` turns
+  it off and `strict=False` records it; a `logging.disable()` or a disabled
+  `django.template` logger, which would leave it blind, raises
+  `ImproperlyConfigured`.
 - `HxMixin` for generic views: `render_to_response`, `form_invalid` (422),
   `form_valid` (guarded redirect). Check E007 for base order.
 - `manage.py hx_lint` over template source, and check W005 for the same in
@@ -160,9 +168,6 @@ event fired without a target lands on `document` after a delete swap, where a
   be the other side.
 - The example: contact.app on the ORM, same routes, templates and tests as
   hx-flask; 156 tests plus 7 in Chromium, on Django 4.2, 5.2, 6.0 and 6.1.
-  Its `Contact.errors` holds every field the forms show (`""` with no error)
-  and the contacts view passes the search term as `q`, so no page reads a
-  variable that does not exist.
 - Site-packages, which the lint, the map, the checks and `ready()` all skip,
   is one rule (`templates.in_site_packages`): sysconfig's `purelib` and
   `platlib` plus the `site-packages` and `dist-packages` directories `site`

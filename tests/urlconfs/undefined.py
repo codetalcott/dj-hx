@@ -2,6 +2,7 @@
 
 import threading
 
+from contacts.models import Contact
 from django.core.exceptions import ObjectDoesNotExist
 from django.http import HttpResponse
 from django.template import Context, Template, Variable, VariableDoesNotExist
@@ -20,8 +21,35 @@ class NoProfile:
         raise ObjectDoesNotExist("no profile")  # a template lookup Django silences (silent_variable_failure)
 
 
+class Holder:
+    name = "holder"
+    rel = None  # an optional object that is not there: a nullable foreign key, say
+
+
 def show(request, name):
-    return page(request, name, {"items": ITEMS, "user": NoProfile()})
+    return page(
+        request,
+        name,
+        {
+            "items": ITEMS,
+            "user": NoProfile(),
+            "holder": Holder(),
+            "contact": Contact(first="Ada"),
+            "labels": {"name": "Name"},
+            "empty": [],
+            "pair": ("a", "b"),
+            "nothing_yet": Contact.objects.none(),
+        },
+    )
+
+
+async def asynchronous(request):
+    """An async view: Django runs it on an event loop in another thread, in a copy of the request's context."""
+    return page(request, "loose.html", {"items": ITEMS})
+
+
+def broken(request):
+    raise RuntimeError("broken")
 
 
 def box(request):
@@ -33,9 +61,9 @@ def from_string(request):
 
 
 def outside(request):
-    """A Variable resolved on a plain dict, in no template: Django logs its failure all the same."""
+    """A Variable resolved on a Context, in no template: Django logs its failure all the same."""
     try:
-        Variable("nope").resolve({})
+        Variable("nope").resolve(Context())  # a top-level name, which would count inside a template
     except VariableDoesNotExist:
         pass
     return page(request, "clean.html", {"items": ITEMS})
@@ -67,6 +95,8 @@ urlpatterns = [
     path("u/from-string/", from_string),
     path("u/outside/", outside),
     path("u/boom/", boom),
+    path("u/async/", asynchronous),
+    path("u/broken/", broken),
     path("u/nested/", nested),
     path("u/elsewhere/", elsewhere),
 ]

@@ -305,7 +305,7 @@ All subclass `HxError` except `HxRedirectError` (an `AssertionError` from the te
 | `HxPartialRootId` | raised at render | a partial used as `<hx-partial>`, or an interaction's reply, does not start with one element carrying `id="<name>"` | wrap the region in `<div id="name">` |
 | `HxLintError` | raised by `HxTestClient` | an error-level lint finding in a `text/html` response | fix the HTML; `lint_ignore=` / `HX_LINT_IGNORE` to silence a rule |
 | `HxRedirectError` | raised by `HxTestClient` | 3xx to a `full=True` request without `follow=` | pass `follow=True` (what the browser shows) or `follow=False` (assert on the 3xx) |
-| `HxUndefinedVariable` | raised by `HxTestClient`; recorded under `strict=False` | a project template reads a name or attribute that does not exist, in `{{ }}`, `{% if %}`, `{% for %}` or any tag; `.lookups` names each with its template:line | put the name in the view's context with its default (an interaction's: `context=`), or correct it; `undefined=False` turns the check off |
+| `HxUndefinedVariable` | raised by `HxTestClient`; recorded under `strict=False` | a project template reads a name nobody supplies or an attribute an object lacks, in `{{ }}`, `{% if %}`, `{% for %}` or any tag (lookups that depend on the data are skipped: see Testing); `.lookups` names each with its template:line | put the name in the view's context with its default (an interaction's: `context=`), or correct it; `undefined=False` turns the check off |
 
 ## Templates
 
@@ -421,17 +421,26 @@ What the client enforces on every request, including plain `client.get`:
   `HxLintWarning` (`warnings.warn`). `lint=False` or `lint_ignore=("rule",)` per client.
 - A 3xx to a `full=True` request raises `HxRedirectError` unless `follow=True` or `follow=False` was
   chosen, because htmx's fetch follows redirects and the browser never sees the 3xx.
-- A project template that reads a name or attribute that does not exist raises `HxUndefinedVariable`, a
-  recorded finding (`strict=False` leaves it in `response.hx_findings`). Its `.lookups` give each one's
-  `variable` (the name, or the attribute after a dot), `template`, `line` and `tag`, where the tag is written:
-  an `{% extends %}` base, an included file, the file a partial is in. `{{ x }}`, `{{ x.attr }}`, `{% if x %}`,
-  `{% for i in x %}` and `{{ x|default:"" }}` all count (Django logs the lookup before any filter runs), so
-  supply each name from the view's context with its default. Read from Django's `django.template` DEBUG
-  log while the request runs; other handlers see only what they saw before. Not counted: templates in
-  site-packages, templates built from a string, a lookup that raised an exception Django silences
-  (`DoesNotExist`). `undefined=False` turns it off. `logging.disable()` in force, or a disabled
-  `django.template` logger (a `LOGGING` dict leaving `disable_existing_loggers` at `True`), raises
-  `ImproperlyConfigured`, because the check would see nothing.
+- A project template that reads a name nobody supplies, or an attribute an object lacks, raises
+  `HxUndefinedVariable`, a recorded finding (`strict=False` leaves it in `response.hx_findings`). Its
+  `.lookups` give each one's `variable` (the name, or the attribute after a dot), `template`, `line`, `tag`
+  and `included`, where the tag is written: an `{% extends %}` base, an included file, the file a partial is in.
+  - Raises: `{{ x }}`, `{% if x %}`, `{% for i in x %}` and `{{ x|default:"" }}` (Django logs the lookup before
+    any filter runs) for a name nobody supplies, an `{% include %}` parameter not passed (the message says to
+    pass it in the include's `with`, `... subtitle=None`), and `{{ obj.attr }}` for an attribute a non-None
+    object lacks that is not a mapping key or an index (`{{ user.emial }}`, `{{ items.length }}` on a list).
+  - Skipped, because the outcome depends on the data: a lookup on None (`obj.rel.name` with no `rel`), a key
+    a `Mapping` lacks (`request.GET.stage`; so a misspelt dict key is silent, as in Django), an index past the
+    end of a sequence (`items.0` on `[]`; a string's index still counts), anything `{% firstof %}` reads,
+    `debug` and `sql_queries` where the debug context processor is configured, and a response built from an
+    exception (the 500 page).
+  - Not seen: templates in site-packages or built from a string, a lookup that raised an exception Django
+    silences (`DoesNotExist`), a render outside the request's context (a `ThreadPoolExecutor`, a plain thread,
+    a streaming body consumed after the request). An `async def` view is checked.
+  - Supply each name from the view's context with its default. Read from Django's `django.template` DEBUG
+    log while the request runs; other handlers see only what they saw before. `undefined=False` turns it off.
+    `logging.disable()` in force, or a disabled `django.template` logger (a `LOGGING` dict leaving
+    `disable_existing_loggers` at `True`), raises `ImproperlyConfigured`, because the check would see nothing.
 - Without `HxMiddleware` installed the client runs the guard itself.
 
 Assertions that match the protocol:

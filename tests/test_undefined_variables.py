@@ -1,6 +1,8 @@
 """
-HxTestClient's undefined-variable check. A project template that reads a name or attribute that does not
-exist raises HxUndefinedVariable. The client reads Django's documented django.template DEBUG log while a
+HxTestClient's undefined-variable check. A project template that reads a name nobody supplies, or an
+attribute an object lacks, raises HxUndefinedVariable; a lookup whose outcome depends on the request's
+data does not (None in a chain, a key a mapping lacks, an index past the end, {% firstof %}, the debug
+processor's names, a 500 page). The client reads Django's documented django.template DEBUG log while a
 request runs, which records the lookups {% if %}, {% for %} and |default swallow too.
 """
 
@@ -35,6 +37,15 @@ TEMPLATES = {
     "parts.html": '<main>\n{% partialdef box inline %}<div id="box">\n{% if error %}{{ error }}{% endif %}</div>{% endpartialdef %}\n</main>',
     "installed.html": '<form>\n{% include "django/forms/widgets/input.html" %}\n<p>{{ ours }}</p>\n</form>',
     "profile.html": "<p>{{ user.profile }}</p>",
+    "attributes.html": "<p>{{ holder.nmae }}</p>\n<p>{{ contact.emial }}</p>\n<p>{{ items.length }}</p>\n<p>{{ holder.name.20 }}</p>",
+    "card_page.html": '<div>\n{% include "card.html" with title="T" %}\n</div>',
+    "card.html": "<h2>{{ title }}</h2>{% if subtitle %}<p>{{ subtitle }}</p>{% endif %}<p>{{ holder.nmae }}</p>",
+    "none_in_chain.html": "<p>{{ holder.rel.name }}</p>",
+    "mapping.html": "{% if not request.GET.stage %}<p>no stage</p>{% endif %}\n<p>{{ labels.nmae }}</p>",
+    "indexes.html": "{% if empty.0 %}x{% endif %}<p>{{ empty.0.name }}{{ pair.2 }}{{ nothing_yet.0.first }}</p>",
+    "firstof.html": '<p>{% firstof unset also.unset "z" %}</p>',
+    "debug.html": "{% if debug %}<p>{{ sql_queries|length }}</p>{% endif %}<p>ok</p>",
+    "500.html": "<h1>Server error{{ nope }}</h1>",
 }
 
 LOOSE = [
@@ -83,10 +94,71 @@ def test_the_template_named_is_the_one_the_tag_is_written_in(client):
     assert found(info) == ["base.html:2: 'heading' in {{ heading }}", "child.html:2: 'in_child' in {{ in_child }}"]
     with pytest.raises(HxUndefinedVariable) as info:
         client.get("/u/show/includer.html")  # `only`: the included template sees `shown` and nothing else
-    assert found(info) == ["included.html:2: 'hidden' in {{ hidden }}"]
+    assert found(info) == [
+        "included.html:2: 'hidden' in {{ hidden }} (an included template: pass it in the include's with, ... hidden=None)"
+    ]
     with pytest.raises(HxUndefinedVariable) as info:
         client.hx_get("/u/box/")
     assert found(info) == ["parts.html:3: 'error' in {% if error %}"]
+
+
+def test_an_attribute_an_object_lacks_raises_and_so_does_a_strings_index(client):
+    with pytest.raises(HxUndefinedVariable) as info:
+        client.get("/u/show/attributes.html")
+    assert found(info) == [
+        "attributes.html:1: 'nmae' in {{ holder.nmae }}",  # a plain object
+        "attributes.html:2: 'emial' in {{ contact.emial }}",  # a model instance
+        "attributes.html:3: 'length' in {{ items.length }}",  # a name, not an index, on a list
+        "attributes.html:4: '20' in {{ holder.name.20 }}",  # a string is not a sequence the index rule skips
+    ]
+
+
+def test_an_optional_include_parameter_raises_and_says_to_pass_it_in_the_with(client):
+    with pytest.raises(HxUndefinedVariable) as info:
+        client.get("/u/show/card_page.html")
+    assert found(info) == [
+        "card.html:1: 'subtitle' in {% if subtitle %} (an included template: pass it in the include's with, "
+        "... subtitle=None)",
+        "card.html:1: 'nmae' in {{ holder.nmae }}",  # an attribute: the include's with is not the fix
+    ]
+
+
+def test_a_lookup_on_none_is_not_counted(client):
+    assert client.get("/u/show/none_in_chain.html").content == b"<p></p>"  # holder.rel is None
+
+
+def test_a_key_a_mapping_lacks_is_not_counted_so_a_misspelt_key_is_silent(client):
+    # request.GET is a QueryDict; labels a dict, whose misspelt key is silent: the accepted cost.
+    assert client.get("/u/show/mapping.html").content == b"<p>no stage</p>\n<p></p>"
+
+
+def test_an_index_past_the_end_of_a_sequence_is_not_counted(client):
+    assert client.get("/u/show/indexes.html").content == b"<p></p>"  # a list, a tuple and a queryset
+
+
+def test_a_lookup_firstof_makes_is_not_counted(client):
+    assert client.get("/u/show/firstof.html").content == b"<p>z</p>"
+
+
+def test_the_debug_processors_names_are_not_counted_where_it_is_configured(client):
+    processors = ["django.template.context_processors.debug", "django.template.context_processors.request"]
+    with override_settings(TEMPLATES=locmem(TEMPLATES, context_processors=processors)):
+        assert client.get("/u/show/debug.html").content == b"<p>ok</p>"  # it sets debug only under DEBUG
+    with pytest.raises(HxUndefinedVariable) as info:
+        client.get("/u/show/debug.html")  # without the processor, nobody supplies debug
+    assert found(info) == ["debug.html:1: 'debug' in {% if debug %}"]
+
+
+def test_a_response_built_from_an_exception_is_not_judged():
+    # Django renders 500.html from an empty Context on purpose.
+    r = HxTestClient(raise_request_exception=False).get("/u/broken/")
+    assert (r.status_code, r.content, r.hx_findings) == (500, b"<h1>Server error</h1>", [])
+
+
+def test_an_async_view_is_checked_as_a_sync_one_is(client):
+    with pytest.raises(HxUndefinedVariable) as info:
+        client.get("/u/async/")
+    assert found(info) == LOOSE
 
 
 def test_a_template_in_site_packages_is_not_the_projects(client):

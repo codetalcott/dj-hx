@@ -16,11 +16,13 @@ is strict about what htmx would do silently.
   says ``follow=True`` (the page the browser shows) or ``follow=False`` (the
   redirect itself), because htmx's fetch follows redirects and the browser
   never sees them. A 3xx answering a partial request is the guard's finding.
-- A project template that reads a variable that does not exist raises
-  ``HxUndefinedVariable``, naming each one and its template:line. The client
-  reads Django's documented ``django.template`` DEBUG log while it runs a
-  request, which records the lookups ``{% if %}`` and ``{% for %}`` swallow
-  too, where ``string_if_invalid`` sees none. ``undefined=False`` turns it off.
+- A project template that reads a name nobody supplies, or an attribute an
+  object lacks, raises ``HxUndefinedVariable``, naming each one and its
+  template:line; a lookup the request's data decides is skipped
+  (``_is_a_slip``). The client reads Django's documented ``django.template``
+  DEBUG log in each request's own context, which records the lookups
+  ``{% if %}`` and ``{% for %}`` swallow too, where ``string_if_invalid`` sees
+  none. ``undefined=False`` turns it off.
 """
 
 from __future__ import annotations
@@ -30,7 +32,9 @@ import json as _json
 import logging
 import threading
 import warnings
+from collections.abc import Mapping
 from contextlib import contextmanager, nullcontext
+from contextvars import ContextVar
 from dataclasses import dataclass
 from urllib.parse import urlencode
 
@@ -69,7 +73,10 @@ class HxTestClient(Client):
             response = super().request(**request)
         wsgi_request = getattr(response, "wsgi_request", None)
         findings = guard(wsgi_request, response) if wsgi_request is not None else []
-        undefined = lookups.in_project_templates() if lookups is not None else []
+        # A response Django built from an exception (the 500 page renders 500.html from an empty Context on
+        # purpose) is not the templates' doing; the test client sets exc_info on it.
+        built_from_an_exception = bool(getattr(response, "exc_info", None))
+        undefined = lookups.in_project_templates() if lookups is not None and not built_from_an_exception else []
         if undefined:
             findings.append(HxUndefinedVariable(undefined, where))  # recorded like the guard's: response.hx_findings
         if self.strict and findings:
@@ -157,6 +164,11 @@ class HxTestClient(Client):
 # {% include %}s an admin template, only the partial's name for a partial), so the place is read from the
 # template node being rendered when the record is made: its origin is the file the tag is written in, and
 # its token the line.
+#
+# What counts is what the template's author controls and could misspell: a top-level name nobody supplies,
+# and an attribute an object lacks. A lookup whose outcome depends on the request's data does not: see
+# _is_a_slip(). Django's exception carries params == (bit, current), the object the bit was looked up on
+# (the Context for a top-level name), on 4.2 to 6.1.
 
 _TEMPLATE_LOG = logging.getLogger("django.template")
 _FAILED_LOOKUP = "Exception while resolving variable"  # Django's message, the same on 4.2 to 6.1
@@ -170,23 +182,39 @@ class UndefinedLookup:
     template: str  # the name its loader knows it by
     line: int | None
     tag: str  # the tag or ``{{ }}`` that reads it
+    included: bool = False  # a top-level name read by a template an {% include %} renders
 
     def __str__(self):
         line = "" if self.line is None else f":{self.line}"
-        return f"{self.template}{line}: {self.variable!r} in {self.tag}"
+        where = f"{self.template}{line}: {self.variable!r} in {self.tag}"
+        if self.included:
+            return f"{where} (an included template: pass it in the include's with, ... {self.variable}=None)"
+        return where
 
 
 class _Lookups:
-    """The lookups that fail while one request runs, on the thread that runs it."""
+    """The lookups that fail while one request runs, in its context (``_COLLECTING``)."""
 
     def __init__(self):
-        self.thread = threading.get_ident()
-        self.failed: list[tuple] = []  # (variable, origin, token); judged once the request is over
+        self.failed: list[tuple] = []  # (variable, origin, token, included); judged once the request is over
+        self.debug_names = _debug_processor_names()
 
     def take(self, record) -> None:
-        node = _rendering_node()
-        if node is not None:  # None: a Variable resolved outside any template
-            self.failed.append((str(record.args[0]), node.origin, getattr(node, "token", None)))
+        params = getattr(record.exc_info[1], "params", ())
+        current = params[1] if len(params) == 2 else _UNKNOWN
+        variable = str(record.args[0])
+        nodes = _nodes_being_rendered()
+        try:
+            node = next(nodes, None)
+            if node is None or not _is_a_slip(variable, current, node, self.debug_names):
+                return  # no node: a Variable resolved outside any template; or a lookup the data decides
+            from django.template.context import BaseContext
+            from django.template.loader_tags import IncludeNode
+
+            included = isinstance(current, BaseContext) and any(isinstance(outer, IncludeNode) for outer in nodes)
+            self.failed.append((variable, node.origin, getattr(node, "token", None), included))
+        finally:
+            nodes.close()
 
     def in_project_templates(self) -> list[UndefinedLookup]:
         """
@@ -201,12 +229,59 @@ class _Lookups:
 
         project: dict[str, bool] = {}
         found: dict[UndefinedLookup, None] = {}
-        for variable, origin, token in self.failed:
+        for variable, origin, token, included in self.failed:
             if origin.name not in project:
                 project[origin.name] = origin.name != UNKNOWN_SOURCE and not in_site_packages(origin.name)
             if project[origin.name]:
-                found[UndefinedLookup(variable, origin.template_name or origin.name, getattr(token, "lineno", None), _tag(token))] = None
+                template, line = origin.template_name or origin.name, getattr(token, "lineno", None)
+                found[UndefinedLookup(variable, template, line, _tag(token), included)] = None
         return list(found)
+
+
+_UNKNOWN = object()  # the looked-up object, when a VariableDoesNotExist does not carry Django's (bit, current)
+_DEBUG_PROCESSOR = "django.template.context_processors.debug"
+
+
+def _debug_processor_names() -> frozenset[str]:
+    """``debug`` and ``sql_queries``, which the debug context processor sets only under DEBUG with INTERNAL_IPS."""
+    from django.conf import settings
+
+    configured = any(
+        _DEBUG_PROCESSOR in ((backend.get("OPTIONS") or {}).get("context_processors") or ())
+        for backend in settings.TEMPLATES
+    )
+    return frozenset({"debug", "sql_queries"}) if configured else frozenset()
+
+
+def _is_index(bit: str) -> bool:
+    try:
+        int(bit)
+    except ValueError:
+        return False
+    return True
+
+
+def _is_a_slip(variable: str, current, node, debug_names: frozenset[str]) -> bool:
+    """
+    Whether a failed lookup is the template author's to fix: a top-level name nobody supplies, or an
+    attribute an object lacks (``{{ user.emial }}``, ``{{ items.length }}``). Not counted, because the
+    outcome depends on the request's data: a lookup on None (``{{ obj.rel.name }}`` with no ``rel``), a key a
+    mapping lacks (``{% if not request.GET.stage %}``, so a misspelt dict key is silent too), an index past
+    the end of a sequence (``items.0`` on ``[]``; a string's index still counts), whatever
+    ``{% firstof %}`` reads, and the names the debug context processor sets only under DEBUG.
+    """
+    from django.template.context import BaseContext
+    from django.template.defaulttags import FirstOfNode
+
+    if isinstance(node, FirstOfNode):
+        return False
+    if isinstance(current, BaseContext):
+        return variable not in debug_names
+    if current is None or isinstance(current, Mapping):
+        return False
+    if _is_index(variable) and hasattr(current, "__getitem__") and not isinstance(current, (str, bytes)):
+        return False
+    return True
 
 
 def _tag(token) -> str:
@@ -217,8 +292,8 @@ def _tag(token) -> str:
     return f"{{{{ {token.contents} }}}}" if token.token_type is TokenType.VAR else f"{{% {token.contents} %}}"
 
 
-def _rendering_node():
-    """The innermost template node on this thread's stack (the tag or ``{{ }}`` being rendered), or None."""
+def _nodes_being_rendered():
+    """The template nodes on this thread's stack, innermost (the tag or ``{{ }}`` being rendered) first."""
     from django.template.base import Node
 
     frame = inspect.currentframe()
@@ -226,9 +301,8 @@ def _rendering_node():
         while frame is not None:
             node = frame.f_locals.get("self")
             if isinstance(node, Node) and getattr(node, "origin", None) is not None:
-                return node
+                yield node
             frame = frame.f_back
-        return None
     finally:
         del frame
 
@@ -249,23 +323,25 @@ def _is_failed_lookup(record) -> bool:
 class _Gate(logging.Filter):
     """
     On the ``django.template`` logger while any HxTestClient request runs. It hands each failed lookup to
-    the innermost request running on its thread, then passes on only the records the logger delivered
-    before its level was lowered to DEBUG, so no handler sees a record it would not have seen.
+    the request whose context it is made in (``_COLLECTING``), then passes on only the records the logger
+    delivered before its level was lowered to DEBUG, so no handler sees a record it would not have seen.
     """
 
     def filter(self, record):
         if _is_failed_lookup(record):
-            thread = threading.get_ident()
-            for lookups in reversed(_active):
-                if lookups.thread == thread:
-                    lookups.take(record)
-                    break
+            lookups = _COLLECTING.get()
+            if lookups is not None:
+                lookups.take(record)
         return record.levelno >= _saved["delivered_from"]
 
 
+# The request a lookup belongs to. A context variable, not the thread: asgiref carries it into the thread
+# an async view runs on and through sync_to_async, while a plain thread or a ThreadPoolExecutor worker
+# starts without it, so a render there is no request's.
+_COLLECTING: ContextVar[_Lookups | None] = ContextVar("dj_hx_collecting_lookups", default=None)
 _GATE = _Gate()
 _lock = threading.Lock()
-_active: list[_Lookups] = []  # one per request running now: nested clients and threads included
+_active: list[_Lookups] = []  # one per request running now, nested clients included: the gate stays while any runs
 _saved: dict[str, int] = {}  # the logger's own level and the level it delivered from, before the first request
 
 
@@ -285,9 +361,11 @@ def _collecting_lookups():
             _TEMPLATE_LOG.setLevel(logging.DEBUG)
             _TEMPLATE_LOG.filters.insert(0, _GATE)  # first, so a filter of the project's cannot hide a record from it
         _active.append(lookups)
+    token = _COLLECTING.set(lookups)
     try:
         yield lookups
     finally:
+        _COLLECTING.reset(token)
         with _lock:
             _active.remove(lookups)
             if not _active:

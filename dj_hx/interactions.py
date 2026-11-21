@@ -5,8 +5,8 @@ Interactions: one handler bound to one template partial, by name.
 
     from dj_hx import interaction
 
-    def assign_context(request, contest):
-        return {"contest": Contest.get(contest), "notified": False}
+    def assign_context(request, contest):  # the page view calls it too, so it defines error
+        return {"contest": Contest.get(contest), "notified": False, "error": None}
 
     @interaction("POST", partial="contests/assign.html#notify", context=assign_context,
                  refuses=(DomainError,), triggers=("notified",))
@@ -26,9 +26,9 @@ Interactions: one handler bound to one template partial, by name.
   returned key the context does not define raises, so the page and the reply render the same
   names. The handler returns a dict or ``None``; anything else raises.
 - Every reply carries ``error``, which the layer owns: ``None`` on success unless ``context`` or
-  the handler sets it, so the partial can read ``{% if error %}`` without ``context`` defining it.
-  A page view is not a reply: a page that renders the partial puts ``error`` in its own context,
-  and ``HxTestClient`` fails one that forgets (``HxUndefinedVariable``).
+  the handler sets it. The layer defaults it for replies only: a page view is not a reply, so a
+  ``context`` the page shares defines ``error: None``, as above, and ``HxTestClient`` fails a page
+  that forgets (``HxUndefinedVariable``).
 - A declared refusal, an exception in ``refuses``, re-renders the partial with
   ``error=str(exc)`` and status 422, so the handler writes no ``try``. Any other exception is a 500.
 - ``triggers`` names the facts a successful reply announces, ``.trigger(name)`` for each.
