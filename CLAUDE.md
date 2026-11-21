@@ -17,12 +17,12 @@ No virtualenv is checked in: `.venv/` is gitignored, and an old local one can po
 `pip install -e ".[dev,browser,partials]"` on each Python/Django pair, then `playwright install --with-deps chromium`):
 
 ```
-uv venv <venv> && uv pip install -p <venv>/bin/python "django~=6.1.0" pytest pytest-django ruff "playwright==1.64.0"
-<venv>/bin/python -m playwright install chromium   # below Django 6, add django-template-partials
+uv venv <venv> && uv pip install -p <venv>/bin/python "django~=6.1.0" pytest pytest-django ruff "playwright==1.64.0"  # below Django 6, add django-template-partials
+<venv>/bin/python -m playwright install chromium
 
-<venv>/bin/python -m pytest -q                      # 385 tests, ~11 s
-<venv>/bin/python -m pytest -q -m "not browser"     # 354, ~1 s, skipping Chromium
-<venv>/bin/python -m pytest -q -m browser           # the 31 Playwright tests alone, ~9 s
+<venv>/bin/python -m pytest -q                      # 400 tests, ~12 s
+<venv>/bin/python -m pytest -q -m "not browser"     # 368, ~1 s, skipping Chromium
+<venv>/bin/python -m pytest -q -m browser           # the 32 Playwright tests alone, ~9 s
 <venv>/bin/python -m pytest tests/test_verbs.py::test_text_escapes
 <venv>/bin/ruff check .
 ```
@@ -150,7 +150,8 @@ is scanned rather than a decorator's closure, and `_as_interaction()` records it
 The `__ACT<n>__` markers index one `acts` list shared by every template. The checks build this map at every
 `runserver` start, so `_scan_handlers` parses each views module once per map (`module_verbs`), not once per
 view, and `templates.in_site_packages` resolves the site roots once per set of directories: TextShelf's
-checks took 3.6 s before those two, 0.64 s after (2026-11-20, Apple M4). New map logic belongs in `mapcore` unless it
+checks took 3.6 s before those two, and after them three runs had medians of 553, 639 and 659 ms
+(2026-11-20, Apple M4, Python 3.13.6, Django 6.1.2). New map logic belongs in `mapcore` unless it
 is genuinely Django-specific; the core is vendored from hx-flask (see below).
 
 ## Vendored files: do not edit in place

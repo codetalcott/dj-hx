@@ -210,6 +210,13 @@ def test_w024_a_views_trigger_no_template_listens_for(tmp_path):
     ]
 
 
+def test_w024_does_not_read_an_alpine_listener(tmp_path):
+    # Alpine's @x.window and x-on: are not read (README lists them with what the scan cannot see)
+    (tmp_path / "page.html").write_text('<div x-data @contacts-changed.window="load()" x-on:contacts-changed.window="load()"></div>')
+    with override_settings(TEMPLATES=on_disk(tmp_path)):
+        assert [m.obj for m in hx_check_messages() if m.id == "dj_hx.W024"] == ["contacts"]
+
+
 def test_w024_and_w025_are_skipped_without_root_urlconf(no_interactions, tmp_path):
     # The map resolves a literal-path control through ROOT_URLCONF; without one that raised AttributeError and
     # stopped the check run. The event checks skip, as the interaction routes and {% url %} checks do.

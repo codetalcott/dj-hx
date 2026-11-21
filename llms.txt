@@ -272,7 +272,8 @@ urlpatterns = [..., path("", include("dj_hx.urls"))]   # once, at the site root
   `**kwargs` on the handler or on `context=`, a `context=` parameter without a default that the route lacks.
   At the reply: a return that is not a dict or `None` (a view decorator below `@interaction` returning a
   response included), or a returned key the context lacks (`error` never is: every reply carries it).
-- `manage.py check` reads each `{% act %}` in the project's templates (never site-packages) and the control
+- `manage.py check` reads each `{% act %}` in the project's `.html`/`.htm` templates (never site-packages; one
+  inside `{% verbatim %}` still counts, for E009 and as E014's control) and the control
   whose verb attribute holds it, resolving each attribute as htmx 4.0.2 does. The verb must send the
   interaction's method (`hx-action` sends its `hx-method`, an ancestor's `hx-method:inherited`, its
   `method` attribute, else GET; a submit button's `formmethod` is not read). The control must target the
@@ -470,12 +471,17 @@ What the client enforces on every request, including plain `client.get`:
     object lacks that is not a mapping key or an index (`{{ user.emial }}`, `{{ items.length }}` on a list).
   - Skipped, because the outcome depends on the data: a lookup on None (`obj.rel.name` with no `rel`), a key
     a `Mapping` or the session lacks (`request.GET.stage`, `request.session.cart`; so a misspelt dict key is
-    silent, as in Django), an index past the end of a sequence (`items.0` on `[]`; a string's index still
+    silent, as in Django, and so is any lookup on a mapping: `forloop.countr`, since `forloop` is a dict, and a
+    misspelt QueryDict method, `request.GET.urlencod`), an index past the end of a sequence (`items.0` on `[]`; a string's index still
     counts), anything `{% firstof %}` reads, `debug` and `sql_queries` where the debug context processor is
     configured, and a response built from an exception (the 500 page).
   - Not seen: templates in site-packages or built from a string, a lookup that raised an exception Django
     silences (`DoesNotExist`), a render outside the request's context (a `ThreadPoolExecutor`, a plain thread,
     a streaming body consumed after the request). An `async def` view is checked.
+  - It rests on Django details the suite pins on 4.2 to 6.1: the DEBUG record's message and its
+    `VariableDoesNotExist`, the template node on the stack, and the exception's `params == (bit, current)`. A
+    Django that changed the record or the node would make it go quiet; one that dropped `params` would make it
+    count the lookups it now skips.
   - Supply each name from the view's context with its default. Read from Django's `django.template` DEBUG
     log while the request runs; other handlers see only what they saw before. `undefined=False` turns it off.
     `logging.disable()` in force, or a disabled `django.template` logger (a `LOGGING` dict leaving
@@ -539,7 +545,7 @@ System checks (tag `dj_hx`):
 | E011 | an `{% act %}` control's verb (`hx-get` ... `hx-delete`; or `hx-action` with its `hx-method`, an ancestor's `hx-method:inherited`, its `method` attribute, else GET; `formmethod` not read) is not the interaction's method |
 | E012 | an `{% act %}` control does not target the element with id `<partial>`: neither `hx-target="#<partial>"` (own or an ancestor's `:inherited`; also `closest`, `find`, `findAll`, `next` or `previous #<partial>`, with or without `global `, as htmx 4.0.2's target resolver reads them) nor no `hx-target` / `hx-target="this"` on that element. A comma list, bare `next`/`previous`, `document`, `window`, `body`, `host` and other CSS are Errors |
 | E013 | an `{% act %}` control's `hx-swap` (own or `:inherited`) is not an outer swap (`outerHTML`, `outerMorph`, `outerSync`, per htmx 4.0.2's swap code). A control without `hx-swap` is judged as htmx 4's default `innerHTML`; a page's `htmx.config.defaultSwap` is not read (write `hx-swap` on each control). Measured on htmx 4.0.2: htmx 4's default `innerHTML`, and `beforeend`, `afterbegin`, `beforebegin`, `afterend`, leave a second element with the id; on `innerMorph` htmx throws (`HierarchyRequestError`, logged as `htmx:error`) and the reply never reaches the page |
-| E014 | an interaction has no control: no project template writes its `{% act %}` (a `{% url 'dj_hx:…' %}` or hand-written path is not counted: E011-E013 cannot check it); skipped for a handler whose module is in site-packages, whose templates are never read |
+| E014 | an interaction has no control: no project `.html`/`.htm` template writes its `{% act %}` (a `{% url 'dj_hx:…' %}` or hand-written path is not counted: E011-E013 cannot check it); skipped for a handler whose module is in site-packages, whose templates are never read |
 | E015 | an interaction's partial does not load (`HxUnknownPartial`'s reason) or does not parse (Django's `TemplateSyntaxError` message) |
 | E016 | an interaction's partial does not start with an element carrying `id="<partial>"`, where the source shows its root |
 | E017 | `dj_hx.urls` routes an interaction to other than what its module holds: it was registered after `dj_hx.urls` was first read, or the module rebound the name since |
@@ -547,10 +553,10 @@ System checks (tag `dj_hx`):
 | W019 | a decorator sits below `@interaction` (the handler has `__wrapped__`) |
 | E020 | interactions are registered but `dj_hx.urls` is not included |
 | I021 | an `{% act %}` the checks cannot tie to one element's verb attribute (script, text, another attribute, `as`, a variable name) |
-| E022 | a `{% url %}` with a quoted name in a project `.html`/`.htm` template does not reverse, against `ROOT_URLCONF`, with the arguments it passes: no such name (close ones listed), a namespace no URLconf installs, the wrong positional count or keywords, or both kinds mixed. Each argument is reversed with a placeholder for its route's converter (`int` 1; `str`, `slug`, `path` "a"; `uuid` all zeros); a keyword naming a route's extra kwarg gets that default. Skipped: `{% url ... as var %}` (Django's form for a view that may be missing), a name built at run time (a variable, a filter), a tag in a comment or `{% verbatim %}`. A site that sets `request.urlconf` per request silences it |
-| I023 | a `{% url %}` not checked: its route takes a custom converter or a `re_path` group, which has no placeholder |
+| E022 | a `{% url %}` with a quoted name in a project `.html`/`.htm` template does not reverse, against `ROOT_URLCONF`, with the arguments it passes: no such name (close ones listed), a namespace no URLconf installs, the wrong positional count or keywords, or both kinds mixed. Each argument is reversed with a placeholder for its route's converter (`int` 1; `str`, `slug`, `path` "a"; `uuid` all zeros); a keyword naming a route's extra kwarg gets that default. Skipped: `{% url ... as var %}` (Django's form for a view that may be missing), a name built at run time (a variable, a filter), a tag in a comment or `{% verbatim %}`. A site that sets `request.urlconf` per request silences it. The result depends on the settings it runs under: a route included only under `DEBUG` or a feature flag is an E022 under other settings (a deploy's `migrate` runs the checks); link it as `{% url 'name' as link %}{% if link %}...{% endif %}` |
+| I023 | a `{% url %}` not checked: its route takes a custom converter or a `re_path` group, which has no placeholder. Usually a third-party `re_path` in a template the project overrides: admin's `{% url 'admin:app_list' app_label=... %}`, allauth's `account_confirm_email` |
 | W024 | an event a view announces with `.trigger()` (as `hx_map` finds it) or an interaction declares in `triggers=` that no project template listens for (`hx-trigger`, `hx-on`, hyperscript `on` in `_`/`script`/`data-script` or an inline `<script type="text/hyperscript">`, behaviors included); an interaction in site-packages is not warned about |
-| W025 | an event a project template listens for that nothing announces; browser events and hyperscript's observers (`on intersection`, `on mutation`, `on resize`) are left out, and a name with a colon (`htmx:*`, `sse:message`) or built in the template is not read as a listener, so a view announcing a colon name gets W024. For both, an event a script in the templates names (a quoted name in a `<script>` or `hx-on`, a hyperscript `send`/`trigger`, even inside a quoted string) counts as heard and announced. W024 and W025 are Warnings because a JavaScript file, a hyperscript file (`<script type="text/hyperscript" src=...>`), a template in site-packages or a helper the view calls can be the other side; both skip without `ROOT_URLCONF` |
+| W025 | an event a project template listens for that nothing announces; browser events and hyperscript's observers (`on intersection`, `on mutation`, `on resize`) are left out, and a name with a colon (`htmx:*`, `sse:message`) or built in the template is not read as a listener, so a view announcing a colon name gets W024. For both, an event a script in the templates names (a quoted name in a `<script>` or `hx-on`, a hyperscript `send`/`trigger`, even inside a quoted string) counts as heard and announced. W024 and W025 are Warnings because a JavaScript file, a hyperscript file (`<script type="text/hyperscript" src=...>`), an Alpine listener (`@x.window`, `x-on:`; not read), a template in site-packages or a helper the view calls can be the other side; both skip without `ROOT_URLCONF` |
 
 `HxMiddleware` also: adds `Vary` to every response, runs the guard, bridges pending messages onto partial
 2xx HTML responses (peeking before consuming), logs findings as warnings on the `dj_hx` logger, and under

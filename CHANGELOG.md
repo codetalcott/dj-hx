@@ -56,7 +56,8 @@ event fired without a target lands on `document` after a delete swap, where a
   end of a sequence, what `{% firstof %}`
   reads, the debug context processor's `debug` and `sql_queries`, and a
   response built from an exception; so a misspelt dict key or index stays
-  silent, as in Django. Not seen: templates in site-packages or built from a
+  silent, as in Django, and so does any lookup on a mapping (`forloop.countr`,
+  `forloop` being a dict; a misspelt QueryDict method, `request.GET.urlencod`). Not seen: templates in site-packages or built from a
   string, lookups that raise an exception Django silences, and a render outside
   the request's context (a thread pool, a plain thread, a streaming body read
   after the request); an `async def` view is checked. `undefined=False` turns
@@ -127,7 +128,8 @@ event fired without a target lands on `document` after a delete swap, where a
   without a default raises at import. `{% act %}` without `dj_hx.urls`
   included raises `ImproperlyConfigured`, naming the include.
 - Interaction checks, from `manage.py check`: every `{% act %}` in the
-  project's templates names an interaction (E009) with its handler's
+  project's `.html` and `.htm` templates (one in `{% verbatim %}` included)
+  names an interaction (E009) with its handler's
   parameters (E010), and its control sends the interaction's method (E011,
   with `hx-action`'s method resolved as htmx 4.0.2 does), targets the element
   with the partial's id (E012: `#<partial>`, or an extended selector whose

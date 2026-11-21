@@ -1094,6 +1094,27 @@ def test_e014_an_interaction_no_template_writes_an_act_for(startup, url):
     assert """hx-post="{% act 'sign_off' member=... %}" hx-target="#signoff" hx-swap="outerHTML\"""" in message.hint
 
 
+SIGN_OFF_ACT = "{% act 'sign_off' member=member %}"
+WITHOUT_SIGN_OFF_ACT = CHECKED["reviewers.html"].replace(SIGN_OFF_ACT, "/reviewers/{{ member }}/sign-off")
+
+
+@pytest.mark.parametrize("suffix, read", [(".htm", True), (".txt", False)])
+def test_the_interaction_checks_read_html_and_htm_templates_only(startup, suffix, read):
+    # E009 to E016 read .html and .htm files, as E022 does: sign_off()'s one {% act %}, in another file, is not seen
+    elsewhere = control(SIGN_OFF_ACT.replace("member=member", "member=3"), rest='hx-target="#signoff" hx-swap="outerHTML"')
+    messages = startup(**{"reviewers.html": WITHOUT_SIGN_OFF_ACT, f"elsewhere{suffix}": elsewhere})
+    assert found(messages) == ([] if read else [("dj_hx.E014", "tests.interactions_app.views.sign_off")])
+
+
+def test_an_act_inside_verbatim_still_counts_for_e009_and_e014(startup):
+    # Django renders {% verbatim %} as text, but the checks read the source (README states the limit): a misspelt
+    # name there is E009, and sign_off()'s {% act %} there counts as its control, so it gets no E014
+    inside = "{% load hx %}\n{% verbatim %}" + control("{% act 'notfy' %}").split("\n")[1] + "\n"
+    inside += control(SIGN_OFF_ACT.replace("member=member", "member=3"), rest='hx-target="#signoff" hx-swap="outerHTML"').split("\n")[1]
+    messages = startup(**{"reviewers.html": WITHOUT_SIGN_OFF_ACT, "extra.html": inside + "{% endverbatim %}"})
+    assert found(messages) == [("dj_hx.E009", "extra.html:2")]
+
+
 @pytest.mark.parametrize("installed", [True, False], ids=["site-packages", "project"])
 def test_e014_skips_an_interaction_whose_handler_is_in_site_packages(scratch, startup, tmp_path, monkeypatch, installed):
     # Its controls are in that app's own templates, which the checks never read. pip install --user puts it here:

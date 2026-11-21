@@ -41,7 +41,10 @@ TEMPLATES = {
     "card_page.html": '<div>\n{% include "card.html" with title="T" %}\n</div>',
     "card.html": "<h2>{{ title }}</h2>{% if subtitle %}<p>{{ subtitle }}</p>{% endif %}<p>{{ holder.nmae }}</p>",
     "none_in_chain.html": "<p>{{ holder.rel.name }}</p>",
-    "mapping.html": "{% if not request.GET.stage %}<p>no stage</p>{% endif %}\n<p>{{ labels.nmae }}</p>",
+    "mapping.html": (
+        "{% if not request.GET.stage %}<p>no stage</p>{% endif %}\n<p>{{ labels.nmae }}</p>"
+        "<p>{{ request.GET.urlencod }}{% for item in items %}{{ forloop.countr }}{% endfor %}</p>"
+    ),
     "session.html": "{% if request.session.cart %}<p>cart</p>{% endif %}<p>ok</p>",
     "indexes.html": "{% if empty.0 %}x{% endif %}<p>{{ empty.0.name }}{{ pair.2 }}{{ nothing_yet.0.first }}</p>",
     "firstof.html": '<p>{% firstof unset also.unset "z" %}</p>',
@@ -130,8 +133,9 @@ def test_a_lookup_on_none_is_not_counted(client):
 
 
 def test_a_key_a_mapping_lacks_is_not_counted_so_a_misspelt_key_is_silent(client):
-    # request.GET is a QueryDict; labels a dict, whose misspelt key is silent: the accepted cost.
-    assert client.get("/u/show/mapping.html").content == b"<p>no stage</p>\n<p></p>"
+    # request.GET is a QueryDict; labels a dict, whose misspelt key is silent: the accepted cost. Any lookup on a
+    # mapping is a key, so a misspelt QueryDict method (urlencode) and forloop's counter (forloop is a dict) are too.
+    assert client.get("/u/show/mapping.html").content == b"<p>no stage</p>\n<p></p><p></p>"
 
 
 def test_a_key_the_session_lacks_is_not_counted(client):
