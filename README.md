@@ -360,24 +360,39 @@ The rules:
 
 htmx 4 swaps every status but 204 and 304. A 405 from a control that sends the wrong method, a 404
 for an object removed since the page was drawn, or a 500 replaces the region with the error's body,
-and the controls are gone (measured for each). A site with interactions puts this in its layout:
+and the controls are gone (measured for each). So the root element of each interaction's partial
+says not to swap those, and the layout carries one alert:
 
 ```django
-<head>
-  <meta name="htmx-config" content='{"noSwap": [204, 304, "40x", "5xx"]}'>
+{% partialdef notify inline %}
+<div id="notify" hx-status:40x:inherited="swap:none" hx-status:5xx:inherited="swap:none">
   ...
-</head>
-<body hx-headers:inherited='{"X-CSRFToken": "{{ csrf_token }}"}'>
+```
+
+```django
+<body hx-boost:inherited="true" hx-headers:inherited='{"X-CSRFToken": "{{ csrf_token }}"}'>
   <p id="trouble" role="alert" style="display: none"
      _="on htmx:before:request from body hide me end
         on htmx:error from body show me end
         on htmx:response:error from body if event.detail.ctx.response.status is not 422 show me">Something went wrong. Please try again.</p>
 ```
 
-- **`noSwap`** keeps the controls on a 404, a 405 or a 500, while a 422 refusal still swaps (each
-  measured). htmx 4.0.2 matches the status, then its first two digits and `x`, then its first digit
-  and `xx`, so `"40x"` covers 400 to 409 and `"5xx"` every 5xx; a 410, 413 or 429 still swaps (read
-  from that code, not measured).
+- **`hx-status:40x` and `hx-status:5xx`** keep the controls on a 404, a 405 or a 500, while a 422
+  refusal still swaps (each measured). htmx 4.0.2 tries the status, then its first two digits and
+  `x`, then its first digit and `xx`, and takes the first `hx-status:<code>` the control has or
+  inherits, so `40x` covers 400 to 409 and `5xx` every 5xx; a 410, 413 or 429 still swaps (read from
+  that code, not measured). `swap:none` is what htmx's own `noSwap` sets.
+- **On the partial's root, with `:inherited`,** the pair reaches every control inside the partial
+  (measured), and the root itself where the root is the control (read from htmx 4.0.2's attribute
+  reader, not measured). It is part of the partial, so every reply carries it back. A control
+  outside the partial that targets it does not inherit it: write the pair on that control,
+  `hx-status:40x="swap:none" hx-status:5xx="swap:none"` (read from the same code, not measured).
+- **Not htmx's global `noSwap`.** `<meta name="htmx-config" content='{"noSwap": [204, 304, "40x",
+  "5xx"]}'>` keeps the controls too, but htmx 4.0.2 applies it to every htmx request on the page,
+  boosted links and forms included, and checks it before any `hx-status`, so no element can opt
+  back in (read from that code). A boosted link to a page that answers 404 then leaves the old page
+  in place under the new URL (measured); under the scoped pair the same link shows the 404 page
+  (measured).
 - **One generic listener**, written once in the layout, says something went wrong.
   `htmx:response:error` fires for every status of 400 or above, a refusal's 422 included, so it
   leaves 422 to the partial's own `{% if error %}`. A request that gets no reply (the server down, a

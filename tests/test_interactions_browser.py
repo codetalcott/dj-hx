@@ -3,8 +3,9 @@ Interactions in Chromium, against the desk app (tests/desk) on htmx 4.0.2 and _h
 versions the start-up checks' rulings were read from (their sources and hashes: tests/desk/static/desk/).
 
 What a reply does to the page: feedback only after it, a refusal's message with the controls kept, and
-README's status policy (``noSwap`` and the layout's alert) against a 405, a 404, a 500 and a request that
-gets no reply. Then six of the forms checks E011 to E013 accept, each measured once: an outer morph and an
+README's status policy (``hx-status`` on each interaction partial's root, and the layout's alert) against a
+405, a 404, a 500 and a request that gets no reply, while a boosted link to a missing page still shows the
+404 page, which a global ``noSwap`` would keep from it. Then six of the forms checks E011 to E013 accept, each measured once: an outer morph and an
 outer sync (E013), a self-replacing control, click-to-edit's ``hx-target:inherited="this"`` and
 ``closest #<partial>`` (E012), and a ``<form method="post" hx-action>`` (E011); the other forms they accept
 are read from htmx 4.0.2's source. Last, what the swaps E013 rejects do instead. tests/test_interactions.py
@@ -20,7 +21,8 @@ sync_api = pytest.importorskip("playwright.sync_api")  # `browser` and `page` ar
 expect = sync_api.expect
 
 HOLD_MS = 1200  # as long as the probe harness's pending.spec.ts holds a write
-POLICY = """<meta name="htmx-config" content='{"noSwap": [204, 304, "40x", "5xx"]}'>"""
+POLICY = ' hx-status:40x:inherited="swap:none" hx-status:5xx:inherited="swap:none"'  # on each partial's root
+GLOBAL_NO_SWAP = """<meta name="htmx-config" content='{"noSwap": [204, 304, "40x", "5xx"]}'>"""
 # htmx's last event of each request, after its swap. It reaches document even when the swap removed the
 # element that sent the request (htmx dispatches on document then), so it counts every request.
 COUNT_FINISHED = "document.addEventListener('htmx:finally:request', () => { window.finished = (window.finished || 0) + 1 })"
@@ -103,7 +105,7 @@ STATUSES = pytest.mark.parametrize("status", [405, 404, 500])
 
 
 @STATUSES
-def test_under_the_status_policy_an_error_keeps_the_controls_and_shows_the_alert(page, live, desk, status):
+def test_under_the_status_policy_an_error_keeps_the_controls_and_the_alert_shows_until_the_next_request(page, live, desk, status):
     open_desk(page, live)
     control = fail(desk, page, status)
     with page.expect_response(lambda r: "/x/desk/" in r.url) as reply:
@@ -113,6 +115,12 @@ def test_under_the_status_policy_an_error_keeps_the_controls_and_shows_the_alert
     expect(one(page, "notify")).to_have_count(1)
     expect(page.locator("#notify button")).to_have_text(["Notify Ada", "Notify Bo", "Check Ada"])
     expect(page.locator("#trouble")).to_be_visible()
+
+    desk.DESK["mail_down"] = False  # so the next request, on a control the error kept, succeeds
+    page.get_by_test_id("notify-3").click()
+    finished(page, 2)
+    expect(page.locator("#trouble")).to_be_hidden()
+    expect(page.get_by_test_id("notified")).to_have_text("Notified Ada.")
     assert page.console_errors == []
 
 
@@ -123,12 +131,12 @@ def test_without_the_status_policy_an_error_wipes_the_controls(page, live, desk,
     def without_the_policy(route):
         response = route.fetch()
         body = response.text()
-        stripped.append(POLICY in body)
+        stripped.append(body.count(POLICY))
         route.fulfill(response=response, body=body.replace(POLICY, ""))
 
     page.route(live, without_the_policy)
     open_desk(page, live)
-    assert stripped == [True]  # the page was served without its noSwap meta
+    assert stripped == [7]  # the page was served without the policy on its seven partials' roots
     with page.expect_response(lambda r: "/x/desk/" in r.url) as reply:
         fail(desk, page, status).click()
     finished(page, 1)
@@ -149,18 +157,6 @@ def test_an_alert_hidden_with_the_hidden_attribute_never_shows(page, live, desk)
     assert page.console_errors == []
 
 
-def test_the_alert_clears_on_the_next_request(page, live, desk):
-    open_desk(page, live)
-    page.get_by_test_id("stale-get").click()
-    finished(page, 1)
-    expect(page.locator("#trouble")).to_be_visible()
-    page.get_by_test_id("notify-3").click()
-    finished(page, 2)
-    expect(page.locator("#trouble")).to_be_hidden()
-    expect(page.get_by_test_id("notified")).to_have_text("Notified Ada.")
-    assert page.console_errors == []
-
-
 def test_the_alert_shows_when_the_request_never_gets_a_reply_and_clears_on_the_next(page, live, desk):
     # A failed fetch (the server down, a timeout) has no status: htmx 4.0.2 fires htmx:error, not htmx:response:error.
     open_desk(page, live)
@@ -175,6 +171,35 @@ def test_the_alert_shows_when_the_request_never_gets_a_reply_and_clears_on_the_n
     finished(page, 2)
     expect(page.locator("#trouble")).to_be_hidden()
     expect(page.get_by_test_id("notified")).to_have_text("Notified Ada.")
+    assert len(page.console_errors) == 1  # the second request logged nothing
+
+
+def follow_the_boosted_link_to_a_missing_page(page):
+    with page.expect_response(lambda r: r.url.endswith("/desk/gone/")) as reply:
+        page.get_by_test_id("gone").click()
+    finished(page, 1)
+    assert reply.value.status == 404
+    assert urlparse(page.url).path == "/desk/gone/"
+
+
+def test_a_boosted_link_to_a_missing_page_shows_the_404_page(page, live, desk):
+    # The policy is scoped to the interactions' partials, so boosted navigation keeps htmx's own noSwap.
+    open_desk(page, live)
+    follow_the_boosted_link_to_a_missing_page(page)
+    expect(page.locator("h1")).to_have_text("Not Found")  # Django's 404 page, swapped into the body
+    expect(one(page, "notify")).to_have_count(0)
+    assert page.console_errors == []
+
+
+def test_under_a_global_no_swap_a_boosted_404_leaves_the_old_page_under_the_new_url(page, live, desk):
+    # Why the policy is not htmx-config's noSwap: that applies to every htmx request on the page, boosted
+    # navigation included, and htmx 4.0.2 checks it before any hx-status, so no element can opt back in.
+    page.route(live, lambda route: route.fulfill(response=(r := route.fetch()), body=r.text().replace("<head>", "<head>" + GLOBAL_NO_SWAP)))
+    open_desk(page, live)
+    follow_the_boosted_link_to_a_missing_page(page)
+    expect(page.locator("h1")).to_have_text("The desk")  # the 404 was not swapped in
+    expect(one(page, "notify")).to_have_count(1)
+    assert page.console_errors == []
 
 
 # ------------------------------------------------------ what the start-up checks accept

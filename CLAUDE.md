@@ -198,7 +198,10 @@ is genuinely Django-specific; the core is vendored from hx-flask (see below).
   imports it afresh with the rota app's interactions set aside, routes them, serves `pages/` from disk with
   `tests.desk.urls` as the root, and puts the rota app back after. `test_interactions.py` asserts the
   desk passes every check, so each control the browser measures is one the checks accept; a swap the checks
-  reject is set on the control from the test, in the page. The browser tests wait for htmx with
+  reject is set on the control from the test, in the page. Its layout boosts the body as README's Install
+  recommends, and each partial's root carries the status policy's `hx-status` pair; `tests/test_docs.py`
+  compares README's and llms.txt's status-policy blocks with those files, so editing one means editing the
+  others. The browser tests wait for htmx with
   `finished(page, n)`, which counts `htmx:finally:request` on `document` (htmx dispatches there when the
   swap removed the control), and hold a write in the browser until the test releases it (`hold_writes`).
 - `browser` (one Chromium per module, with `DJANGO_ALLOW_ASYNC_UNSAFE` set while it runs) and `page` are

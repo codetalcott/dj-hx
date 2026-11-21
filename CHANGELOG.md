@@ -172,8 +172,13 @@ event fired without a target lands on `document` after a delete swap, where a
   (hx-flask's `mapcore.unpaired_events`), and they are Warnings, because a
   JavaScript file, a template in site-packages or a helper the view calls can
   be the other side.
-- README's status policy for interactions: `noSwap: [204, 304, "40x", "5xx"]`
-  in the layout's `htmx-config`, and one hyperscript alert. It shows on any
+- README's status policy for interactions: `hx-status:40x:inherited="swap:none"`
+  and `hx-status:5xx:inherited="swap:none"` on the root of each interaction's
+  partial, so a 404, a 405 or a 5xx keeps the controls while a 422 still
+  swaps, and one hyperscript alert in the layout. Not `htmx-config`'s global
+  `noSwap`: htmx 4.0.2 applies it to every request on the page, so under it a
+  boosted link to a page that answers 404 keeps the old page under the new
+  URL. The alert shows on any
   error status but 422 and on `htmx:error` (a request that gets no reply, a
   swap that throws), hides itself when the next request starts, and is hidden
   with `style="display: none"`, since `show` never clears the `hidden`
@@ -185,7 +190,8 @@ event fired without a target lands on `document` after a delete swap, where a
   Chromium on htmx 4.0.2 and _hyperscript 0.9.94 (vendored with their npm
   sha256): feedback only after the reply, a refusal that keeps the controls,
   the status policy against a 405, a 404, a 500 and a request that gets no
-  reply, and six of the forms checks E011 to E013 accept, each measured once:
+  reply, a boosted link to a missing page that still shows the 404 page, and
+  six of the forms checks E011 to E013 accept, each measured once:
   `outerMorph`, `outerSync`, a self-replacing control, inherited `this`,
   `closest #<partial>` and `<form method="post" hx-action>`. The other forms
   they accept are read from htmx 4.0.2's source.

@@ -289,16 +289,23 @@ urlpatterns = [..., path("", include("dj_hx.urls"))]   # once, at the site root
 
 Status policy for a site with interactions (measured on htmx 4.0.2 and _hyperscript 0.9.94 in Chromium,
 `tests/test_interactions_browser.py`). Without it a 404, 405 or 500 swaps its body over the region and the
-controls are gone:
+controls are gone. The pair goes on the root element of each interaction's partial, the alert once in the
+layout:
 
 ```django
-<meta name="htmx-config" content='{"noSwap": [204, 304, "40x", "5xx"]}'>   {# in <head>; "40x" is 400-409, so 422 still swaps #}
+<div id="notify" hx-status:40x:inherited="swap:none" hx-status:5xx:inherited="swap:none">   {# "40x" is 400-409, so 422 still swaps #}
 <p id="trouble" role="alert" style="display: none"
    _="on htmx:before:request from body hide me end
       on htmx:error from body show me end
-      on htmx:response:error from body if event.detail.ctx.response.status is not 422 show me">Something went wrong.</p>
+      on htmx:response:error from body if event.detail.ctx.response.status is not 422 show me">Something went wrong. Please try again.</p>
 ```
 
+- The `:inherited` pair reaches every control inside the partial, and each reply carries it back. A control
+  outside the partial that targets it writes the pair itself: `hx-status:40x="swap:none" hx-status:5xx="swap:none"`.
+- NOT `htmx-config`'s `noSwap: [204, 304, "40x", "5xx"]`: htmx 4.0.2 applies it to every htmx request on the
+  page, boosted links and forms included, and checks it before any `hx-status`, so nothing can opt back in. A
+  boosted link to a page that answers 404 then keeps the old page under the new URL (measured); under the
+  scoped pair it shows the 404 page.
 - One generic alert in the layout. `htmx:response:error` fires for every status >= 400, 422 included, so it
   skips 422 (the partial shows the refusal). A request with no reply (server down, a network error, a
   timeout) or a swap that throws fires `htmx:error` instead, so it hears that too. It hides itself when the
@@ -393,7 +400,7 @@ htmx 4 rules the templates rely on (verified against htmx.js 4.0.0):
   `hx-include="closest form"`; the handler reads them from `request.GET`.
 - A `delete` swap runs regardless of response content and honors `swap:1s`.
 - Only 204 and 304 skip the swap. A 422 body swaps, and so do a 404, a 405 and a 5xx (wiping the region an
-  interaction's control sits in), unless the layout sets the status policy (under Interactions).
+  interaction's control sits in), unless the partial's root sets the status policy (under Interactions).
 - `hx-push-url="true"` pushes the URL after a redirect, so a plain 303 updates the location bar.
 - An `HX-Redirect` response header makes htmx load that URL as a full page and skip the swap.
 - Events are colon-separated (`hx-on::after:swap`, `htmx:after:swap`); modifiers are `from:body`,
