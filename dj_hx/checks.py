@@ -67,16 +67,17 @@ W024 and W025 pair the events views announce with .trigger() (as hx_map finds
 them) and interactions declare in triggers= with the listeners in the project's
 templates (hx-trigger, hx-on, and hyperscript on in an attribute or an inline
 <script type="text/hyperscript">, behaviors included), through
-mapcore.unpaired_events(), the pairing hx_map warns from. A browser event, or
-hyperscript's on intersection, on mutation or on resize, is never asked to be
-announced; a name with a colon (htmx:*, sse:message) or built in the template
-is not read as a listener. An event a script names (a quoted name in a
-<script> or hx-on, or a hyperscript send or trigger) counts for both sides,
-since the scan cannot tell whether the script listens or sends. They are
-Warnings because a scan cannot see every side: a JavaScript file, a hyperscript
-file, a template in site-packages, or a helper the view calls. An interaction
-in site-packages announces its triggers= but is not warned about. Both skip
-without ROOT_URLCONF, through which the map resolves literal paths.
+mapcore.unpaired_events(), the pairing hx_map warns from. A browser event,
+hyperscript's on intersection, on mutation or on resize, or a name with a colon
+(htmx:*, sse:message, contact:saved) is never asked to be announced, and still
+pairs; a name built in the template is not read as a listener. An event a
+script names (a quoted name in a <script> or hx-on, or a hyperscript send or
+trigger) counts for both sides, since the scan cannot tell whether the script
+listens or sends. They are Warnings because a scan cannot see every side: a
+JavaScript file, a hyperscript file, a template in site-packages, or a helper
+the view calls. An interaction in site-packages announces its triggers= but is
+not warned about. Both skip without ROOT_URLCONF, through which the map
+resolves literal paths.
 """
 
 from __future__ import annotations

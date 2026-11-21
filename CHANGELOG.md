@@ -167,10 +167,12 @@ event fired without a target lands on `document` after a delete swap, where a
 - Event checks, from `manage.py check`: an event a view announces with
   `.trigger()` (as `hx_map` finds it) or an interaction declares in
   `triggers=` that no project template listens for (W024), and an event a
-  template listens for that nothing announces (W025), browser events and
+  template listens for that nothing announces (W025), browser events,
   hyperscript's observers (`on intersection`, `on mutation`, `on resize`)
-  left out. A name with a colon (`htmx:*`, an extension's `sse:message`) or
-  one built in the template (`on {{ name }}`) is not read as a listener.
+  and names with a colon (`htmx:*`, an extension's `sse:message`, a
+  namespaced `contact:saved`) left out; they still pair with a `.trigger()`
+  of that name. A name built in the template (`on {{ name }}`) is not read as
+  a listener.
   A hyperscript `on` counts in an attribute or an inline `<script type="text/hyperscript">`,
   behaviors included, and an event a script names (a quoted name in a
   `<script>` or `hx-on`, a hyperscript `send`) counts for both sides. They call

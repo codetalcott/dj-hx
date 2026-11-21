@@ -1409,6 +1409,25 @@ def test_w025_leaves_out_browser_side_events_and_the_names_scripts_send(startup,
     assert found(startup(**{"extra.html": template})) == []
 
 
+@pytest.mark.parametrize(
+    "listener, warned",
+    [
+        (control(NOTIFY, rest='hx-trigger="contact:saved from:body" hx-target="#notify" hx-swap="outerHTML"').split("\n")[1], False),
+        ('<p _="on contact:saved from body add .seen to me"></p>', False),
+        ("<p>no listener</p>", True),
+    ],
+    ids=["hx-trigger", "hyperscript", "no-listener"],
+)
+def test_w024_pairs_a_colon_named_trigger_with_its_listener(scratch, startup, listener, warned):
+    # a colon-named listener is browser-side (W025 never asks for it to be announced), and still pairs
+    def save_contact(request):
+        return None
+
+    interaction("POST", partial="rota.html#notify", context=nothing, route="t/save-contact", triggers=("contact:saved",))(save_contact)
+    messages = startup(**{"extra.html": control("{% act 'save_contact' %}") + "\n" + listener})
+    assert found(messages) == ([("dj_hx.W024", "tests.test_interactions.save_contact")] if warned else [])
+
+
 def test_w024_and_w025_count_triggers_of_an_interaction_dj_hx_urls_does_not_route(tmp_path):
     # The example project's URLconf: E020, and notify()'s triggers= still pair with the layout's listeners. The one
     # pairing Warning is the example's own contacts(), whose listener is in index.html, not among these templates.
