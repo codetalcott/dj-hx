@@ -1,25 +1,21 @@
 """
 A real browser against the ported app: the protocol claims the design makes,
-observed rather than reasoned about. Same seven scenarios as hx-flask. Opt-in:
+observed rather than reasoned about. Same seven scenarios as hx-flask. They run
+wherever Playwright is installed, in a bare ``pytest`` too, and are skipped where
+it is not (``importorskip``):
 
     pip install playwright && playwright install chromium
-    pytest -m browser
+    pytest -m browser                  # these and tests/test_interactions_browser.py alone
 """
 
-import os
 import types
 
 import pytest
 
+from tests.conftest import CONTACTS_JSON
+
 pytestmark = pytest.mark.browser
-sync_api = pytest.importorskip("playwright.sync_api")
-
-# Playwright's sync API runs an event loop in this thread, and Django refuses
-# database work from a thread with a running loop. Test-only, and the reason
-# pytest-django documents this variable for exactly this situation.
-os.environ.setdefault("DJANGO_ALLOW_ASYNC_UNSAFE", "true")
-
-from tests.conftest import CONTACTS_JSON  # noqa: E402
+sync_api = pytest.importorskip("playwright.sync_api")  # `browser` and `page` are tests/conftest.py's
 
 
 @pytest.fixture
@@ -31,29 +27,6 @@ def live(live_server, transactional_db, monkeypatch):
     models.Contact.load_from_json(CONTACTS_JSON)
     models.Archiver.archive_status = "Waiting"
     return live_server.url
-
-
-@pytest.fixture(scope="module")
-def browser():
-    with sync_api.sync_playwright() as p:
-        b = p.chromium.launch()
-        yield b
-        b.close()
-
-
-@pytest.fixture
-def page(browser):
-    context = browser.new_context()
-    page = context.new_page()
-    page.on("dialog", lambda d: d.accept())
-    console_errors = []
-    # A 4xx response is logged by the browser as a failed resource; that is the
-    # status doing its job, not an error in the page.
-    page.on("console", lambda m: console_errors.append(m.text) if m.type == "error" and "Failed to load resource" not in m.text else None)
-    page.on("pageerror", lambda e: console_errors.append(str(e)))
-    page.console_errors = console_errors
-    yield page
-    context.close()
 
 
 expect = sync_api.expect

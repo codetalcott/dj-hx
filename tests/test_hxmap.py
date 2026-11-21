@@ -1,11 +1,21 @@
 """manage.py hx_map: controls to views, both directions, checked statically (hx-flask's test_hxmap.py)."""
 
+import importlib.util
 import io
+import site
+import sys
+import sysconfig
+import types
+from pathlib import Path
 
 import pytest
 from django.test import override_settings
+from django.urls import path
+from django.utils.safestring import SafeString
 
 from dj_hx.hxmap import build_map, print_map
+from dj_hx.templates import in_site_packages
+from tests.urlconfs import mapping
 
 
 def by(controls, **match):
@@ -131,6 +141,19 @@ def test_map_treats_script_dispatched_events_as_announced():
 
 
 @override_settings(ROOT_URLCONF="tests.urlconfs.mapping")
+def test_a_hyperscript_listener_pairs_with_the_views_trigger():
+    sources = {"p.html": '<div _="on nobody-listens from body add .flash to me">x</div>'}
+    m = build_map(sources=sources)
+    assert [(li.element, li.event) for li in m.listeners] == [("div", "nobody-listens")]
+    assert not [w for w in m.warnings if "nobody-listens" in w], m.warnings
+    # a browser event named by hyperscript is a listener too, and is not asked to be announced
+    sources = {"p.html": '<div _="on click from body add .x to me">x</div><div _="on orphan from body log 1">y</div>'}
+    m = build_map(sources=sources)
+    warnings = "\n".join(m.warnings)
+    assert "event 'orphan' is listened for" in warnings and "event 'click'" not in warnings
+
+
+@override_settings(ROOT_URLCONF="tests.urlconfs.mapping")
 def test_url_tag_with_as_and_unknown_names():
     sources = {"p.html": "<a hx-get=\"{% url 'nope' %}\">x</a>{% url 'm-go' as u %}<a hx-get=\"{{ u }}\">y</a>"}
     m = build_map(sources=sources)
@@ -166,3 +189,76 @@ def test_by_template_says_who_renders_each_partial():
     assert "edit.html\n  contacts_edit()" in text and "edit.html#form\n  contacts_edit()" in text
     assert text.rstrip().endswith("hx map: 7 templates, 9 handlers")
     assert "0 errors, 0 warnings" not in text  # not the by-view report as well
+
+
+# --------------------------------------------- site-packages, as templates.in_site_packages judges it
+
+
+@pytest.fixture
+def user_site(tmp_path, monkeypatch):
+    """A user site-packages directory, as pip install --user fills it, which site reports."""
+    directory = tmp_path / "site-packages"
+    directory.mkdir()
+    monkeypatch.setattr(site, "getusersitepackages", lambda: str(directory))
+    return directory
+
+
+def test_in_site_packages_counts_the_directories_site_reports(user_site, tmp_path, monkeypatch):
+    distro = tmp_path / "usr" / "lib" / "python3" / "dist-packages"
+    # Windows lists the prefix itself first, and a project can live under it
+    monkeypatch.setattr(site, "getsitepackages", lambda: [str(tmp_path / "prefix"), str(distro)])
+    assert in_site_packages(user_site / "shelf" / "views.py")
+    assert in_site_packages(distro / "shelf" / "views.py")
+    assert not in_site_packages(tmp_path / "prefix" / "project" / "views.py")
+    assert not in_site_packages(tmp_path / "project" / "views.py")
+
+
+def test_in_site_packages_without_the_site_functions_an_old_virtualenv_lacks(tmp_path, monkeypatch):
+    monkeypatch.delattr(site, "getsitepackages")
+    monkeypatch.delattr(site, "getusersitepackages")
+    assert in_site_packages(Path(sysconfig.get_paths()["purelib"]) / "django" / "__init__.py")
+    assert not in_site_packages(tmp_path / "project" / "views.py")
+
+
+def test_in_site_packages_takes_a_name_django_marked_safe():
+    # A locmem template's origin name is its template name, a SafeString when a tag wrote it; below Python
+    # 3.12 pathlib interns a one-part name and refuses a str subclass (TypeError: can't intern SafeString).
+    assert not in_site_packages(SafeString("child.html"))
+
+
+def test_the_map_skips_a_view_installed_in_user_site_packages(user_site):
+    source = user_site / "shelf_views.py"
+    source.write_text("from dj_hx import page\n\n\ndef shelf(request):\n    return page(request, 'shelf.html')\n")
+    spec = importlib.util.spec_from_file_location("shelf_views", source)
+    installed = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(installed)  # not put in sys.modules: nothing else in the suite sees it
+    urlconf = types.ModuleType("user_site_urls")
+    urlconf.urlpatterns = [
+        path("shelf/", installed.shelf, name="shelf"),
+        path("m/detail/", mapping.detail, name="m-detail"),
+    ]
+    assert sorted(build_map(urlconf, sources={}).handlers) == ["m-detail"]
+
+
+def test_the_map_reads_each_views_module_for_its_own_verb_names(tmp_path, monkeypatch):
+    # one parse of a module serves every view routed from it; a view in another module gets that module's names
+    sources = {
+        "aliased_views": "import dj_hx as hx\n\n\ndef one(request):\n    return hx.page(request, 'one.html')\n\n\n"
+        "def two(request):\n    return hx.page(request, 'two.html')\n",
+        "renamed_views": "from dj_hx import fragment as frag\n\n\ndef three(request):\n    return frag(request, 'three.html', 'part')\n",
+    }
+    for name, source in sources.items():
+        (tmp_path / f"{name}.py").write_text(source)
+        spec = importlib.util.spec_from_file_location(name, tmp_path / f"{name}.py")
+        module = importlib.util.module_from_spec(spec)
+        monkeypatch.setitem(sys.modules, name, module)  # inspect.getmodule() finds a view's module there
+        spec.loader.exec_module(module)
+    aliased, renamed = sys.modules["aliased_views"], sys.modules["renamed_views"]
+    urlconf = types.ModuleType("two_modules_urls")
+    urlconf.urlpatterns = [
+        path("1/", aliased.one, name="one"),
+        path("2/", aliased.two, name="two"),
+        path("3/", renamed.three, name="three"),
+    ]
+    m = build_map(urlconf, sources={})
+    assert {endpoint: h.verbs for endpoint, h in m.handlers.items()} == {"one": {"page"}, "two": {"page"}, "three": {"fragment"}}

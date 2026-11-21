@@ -25,5 +25,16 @@ book's Flask original so the two can be compared line for line.
   *Hypermedia Systems* (Gross, Stepinski, Akşimşek), whose sample application
   is published under the BSD 2-Clause license.
 
+## Vendored into the tests
+
+The desk app the browser tests drive loads these, checked by sha256 against
+the npm tarballs (`tests/desk/static/desk/README.md` has the hashes).
+
+- `tests/desk/static/desk/htmx-4.0.2.min.js` — htmx, by Big Sky Software,
+  from `htmx.org@4.0.2`. 0BSD.
+- `tests/desk/static/desk/_hyperscript-0.9.94.min.js` — _hyperscript
+  (github.com/bigskysoftware/_hyperscript), from `hyperscript.org@0.9.94`.
+  The tarball's `LICENSE` is 0BSD; its `package.json` says BSD 2-Clause.
+
 [hx-flask]: https://github.com/codetalcott/hx-flask
 [dj-fixi]: https://github.com/codetalcott/dj-fixi

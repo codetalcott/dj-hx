@@ -1,10 +1,17 @@
-"""The system checks: quiet on the example project, and each one on its own defect."""
+"""
+The system checks: quiet on the example project, and each one on its own defect. The example project
+has no interactions, so the rota app's are set aside here; tests/test_interactions.py checks those.
+"""
 
 import pytest
 from django.conf import settings
+from django.core.checks import ERROR, INFO
 from django.test import override_settings
 
 from dj_hx.testing import assert_no_hx_check_issues, hx_check_messages
+from tests.conftest import on_disk
+
+pytestmark = pytest.mark.usefixtures("no_interactions")
 
 
 def ids():
@@ -71,6 +78,174 @@ def test_w008_for_an_extension_name_the_lint_does_not_know():
     with override_settings(HX_EXTENSIONS="sse, ws"):
         messages = hx_check_messages()
     assert [m.id for m in messages] == ["dj_hx.W008"] and "('sse', 'ws')" in messages[0].hint
+
+
+# ------------------------------------------------------------------ {% url %}: E022, I023
+
+
+def url_messages(directory, source):
+    """E022 and I023 for one template, page.html, under tests/urlconfs/reversing.py."""
+    (directory / "page.html").write_text(source)
+    with override_settings(ROOT_URLCONF="tests.urlconfs.reversing", TEMPLATES=on_disk(directory)):
+        return [m for m in hx_check_messages() if m.id in ("dj_hx.E022", "dj_hx.I023")]
+
+
+REVERSES = """<a href="{% url 'home' %}">home</a>
+<a href="{% url 'contacts_edit' contact.id %}">int</a> <a href="{% url "contacts_edit" contact_id=contact.id %}">by keyword</a>
+<a href="{% url 'page' page.title %}">str</a> <a href="{% url 'tag' tag=t.slug %}">slug</a>
+<a href="{% url 'file' f.path %}">path</a> <a href="{% url 'token' token=t.uuid %}">uuid</a>
+<a href="{% url 'shop:cart' store=s.id %}">a namespace whose prefix takes one</a> <a href="{% url 'shop:item' s.id i.slug %}">item</a>
+<a href="{% url 'feed' fmt='atom' %}">atom</a> <a href="{% url 'feed' %}">rss</a> <a href="{% url 'blog' page=1 %}">blog</a>"""
+
+
+def test_e022_is_quiet_when_every_url_reverses_with_its_converters_placeholders(tmp_path):
+    # int -> 1; str, slug and path -> "a"; uuid -> 00000000-...; read from the resolver, through the namespace.
+    # A keyword naming a route's extra kwarg reverses with that default: {% url 'feed' fmt='atom' %} is /feed.atom
+    assert url_messages(tmp_path, REVERSES) == []
+
+
+@pytest.mark.parametrize(
+    "tag, says",
+    [
+        (
+            "{% url 'contacts_edit' %}",
+            "{% url 'contacts_edit' %} passes no arguments, but 'contacts_edit' is /contacts/<int:contact_id>/edit/, "
+            "which takes contact_id, so the page raises NoReverseMatch at render.",
+        ),
+        ("{% url 'contacts_edit' contact.id 2 %}", "passes 2 positional arguments, but 'contacts_edit' is"),
+        ("{% url 'contacts_edit' pk=contact.id %}", "passes the keyword pk, but 'contacts_edit' is"),
+        ("{% url 'shop:cart' %}", "passes no arguments, but 'shop:cart' is /stores/<int:store>/cart/, which takes store"),
+        (
+            "{% url 'contacts_edit' contact.id page=2 %}",
+            "{% url 'contacts_edit' %} passes 1 positional and 1 keyword argument; reverse() refuses the mix, so the "
+            "page raises ValueError at render.",
+        ),
+        (
+            "{% url 'contact_edit' contact.id %}",
+            "{% url 'contact_edit' %} names no URL pattern (did you mean 'contacts_edit'?), so the page raises "
+            "NoReverseMatch at render.",
+        ),
+        ("{% url 'shop:crat' store=s.id %}", "{% url 'shop:crat' %} names no URL pattern (did you mean 'shop:cart'"),
+        (
+            "{% url 'shops:cart' store=s.id %}",
+            "{% url 'shops:cart' %} names the namespace 'shops', which no URLconf installs (did you mean 'shop'?), so "
+            "the page raises NoReverseMatch at render.",
+        ),
+        ("{% url 'archive' %}", "passes no arguments, but 'archive' is /archive/<yyyy:year>/, which takes year"),
+        ("{% comment %}{% url 'home' 1 %}{% endcomment %}{% url 'home' 1 %}", "passes 1 positional argument, but 'home'"),
+    ],
+    ids=[
+        "missing", "extra", "wrong-keyword", "namespaced", "mixed", "no-such-name", "no-such-name-in-namespace",
+        "no-such-namespace", "custom-converter-missing", "after-a-comment",
+    ],
+)
+def test_e022_a_url_that_does_not_reverse(tmp_path, tag, says):
+    messages = url_messages(tmp_path, f'<p>a link</p>\n<a href="{tag}">x</a>')
+    assert [(m.id, m.level, m.obj) for m in messages] == [("dj_hx.E022", ERROR, "page.html:2")]
+    assert says in messages[0].msg
+
+
+def test_e022_says_how_to_write_the_tag(tmp_path):
+    [message] = url_messages(tmp_path, "{% url 'shop:item' %}")
+    assert message.hint == (
+        "Pass one value for each parameter of the route, all by position or all by keyword: "
+        "{% url 'shop:item' store=... item=... %}."
+    )
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "{% url view_name %}",
+        "{% url 'nowher'|add:'e' %}",
+        "{# {% url 'nowhere' %} #}",
+        "{% comment 'old' %}{% url 'nowhere' %}{% endcomment %}",
+        "{% verbatim %}{% url 'nowhere' %}{% endverbatim %}",
+        "{% verbatim js %}{% url 'nowhere' %}{% endverbatim js %}",
+        "{% url 'nowhere'\n %}",
+        # Django's documented form for a view that may be missing, as its own admin/base.html writes it
+        "{% url 'django-admindocs-docroot' as docsroot %}{% if docsroot %}<a href=\"{{ docsroot }}\">Docs</a>{% endif %}",
+        "{% url 'contacts_edit' as edit %}",
+    ],
+    ids=["variable", "filter", "comment", "comment-tag", "verbatim", "named-verbatim", "across-lines", "as-var", "as-var-missing-argument"],
+)
+def test_e022_skips_a_name_built_at_run_time_and_what_django_does_not_read_as_a_tag(tmp_path, source):
+    assert url_messages(tmp_path, source) == []
+
+
+@pytest.mark.parametrize(
+    "tag, says",
+    [
+        (
+            "{% url 'archive' 2024 %}",
+            "{% url 'archive' %} is not checked: 'archive' is /archive/<yyyy:year>/, and dj-hx has no placeholder "
+            "value for the converter of year, FourDigitYear.",
+        ),
+        (
+            "{% url 'legacy' code='ABC' %}",
+            "{% url 'legacy' %} is not checked: 'legacy' is /legacy/<code>/, and dj-hx has no placeholder value for "
+            "code, a regular-expression group (re_path).",
+        ),
+    ],
+    ids=["custom-converter", "re_path"],
+)
+def test_i023_a_url_whose_route_takes_a_converter_without_a_placeholder(tmp_path, tag, says):
+    messages = url_messages(tmp_path, f'<p>a link</p>\n<a href="{tag}">x</a>')
+    assert [(m.id, m.level, m.obj) for m in messages] == [("dj_hx.I023", INFO, "page.html:2")]  # not checked, not wrong
+    assert messages[0].msg == says and "SILENCED_SYSTEM_CHECKS" in messages[0].hint
+
+
+def test_w024_a_views_trigger_no_template_listens_for(tmp_path):
+    # contacts() announces contacts-changed with .trigger(), as hx_map finds it; index.html is not here to listen
+    (tmp_path / "page.html").write_text("<p>no listener</p>")
+    with override_settings(TEMPLATES=on_disk(tmp_path)):
+        messages = [m for m in hx_check_messages() if m.id == "dj_hx.W024"]
+    assert [(m.obj, m.msg) for m in messages] == [
+        (
+            "contacts",
+            "contacts() announces 'contacts-changed' with .trigger(), but no project template listens for it "
+            "(hx-trigger, hx-on, or a hyperscript 'on contacts-changed' in an attribute or an inline "
+            '<script type="text/hyperscript">), and no script there names it.',
+        )
+    ]
+
+
+def test_w024_does_not_read_an_alpine_listener(tmp_path):
+    # Alpine's @x.window and x-on: are not read (README lists them with what the scan cannot see)
+    (tmp_path / "page.html").write_text('<div x-data @contacts-changed.window="load()" x-on:contacts-changed.window="load()"></div>')
+    with override_settings(TEMPLATES=on_disk(tmp_path)):
+        assert [m.obj for m in hx_check_messages() if m.id == "dj_hx.W024"] == ["contacts"]
+
+
+def test_w024_and_w025_are_skipped_without_root_urlconf(no_interactions, tmp_path):
+    # The map resolves a literal-path control through ROOT_URLCONF; without one that raised AttributeError and
+    # stopped the check run. The event checks skip, as the interaction routes and {% url %} checks do.
+    (tmp_path / "page.html").write_text('<button hx-post="/notify/" hx-target="#out">Go</button><p id="out"></p>')
+    with override_settings(TEMPLATES=on_disk(tmp_path)):
+        del settings.ROOT_URLCONF
+        messages = hx_check_messages()
+    assert [m.id for m in messages if m.id in ("dj_hx.W024", "dj_hx.W025")] == []
+
+
+@pytest.mark.parametrize(
+    "template",
+    [
+        '<script type="text/hyperscript">on contacts-changed from body log 1 end</script>',
+        # a behavior, defined in a script block: its features may follow its name on the same line
+        '<script type="text/hyperscript">behavior Recount on contacts-changed from body log 1 end end</script>'
+        '<div _="install Recount"></div>',
+        # a script that names the event may listen for it: the scan cannot tell, so it is not asked to
+        "<script>document.body.addEventListener('contacts-changed', () => location.reload())</script>",
+        # a hyperscript script block's send announces closeAll to its listener
+        '<p _="on contacts-changed from body log 1"></p><script type="text/hyperscript">on keyup[key is \'Escape\'] '
+        'from window send closeAll to body end</script><div _="on closeAll from body remove me"></div>',
+    ],
+    ids=["script-block", "behavior", "javascript-names-it", "script-block-sends"],
+)
+def test_w024_and_w025_read_hyperscript_script_blocks_and_what_scripts_name(tmp_path, template):
+    (tmp_path / "page.html").write_text(template)
+    with override_settings(TEMPLATES=on_disk(tmp_path)):
+        assert [m.id for m in hx_check_messages() if m.id in ("dj_hx.W024", "dj_hx.W025")] == []
 
 
 def test_checks_stay_quiet_when_dj_hx_is_not_installed():

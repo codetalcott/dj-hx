@@ -8,7 +8,7 @@
 Facts to hold while writing code against this package:
 
 - Requires htmx **4** (`HX-Request-Type` header). htmx 1/2 idioms are rejected by a lint that runs on every
-  test-client response. Django 4.2 to 6.0, Python 3.10+.
+  test-client response. Django 4.2, 5.2, 6.0 and 6.1; Python 3.10 to 3.13.
 - The only client fact a handler reads is `HX-Request-Type`: `full` (browser, boosted link, or a control
   whose target is `body` or that sets `hx-select`) or `partial` (a control targeting an element). Never
   read `HX-Source` or `HX-Target`; never branch on an element id.
@@ -200,6 +200,122 @@ class ContactCreate(HxMixin, CreateView):
 `page`), `form_invalid` (422), and `form_valid` (raises `HxRedirectIntoFragment` if Django's redirect would
 answer a partial request; override it to return `render`/`fragment`/`removed` for element-targeted forms).
 
+### Interactions
+
+One handler bound to one partial. The reply is always that partial.
+
+```python
+from dj_hx import interaction
+
+def assign_context(request, contest):     # the page view calls it too: every name the page reads has its default here
+    return {"contest": Contest.get(contest), "notified": False, "error": None}
+
+@interaction("POST", partial="contests/assign.html#notify", context=assign_context,
+             refuses=(DomainError,), triggers=("notified",), route=None)
+def notify(request, contest: str, member: int):
+    Contest.get(contest).notify(member)
+    return {"notified": True}             # a dict of context keys, or None; never a response
+```
+
+```python
+urlpatterns = [..., path("", include("dj_hx.urls"))]   # once, at the site root
+```
+
+```django
+{% load hx %}
+<button hx-post="{% act 'notify' contest=contest.slug member=member.id %}" hx-target="#notify" hx-swap="outerHTML">
+```
+
+- Route: `x/<app label>/<handler>/<param>/.../`, `<int:p>` for a parameter annotated `int` and `<str:p>`
+  otherwise, named after the handler in the `dj_hx` namespace. `route="reviewers/<int:member>/notify"` sets
+  the path instead and must name exactly the handler's parameters, `<int:...>` for each `int` one.
+- `{% act %}` takes keyword arguments only, one per handler parameter. A positional argument, an unknown or
+  a missing keyword, or an unknown interaction raises `TemplateSyntaxError` at render. Without `dj_hx.urls`
+  included it raises `ImproperlyConfigured`, naming `path("", include("dj_hx.urls"))`.
+- Put interactions in an installed app's `views.py`: dj-hx's `ready()` imports the `views` module of every
+  app outside site-packages. One registered after `dj_hx.urls` was first read keeps the bare view as its
+  route, without the decorators above it (check E017).
+- Django view decorators go ABOVE `@interaction` (`@login_required` then `@interaction(...)`). It returns the
+  routed view and `dj_hx.urls` routes whatever the module that defines the handler holds under the handler's
+  name, as written, so every decorator above it wraps the route, a hand-written one included. Write your own
+  with `functools.wraps`, so dj-hx's messages and `hx_map` name the handler (W018 warns on one without it).
+  Below it, a decorator that returns a response is a return-type error (W019 warns on any decorator below).
+  The module must hold the view `@interaction` returned (or a decorator of it) under the handler's name, never
+  the raw handler: `remind_view = interaction(...)(remind)` raises when the URLconf is read; write
+  `remind = interaction(...)(remind)` in the module that defines `remind` (the handler is
+  `inspect.unwrap(remind)`). An interaction the module does not hold under its name gets the bare view, and
+  decorators applied to it are dropped. `login_required`'s 302 to a control that targets an element is
+  recorded by the guard (`HxRedirectIntoFragment`), as for any view.
+- Reply: `fragment()` of the partial with `context(request, <the route parameters it names>)` and the
+  returned keys over it, status 200, then `.trigger(name)` for each of `triggers`. A `context=` parameter the
+  route lacks takes its default. Its root element must carry `id="<partial name>"` (`HxPartialRootId`).
+- Every reply carries `error`: `str(exc)` on a refusal, `None` on success unless `context=` or the handler sets
+  it, so the partial reads `{% if error %}` whatever `context=` defines. The page view is not a reply: a page
+  that renders the partial needs `error` in its own context (as `assign_context` has it), or `HxTestClient`
+  raises `HxUndefinedVariable` on the page.
+- Refusal: an exception in `refuses` (one class, or a tuple of them) re-renders the partial with
+  `error=str(exc)`, status 422, no triggers. Any other exception is a 500. Any other method is a 405.
+  Give every refusal a message the user can read: an empty or blank one is recorded as `HxEmptyRefusal`
+  (the reply still goes out, showing nothing), which `HxTestClient` raises.
+- A refusal is a response, so under `ATOMIC_REQUESTS` the writes made before the raise are COMMITTED. Raise
+  before writing, or call `transaction.set_rollback(True)` just before the raise, or write inside
+  `with transaction.atomic():` and raise inside it (that works without `ATOMIC_REQUESTS` too).
+- Access control: a decorator above `@interaction`, or middleware that sees every request (Django 5.1's
+  `LoginRequiredMiddleware`). Interactions are routed by the root `include("dj_hx.urls")`, so protection on
+  the app's own include (`decorator_include`, a middleware matching the app's URL prefix) never reaches them.
+- `ImproperlyConfigured` when the URLconf is first read (first request, `manage.py check`): the module holds
+  the raw handler under its name, or a decorator of it written with `functools.wraps`. One written without
+  `functools.wraps` is routed as it is, past the method guard; only W018 warns.
+- `ImproperlyConfigured` at import: a duplicate name, a minted route for a handler in no installed app, a
+  `route=` that does not match, `partial=` not `page.html#name`, `triggers=` a string, `method` not one of
+  GET, POST, PUT, PATCH, DELETE (any case), `refuses` holding anything but exception classes, `*args` or
+  `**kwargs` on the handler or on `context=`, a `context=` parameter without a default that the route lacks.
+  At the reply: a return that is not a dict or `None` (a view decorator below `@interaction` returning a
+  response included), or a returned key the context lacks (`error` never is: every reply carries it).
+- `manage.py check` reads each `{% act %}` in the project's `.html`/`.htm` templates (never site-packages; one
+  inside `{% verbatim %}` still counts, for E009 and as E014's control) and the control
+  whose verb attribute holds it, resolving each attribute as htmx 4.0.2 does. The verb must send the
+  interaction's method (`hx-action` sends its `hx-method`, an ancestor's `hx-method:inherited`, its
+  `method` attribute, else GET; a submit button's `formmethod` is not read). The control must target the
+  element with the partial's id: `hx-target="#<partial>"` (or an htmx 4.0.2 extended selector whose CSS
+  part is that: `closest`, `find`, `findAll`, `next`, `previous`, optionally after `global `), or no
+  `hx-target` / `hx-target="this"` on the element carrying the id (`this` is the element that declares it). `hx-swap` must be an outer swap
+  (`outerHTML`, `outerMorph` or `outerSync`; each measured to leave one element with the id on htmx 4.0.2).
+  Each attribute is the control's own or an ancestor's
+  `:inherited` one; a plain attribute on an ancestor does not count. A computed `hx-swap` or `hx-method` is
+  not judged; a templated id or `hx-target` is judged by its literal parts and skipped only when it could
+  equal the expected value (`id="{{ name }}"` is skipped, `id="row-{{ pk }}"` is an Error). A block tag in
+  an id, and the text it wraps, counts as computed (`id="{% if p %}{{ p }}-{% endif %}notify"` is skipped). An `{% act %}`
+  outside a verb attribute gets Info I021. The ids are in the checks table below.
+
+Status policy for a site with interactions (measured on htmx 4.0.2 and _hyperscript 0.9.94 in Chromium,
+`tests/test_interactions_browser.py`). Without it a 404, 405 or 500 swaps its body over the region and the
+controls are gone. The pair goes on the root element of each interaction's partial, the alert once in the
+layout:
+
+```django
+<div id="notify" hx-status:40x:inherited="swap:none" hx-status:5xx:inherited="swap:none">   {# "40x" is 400-409, so 422 still swaps #}
+<p id="trouble" role="alert" style="display: none"
+   _="on htmx:before:request from body hide me end
+      on htmx:error from body show me end
+      on htmx:response:error from body if event.detail.ctx.response.status is not 422 show me">Something went wrong. Please try again.</p>
+```
+
+- The `:inherited` pair reaches every control inside the partial, and each reply carries it back. A control
+  outside the partial that targets it writes the pair itself: `hx-status:40x="swap:none" hx-status:5xx="swap:none"`.
+- NOT `htmx-config`'s `noSwap: [204, 304, "40x", "5xx"]`: htmx 4.0.2 applies it to every htmx request on the
+  page, boosted links and forms included, and checks it before any `hx-status`, so nothing can opt back in. A
+  boosted link to a page that answers 404 then keeps the old page under the new URL (measured); under the
+  scoped pair it shows the 404 page.
+- One generic alert in the layout. `htmx:response:error` fires for every status >= 400, 422 included, so it
+  skips 422 (the partial shows the refusal). A request with no reply (server down, a network error, a
+  timeout) or a swap that throws fires `htmx:error` instead, so it hears that too. It hides itself when the
+  next request starts.
+- Hide it with `style="display: none"`, NEVER the `hidden` attribute: hyperscript's `show` clears only an
+  inline `display`, so a `hidden` alert never appears.
+- Hear a `triggers=` fact with `_="on notified from body ..."` or `hx-trigger="notified from:body"`. It runs
+  after the reply; feedback belongs in the reply or a listener, never in an `on click` that runs before it.
+
 ### Settings
 
 | Setting | Meaning |
@@ -208,7 +324,7 @@ answer a partial request; override it to return `render`/`fragment`/`removed` fo
 | `HX_REQUEST_TYPE_FALLBACK = "full"` | Answer htmx requests missing `HX-Request-Type` as this type instead of raising. Proxies only. |
 | `HX_LINT_IGNORE = ("implicit-inheritance",)` | Lint rules to silence everywhere (test client, middleware, `hx_lint`, W005). |
 | `HX_EXTENSIONS = ("hx-live", "sse")` | Extensions the pages load, for the lint (also detected from `<script src>`). The file name (`hx-sse`) or the name htmx registers (`sse`, as in `htmx.config.extensions`); W008 flags any other. |
-| `SILENCED_SYSTEM_CHECKS = ["dj_hx.W005"]` | Standard Django; the check ids are below. |
+| `SILENCED_SYSTEM_CHECKS = ["dj_hx.W005"]` | Standard Django; the check ids are below. An Error's id can be silenced too, as while working through E022's first run on an existing site: an Error stops `check`, `runserver`, `migrate`, `makemigrations`, `createsuperuser` and `manage.py test`. |
 
 ### Errors
 
@@ -224,9 +340,11 @@ All subclass `HxError` except `HxRedirectError` (an `AssertionError` from the te
 | `HxMessagesUnconfigured` | recorded by the middleware | messages added on a fragment response, `HX_MESSAGES_TEMPLATE` unset | set it |
 | `HxProtocolError` | raised by `request_type()`; recorded by the guard | `HX-Request` without `HX-Request-Type` | use htmx 4; `HX_REQUEST_TYPE_FALLBACK` for proxies |
 | `HxUnknownPartial` | raised at render | `partial=` names no partial of the template; message lists the ones it defines | write `{% partialdef name inline %}` around the region |
-| `HxPartialRootId` | raised at render | a partial used as `<hx-partial>` does not start with one element carrying `id="<name>"` | wrap the region in `<div id="name">` |
+| `HxEmptyRefusal` | recorded by an interaction's reply | a declared refusal with an empty or blank message: the 422 reply's `{% if error %}` shows nothing | raise it with a message: `raise NotOnRota("Member 9 is not on the rota.")` |
+| `HxPartialRootId` | raised at render | a partial used as `<hx-partial>`, or an interaction's reply, does not start with one element carrying `id="<name>"` | wrap the region in `<div id="name">` |
 | `HxLintError` | raised by `HxTestClient` | an error-level lint finding in a `text/html` response | fix the HTML; `lint_ignore=` / `HX_LINT_IGNORE` to silence a rule |
 | `HxRedirectError` | raised by `HxTestClient` | 3xx to a `full=True` request without `follow=` | pass `follow=True` (what the browser shows) or `follow=False` (assert on the 3xx) |
+| `HxUndefinedVariable` | raised by `HxTestClient`; recorded under `strict=False` | a project template reads a name nobody supplies or an attribute an object lacks, in `{{ }}`, `{% if %}`, `{% for %}` or any tag (lookups that depend on the data are skipped: see Testing); `.lookups` names each with its template:line | put the name in the view's context with its default (an interaction's: `context=`), or correct it; `undefined=False` turns the check off |
 
 ## Templates
 
@@ -282,7 +400,8 @@ htmx 4 rules the templates rely on (verified against htmx.js 4.0.0):
 - `hx-delete` sends its parameters in the query string and excludes the enclosing form unless
   `hx-include="closest form"`; the handler reads them from `request.GET`.
 - A `delete` swap runs regardless of response content and honors `swap:1s`.
-- Only 204 and 304 skip the swap. A 422 body swaps.
+- Only 204 and 304 skip the swap. A 422 body swaps, and so do a 404, a 405 and a 5xx (wiping the region an
+  interaction's control sits in), unless the partial's root sets the status policy (under Interactions).
 - `hx-push-url="true"` pushes the URL after a redirect, so a plain 303 updates the location bar.
 - An `HX-Redirect` response header makes htmx load that URL as a full page and skip the swap.
 - Events are colon-separated (`hx-on::after:swap`, `htmx:after:swap`); modifiers are `from:body`,
@@ -317,7 +436,7 @@ the nearest valid name.
 ```python
 from dj_hx.testing import HxTestClient, assert_no_hx_check_issues
 
-client = HxTestClient()                       # strict=True, lint=True, lint_ignore=()
+client = HxTestClient()                       # strict=True, lint=True, lint_ignore=(), undefined=True
 client.get("/contacts/")                      # a browser
 client.hx_get("/contacts/?q=a")               # HX-Request: true, HX-Request-Type: partial
 client.hx_get("/contacts/", full=True)        # a boosted link or body-targeted control
@@ -331,6 +450,9 @@ def test_dj_hx_is_configured():
     assert_no_hx_check_issues()               # pytest never runs system checks; this does
 ```
 
+`assert_no_hx_check_issues()` fails on any dj-hx check message, Infos (I021, I023) included;
+`include_warnings=False` keeps Errors only.
+
 What the client enforces on every request, including plain `client.get`:
 
 - Recorded findings (the verbs' and the guard's) raise the first one. `HxTestClient(strict=False)` records
@@ -339,6 +461,31 @@ What the client enforces on every request, including plain `client.get`:
   `HxLintWarning` (`warnings.warn`). `lint=False` or `lint_ignore=("rule",)` per client.
 - A 3xx to a `full=True` request raises `HxRedirectError` unless `follow=True` or `follow=False` was
   chosen, because htmx's fetch follows redirects and the browser never sees the 3xx.
+- A project template that reads a name nobody supplies, or an attribute an object lacks, raises
+  `HxUndefinedVariable`, a recorded finding (`strict=False` leaves it in `response.hx_findings`). Its
+  `.lookups` give each one's `variable` (the name, or the attribute after a dot), `template`, `line`, `tag`
+  and `included`, where the tag is written: an `{% extends %}` base, an included file, the file a partial is in.
+  - Raises: `{{ x }}`, `{% if x %}`, `{% for i in x %}` and `{{ x|default:"" }}` (Django logs the lookup before
+    any filter runs) for a name nobody supplies, an `{% include %}` parameter not passed (the message says to
+    pass it in the include's `with`, `... subtitle=None`), and `{{ obj.attr }}` for an attribute a non-None
+    object lacks that is not a mapping key or an index (`{{ user.emial }}`, `{{ items.length }}` on a list).
+  - Skipped, because the outcome depends on the data: a lookup on None (`obj.rel.name` with no `rel`), a key
+    a `Mapping` or the session lacks (`request.GET.stage`, `request.session.cart`; so a misspelt dict key is
+    silent, as in Django, and so is any lookup on a mapping: `forloop.countr`, since `forloop` is a dict, and a
+    misspelt QueryDict method, `request.GET.urlencod`), an index past the end of a sequence (`items.0` on `[]`; a string's index still
+    counts), anything `{% firstof %}` reads, `debug` and `sql_queries` where the debug context processor is
+    configured, and a response built from an exception (the 500 page).
+  - Not seen: templates in site-packages or built from a string, a lookup that raised an exception Django
+    silences (`DoesNotExist`), a render outside the request's context (a `ThreadPoolExecutor`, a plain thread,
+    a streaming body consumed after the request). An `async def` view is checked.
+  - It rests on Django details the suite pins on 4.2 to 6.1: the DEBUG record's message and its
+    `VariableDoesNotExist`, the template node on the stack, and the exception's `params == (bit, current)`. A
+    Django that changed the record or the node would make it go quiet; one that dropped `params` would make it
+    count the lookups it now skips.
+  - Supply each name from the view's context with its default. Read from Django's `django.template` DEBUG
+    log while the request runs; other handlers see only what they saw before. `undefined=False` turns it off.
+    `logging.disable()` in force, or a disabled `django.template` logger (a `LOGGING` dict leaving
+    `disable_existing_loggers` at `True`), raises `ImproperlyConfigured`, because the check would see nothing.
 - Without `HxMiddleware` installed the client runs the guard itself.
 
 Assertions that match the protocol:
@@ -365,11 +512,17 @@ manage.py hx_map [--no-check] [--by-template]          # controls <-> views <-> 
 `--by-template` inverts the map: every template and partial a view names, who renders it, and the
 controls that reach them.
 
-`hx_map` classifies each control as full or partial by htmx 4's rule, resolves it through `{% url %}` or
-the literal path, and errors when a partial control reaches a view that only calls `page`, or a full
+Site-packages, wherever dj-hx skips it (`hx_lint`, `hx_map`, the checks, `ready()`), is sysconfig's
+`purelib` and `platlib` plus the `site-packages` and `dist-packages` directories `site` reports, the user
+one (`pip install --user`) included.
+
+`hx_map` classifies each control as full or partial by htmx 4's rule, resolves it through `{% url %}`,
+`{% act %}` (the interaction registry: an interaction answers its one method with its partial through
+`fragment()` and announces its `triggers=`; an `{% act %}` naming no interaction, or with `dj_hx.urls` not
+included, is an error) or the literal path, and errors when a partial control reaches a view that only calls `page`, or a full
 control reaches one that only calls `fragment`/`text`/`removed`; `navigate` says nothing about shape, so a
 view that calls it and `page` is still page-only. `if request.method == "DELETE":` branches
-are attributed to that method. It pairs `.trigger("x")` with `hx-trigger="x from:body"` both ways and warns
+are attributed to that method. It pairs `.trigger("x")` with `hx-trigger="x from:body"` or a hyperscript `_="on x from body ..."` (or the same in an inline `<script type="text/hyperscript">`, behaviors included) both ways (a listener for a browser event such as `click`, a hyperscript observer (`on intersection`, `on mutation`, `on resize`), or a name with a colon (`htmx:*`, an extension's `sse:message`, a namespaced `contact:saved`) is never asked to be announced and still pairs; one built in the template is not read as a listener; an event a script names, `addEventListener('x', ...)` or a hyperscript `send x`, counts for both sides; checks W024 and W025 report the same pairing) and warns
 on `hx-delete` controls that send no values to a handler that reads them. Whether or not a view calls a
 verb, it errors when the view reads the `HX-Trigger` request header (`request.headers`, `request.META`),
 which htmx 4 does not send, or reads `request.POST` on DELETE, which htmx 4 sends as query parameters
@@ -387,6 +540,23 @@ System checks (tag `dj_hx`):
 | W006 | Django < 6 without django-template-partials |
 | E007 | a Django base class listed before `HxMixin` shadows its hooks |
 | W008 | `HX_EXTENSIONS` is a string, or names an extension htmx 4 does not ship |
+| E009 | `{% act %}` in a project template names no interaction (lists those there are) |
+| E010 | `{% act %}`'s arguments are not its handler's parameters (positional, unknown or missing) |
+| E011 | an `{% act %}` control's verb (`hx-get` ... `hx-delete`; or `hx-action` with its `hx-method`, an ancestor's `hx-method:inherited`, its `method` attribute, else GET; `formmethod` not read) is not the interaction's method |
+| E012 | an `{% act %}` control does not target the element with id `<partial>`: neither `hx-target="#<partial>"` (own or an ancestor's `:inherited`; also `closest`, `find`, `findAll`, `next` or `previous #<partial>`, with or without `global `, as htmx 4.0.2's target resolver reads them) nor no `hx-target` / `hx-target="this"` on that element. A comma list, bare `next`/`previous`, `document`, `window`, `body`, `host` and other CSS are Errors |
+| E013 | an `{% act %}` control's `hx-swap` (own or `:inherited`) is not an outer swap (`outerHTML`, `outerMorph`, `outerSync`, per htmx 4.0.2's swap code). A control without `hx-swap` is judged as htmx 4's default `innerHTML`; a page's `htmx.config.defaultSwap` is not read (write `hx-swap` on each control). Measured on htmx 4.0.2: htmx 4's default `innerHTML`, and `beforeend`, `afterbegin`, `beforebegin`, `afterend`, leave a second element with the id; on `innerMorph` htmx throws (`HierarchyRequestError`, logged as `htmx:error`) and the reply never reaches the page |
+| E014 | an interaction has no control: no project `.html`/`.htm` template writes its `{% act %}` (a `{% url 'dj_hx:…' %}` or hand-written path is not counted: E011-E013 cannot check it); skipped for a handler whose module is in site-packages, whose templates are never read |
+| E015 | an interaction's partial does not load (`HxUnknownPartial`'s reason) or does not parse (Django's `TemplateSyntaxError` message) |
+| E016 | an interaction's partial does not start with an element carrying `id="<partial>"`, where the source shows its root |
+| E017 | `dj_hx.urls` routes an interaction to other than what its module holds: it was registered after `dj_hx.urls` was first read, or the module rebound the name since |
+| W018 | the module attribute routed for an interaction does not unwrap to it (a decorator above without `functools.wraps`) |
+| W019 | a decorator sits below `@interaction` (the handler has `__wrapped__`) |
+| E020 | interactions are registered but `dj_hx.urls` is not included |
+| I021 | an `{% act %}` the checks cannot tie to one element's verb attribute (script, text, another attribute, `as`, a variable name) |
+| E022 | a `{% url %}` with a quoted name in a project `.html`/`.htm` template does not reverse, against `ROOT_URLCONF`, with the arguments it passes: no such name (close ones listed), a namespace no URLconf installs, the wrong positional count or keywords, or both kinds mixed. Each argument is reversed with a placeholder for its route's converter (`int` 1; `str`, `slug`, `path` "a"; `uuid` all zeros); a keyword naming a route's extra kwarg gets that default. Skipped: `{% url ... as var %}` (Django's form for a view that may be missing), a name built at run time (a variable, a filter), a tag in a comment or `{% verbatim %}`. A site that sets `request.urlconf` per request silences it. The result depends on the settings it runs under: a route included only under `DEBUG` or a feature flag is an E022 under other settings (a deploy's `migrate` runs the checks); link it as `{% url 'name' as link %}{% if link %}...{% endif %}` |
+| I023 | a `{% url %}` not checked: its route takes a custom converter or a `re_path` group, which has no placeholder. Usually a third-party `re_path` in a template the project overrides: admin's `{% url 'admin:app_list' app_label=... %}`, allauth's `account_confirm_email` |
+| W024 | an event a view announces with `.trigger()` (as `hx_map` finds it) or an interaction declares in `triggers=` that no project template listens for (`hx-trigger`, `hx-on`, hyperscript `on` in `_`/`script`/`data-script` or an inline `<script type="text/hyperscript">`, behaviors included); an interaction in site-packages is not warned about |
+| W025 | an event a project template listens for that nothing announces; browser events, hyperscript's observers (`on intersection`, `on mutation`, `on resize`) and names with a colon (`htmx:*`, `sse:message`, `contact:saved`) are left out, though they still pair with a `.trigger()` or `triggers=` of that name (so no W024); a name built in the template is not read as a listener. For both, an event a script in the templates names (a quoted name in a `<script>` or `hx-on`, a hyperscript `send`/`trigger`, even inside a quoted string) counts as heard and announced. W024 and W025 are Warnings because a JavaScript file, a hyperscript file (`<script type="text/hyperscript" src=...>`), an Alpine listener (`@x.window`, `x-on:`; not read), a template in site-packages or a helper the view calls can be the other side; both skip without `ROOT_URLCONF` |
 
 `HxMiddleware` also: adds `Vary` to every response, runs the guard, bridges pending messages onto partial
 2xx HTML responses (peeking before consuming), logs findings as warnings on the `dj_hx` logger, and under
@@ -455,7 +625,7 @@ urlpatterns = [
 ```
 
 Trailing slashes matter: a control whose URL misses one gets `APPEND_SLASH`'s 301, which the guard reports
-as `HxRedirectIntoFragment`. Always build URLs with `{% url %}`.
+as `HxRedirectIntoFragment`. Always build URLs with `{% url %}`, or `{% act %}` for an interaction.
 
 ## Files
 
@@ -467,8 +637,11 @@ as `HxRedirectIntoFragment`. Always build URLs with `{% url %}`.
 - [dj_hx/middleware.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/middleware.py): `HxMiddleware`
 - [dj_hx/messages.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/messages.py): the messages bridge
 - [dj_hx/mixins.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/mixins.py): `HxMixin`
+- [dj_hx/interactions.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/interactions.py): `@interaction`, its registry and the wrapper view
+- [dj_hx/urls.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/urls.py): the URLconf that serves every interaction
+- [dj_hx/templatetags/hx.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/templatetags/hx.py): `{% act %}`
 - [dj_hx/testing.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/testing.py): `HxTestClient`, `assert_no_hx_check_issues`
-- [dj_hx/checks.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/checks.py): W001 to W008
+- [dj_hx/checks.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/checks.py): W001 to W025
 - [dj_hx/errors.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/errors.py): every exception
 - [dj_hx/hxlint.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/hxlint.py): the htmx 4 lint (vendored from hx-flask)
 - [dj_hx/hx_vocab.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/hx_vocab.py): the htmx 4.0.0 vocabulary, generated

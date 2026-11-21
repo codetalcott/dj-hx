@@ -156,21 +156,21 @@ class HxRedirectResponse(_HxResponseMethods, HttpResponseRedirectBase):
 _STARTS_WITH_ELEMENT = re.compile(r"^\s*(?:<!--.*?-->\s*)*<[a-zA-Z]", re.S)
 
 
-def check_root_id(html: str, name: str, where: str) -> None:
-    """The one convention: a partial swapped by name has ``id=<name>`` on its root."""
+def check_root_id(html: str, name: str, where: str, *, role: str = "used as an <hx-partial>") -> None:
+    """The one convention: a partial swapped by name has ``id=<name>`` on its root. ``role`` says why, in the message."""
     from .hxlint import parse
 
     root = parse(html)[0] if _STARTS_WITH_ELEMENT.match(html) else None
     first = next(iter(root.children), None) if root is not None else None
     if first is None:
         raise HxPartialRootId(
-            f'{where} is used as an <hx-partial> but does not start with an element; it must be one element with id="{name}"'
+            f'{where} is {role} but does not start with an element; it must be one element with id="{name}"'
         )
     found = first.attrs.get("id") or None
     if found != name:
         have = f'id="{found}"' if found else "no id"
         raise HxPartialRootId(
-            f'{where} is used as an <hx-partial>, so its root <{first.tag}> must carry id="{name}"; it has {have}'
+            f'{where} is {role}, so its root <{first.tag}> must carry id="{name}"; it has {have}'
         )
 
 

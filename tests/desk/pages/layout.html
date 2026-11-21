@@ -1,0 +1,17 @@
+{% load static %}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>The desk</title>
+  <script src="{% static 'desk/htmx-4.0.2.min.js' %}"></script>
+  <script src="{% static 'desk/_hyperscript-0.9.94.min.js' %}"></script>
+</head>
+<body hx-boost:inherited="true" hx-headers:inherited='{"X-CSRFToken": "{{ csrf_token }}"}'>
+<p id="trouble" role="alert" style="display: none"
+   _="on htmx:before:request from body hide me end
+      on htmx:error from body show me end
+      on htmx:response:error from body if event.detail.ctx.response.status is not 422 show me">Something went wrong. Please try again.</p>
+{% partialdef messages inline %}<div id="messages">{% for message in messages %}<p class="flash">{{ message }}</p>{% endfor %}</div>{% endpartialdef %}
+<main>{% block content %}{% endblock %}</main>
+</body>
+</html>

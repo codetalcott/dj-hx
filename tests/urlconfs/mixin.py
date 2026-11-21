@@ -18,14 +18,14 @@ class Index(HxMixin, TemplateView):
     partial = "rows"
 
     def get_context_data(self, **kwargs):
-        return {**super().get_context_data(**kwargs), "items": ITEMS}
+        return {**super().get_context_data(**kwargs), "items": ITEMS, "extra": ""}
 
 
 class Show(HxMixin, TemplateView):
     template_name = "index.html"  # no partial: page only
 
     def get_context_data(self, **kwargs):
-        return {**super().get_context_data(**kwargs), "items": ITEMS}
+        return {**super().get_context_data(**kwargs), "items": ITEMS, "extra": ""}
 
 
 class New(HxMixin, FormView):
