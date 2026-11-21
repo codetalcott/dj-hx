@@ -26,7 +26,7 @@ from django.urls import Resolver404, clear_url_caches, resolve, reverse
 from django.utils.module_loading import module_has_submodule
 
 import dj_hx.urls  # noqa: F401  binds the routes now, after ready(), before any `scratch` snapshot of them
-from dj_hx import HxFragmentIntoPage, HxPartialRootId, HxRedirectIntoFragment, checks, interaction
+from dj_hx import HxFragmentIntoPage, HxPartialRootId, HxRedirectIntoFragment, HxUndefinedVariable, checks, interaction
 from dj_hx.hxmap import build_map, print_map
 from dj_hx.interactions import act_not_included, bind_routes, registry, urlpatterns
 from dj_hx.templates import in_site_packages
@@ -350,6 +350,16 @@ def test_the_page_renders_the_region_from_the_same_context(rota, client):
     body = client.get("/rota/spring/").content.decode()
     assert "<html>" in body and '<div id="notify">' in body and "Notified" not in body
     assert 'hx-post="/x/rota/notify/spring/3/"' in body and 'hx-post="/x/rota/notify/spring/7/"' in body
+
+
+def test_a_page_that_renders_the_partial_without_error_fails_the_test(rota, client):
+    # Every reply carries `error`, but the page view is not a reply: its own context has to define it.
+    with pytest.raises(HxUndefinedVariable) as info:
+        client.get("/rota/spring/without-error/")
+    assert [str(lookup) for lookup in info.value.lookups] == ["rota.html:2: 'error' in {% if error %}"]
+    assert str(info.value).startswith("GET /rota/spring/without-error/ read 1 undefined template variable,")
+    assert views.rota_context(None, "spring")["error"] is None
+    assert client.get("/rota/spring/").status_code == 200  # the same page, from that context
 
 
 def test_another_method_gets_a_405_that_the_guard_records_nothing_for(rota, client):

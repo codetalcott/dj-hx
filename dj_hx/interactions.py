@@ -27,7 +27,8 @@ Interactions: one handler bound to one template partial, by name.
   names. The handler returns a dict or ``None``; anything else raises.
 - Every reply carries ``error``, which the layer owns: ``None`` on success unless ``context`` or
   the handler sets it, so the partial can read ``{% if error %}`` without ``context`` defining it.
-  A page view is not a reply: a page that renders the partial puts ``error`` in its own context.
+  A page view is not a reply: a page that renders the partial puts ``error`` in its own context,
+  and ``HxTestClient`` fails one that forgets (``HxUndefinedVariable``).
 - A declared refusal, an exception in ``refuses``, re-renders the partial with
   ``error=str(exc)`` and status 422, so the handler writes no ``try``. Any other exception is a 500.
 - ``triggers`` names the facts a successful reply announces, ``.trigger(name)`` for each.
