@@ -73,7 +73,7 @@ event fired without a target lands on `document` after a delete swap, where a
   `.retarget()` or `.reswap()`, naming the controls whose templates no longer
   predict the DOM effect. `--by-template` reads the map from the other end.
   A hyperscript listener (`_="on x from body ..."`, or in a
-  `<script type="text/hyperscript">`, behaviors included) pairs with a view's
+  `<script type="text/hyperscript">` written inline, behaviors included) pairs with a view's
   `.trigger("x")` like an `hx-trigger`, and an event a script names counts
   for both sides. An `{% act %}` control resolves
   through the interaction registry, as a `{% url %}` control resolves through
@@ -137,7 +137,7 @@ event fired without a target lands on `document` after a delete swap, where a
   `outerMorph` or `outerSync` as read in htmx 4.0.2's swap code (E013, whose
   message says what the swap does instead: a second element with the id, or
   for `innerMorph` an htmx `HierarchyRequestError`, so the reply never reaches
-  the page), reading
+  the page; a page's `htmx.config.defaultSwap` is not read), reading
   htmx 4's `:inherited` on ancestors, and judging a templated id or `hx-target`
   by its literal parts (`id="row-{{ pk }}"` cannot be `#notify`;
   `id="{{ name }}"` is skipped, and so is
@@ -145,7 +145,8 @@ event fired without a target lands on `document` after a delete swap, where a
   wraps, is computed); every interaction has an `{% act %}` control (E014;
   a `{% url %}` or hand-written path is not counted, and an interaction whose
   handler is in site-packages is skipped), a partial
-  that loads (E015) and whose root carries its id (E016); `dj_hx.urls` routes
+  that loads and parses (E015, with Django's message for a syntax error) and
+  whose root carries its id (E016); `dj_hx.urls` routes
   each interaction to what its module holds (E017) and is included (E020).
   Warnings for a decorator above `@interaction` without `functools.wraps`
   (W018) and for one below it (W019); an Info for an `{% act %}` no element's
@@ -168,13 +169,14 @@ event fired without a target lands on `document` after a delete swap, where a
   hyperscript's observers (`on intersection`, `on mutation`, `on resize`)
   left out. A name with a colon (`htmx:*`, an extension's `sse:message`) or
   one built in the template (`on {{ name }}`) is not read as a listener.
-  A hyperscript `on` counts in an attribute or a `<script type="text/hyperscript">`,
+  A hyperscript `on` counts in an attribute or an inline `<script type="text/hyperscript">`,
   behaviors included, and an event a script names (a quoted name in a
   `<script>` or `hx-on`, a hyperscript `send`) counts for both sides. They call
   the pairing `hx_map` warns from
   (hx-flask's `mapcore.unpaired_events`), and they are Warnings, because a
-  JavaScript file, a template in site-packages or a helper the view calls can
-  be the other side.
+  JavaScript file, a hyperscript file, a template in site-packages or a
+  helper the view calls can be the other side. They skip without
+  `ROOT_URLCONF`.
 - README's status policy for interactions: `hx-status:40x:inherited="swap:none"`
   and `hx-status:5xx:inherited="swap:none"` on the root of each interaction's
   partial, so a 404, a 405 or a 5xx keeps the controls while a 422 still

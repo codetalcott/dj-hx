@@ -23,7 +23,7 @@ E011     Error    An {% act %} control sends another method than its interaction
 E012     Error    An {% act %} control does not target the element with the partial's id
 E013     Error    An {% act %} control's hx-swap (own or :inherited) is not an outer swap
 E014     Error    An interaction has no control: no template writes its {% act %}
-E015     Error    An interaction's partial does not load
+E015     Error    An interaction's partial does not load, or does not parse
 E016     Error    An interaction's partial's root element is not id="<partial>"
 E017     Error    dj_hx.urls routes an interaction to other than what its module holds
 W018     Warning  The module attribute routed does not unwrap to its interaction
@@ -65,15 +65,18 @@ converter or a re_path group gets I023 instead. It reads .html and .htm
 templates and reverses against ROOT_URLCONF only.
 W024 and W025 pair the events views announce with .trigger() (as hx_map finds
 them) and interactions declare in triggers= with the listeners in the project's
-templates (hx-trigger, hx-on, and hyperscript on in an attribute or a
+templates (hx-trigger, hx-on, and hyperscript on in an attribute or an inline
 <script type="text/hyperscript">, behaviors included), through
-mapcore.unpaired_events(), the pairing hx_map warns from. A browser event is
-never asked to be announced. An event a script names (a quoted name in a
+mapcore.unpaired_events(), the pairing hx_map warns from. A browser event, or
+hyperscript's on intersection, on mutation or on resize, is never asked to be
+announced; a name with a colon (htmx:*, sse:message) or built in the template
+is not read as a listener. An event a script names (a quoted name in a
 <script> or hx-on, or a hyperscript send or trigger) counts for both sides,
 since the scan cannot tell whether the script listens or sends. They are
-Warnings because a scan cannot see every side: a JavaScript file, a template in
-site-packages, or a helper the view calls. An interaction in site-packages
-announces its triggers= but is not warned about.
+Warnings because a scan cannot see every side: a JavaScript file, a hyperscript
+file, a template in site-packages, or a helper the view calls. An interaction
+in site-packages announces its triggers= but is not warned about. Both skip
+without ROOT_URLCONF, through which the map resolves literal paths.
 """
 
 from __future__ import annotations
@@ -83,6 +86,8 @@ import re
 import django
 from django.core.checks import Error, Info, Tags, Warning, register
 
+from .hxlint import SELECTOR_HEADS
+
 HOOKS = ("render_to_response", "form_invalid", "form_valid")
 _ELEMENT = re.compile(r"<[a-zA-Z]")
 _ELSEWHERE = re.compile(r"\{%\s*(?:include|partial)\b")  # a tag that renders another template or partial in place
@@ -90,7 +95,11 @@ _OUTER_SWAPS = {"outerHTML", "outerMorph", "outerSync"}  # one element carries t
 # htmx 4.0.2's target resolver (#be): an optional "global " prefix, then, per comma-separated part, a
 # keyword whose argument is a CSS selector (closest, find, findAll, next, previous), a fixed target
 # (this, document, window, body, host, bare next or previous) or plain CSS. group(1) is the CSS part.
-_EXTENDED_SELECTOR = re.compile(r"(?:global )?(?:(?:closest|find|findAll|next|previous) )?(.*)", re.S)
+# The prefix and the keywords are hx-flask's hxlint.SELECTOR_HEADS, which its trigger lint reads too.
+_GLOBAL = "global"
+_EXTENDED_SELECTOR = re.compile(
+    rf"(?:{_GLOBAL} )?(?:(?:{'|'.join(sorted(SELECTOR_HEADS - {_GLOBAL}))}) )?(.*)", re.S
+)
 _KEEPS_THE_TARGET = {"innerHTML", "afterbegin", "beforeend", "beforebegin", "afterend"}  # reply in or beside it: two ids
 
 
@@ -595,7 +604,7 @@ def _control_messages(it, node, attr: str, where: str) -> list:
     style = parse_swap_spec(swap or "")["style"]  # htmx 4's default, innerHTML, when there is none
     if (swap is None or JINJA not in swap) and style not in _OUTER_SWAPS:
         says = (
-            "it has no hx-swap, so htmx 4 swaps innerHTML" + _plain_on_ancestor(node, "hx-swap")
+            "it has no hx-swap, so htmx 4 swaps innerHTML by default" + _plain_on_ancestor(node, "hx-swap")
             if swap is None
             else f"its hx-swap is {swap!r}"
         )
@@ -624,6 +633,8 @@ def _interaction_messages(it, controlled: set, sources: dict) -> list:
     skips an interaction whose handler's module is in site-packages: its controls are in that app's
     templates, which the scan never reads.
     """
+    from django.template import TemplateSyntaxError
+
     from .errors import HxUnknownPartial
     from .interactions import act_form
     from .templates import partial_sources
@@ -644,7 +655,7 @@ def _interaction_messages(it, controlled: set, sources: dict) -> list:
         )
     try:
         _get_partial(it.template, it.partial)
-    except HxUnknownPartial as exc:
+    except (HxUnknownPartial, TemplateSyntaxError) as exc:  # Django's message names the line of a syntax error
         messages.append(
             Error(
                 f"{it.name}() replies with {it.template}#{it.partial}, which does not load: {exc}",
@@ -883,7 +894,8 @@ def _url_messages(tag, where: str) -> list:
 
 _UNSEEN = (
     "This is a Warning because a scan of the project's templates and views cannot see every side: a JavaScript "
-    "file, a template in site-packages, or a helper the view calls can {}. If one does, silence dj_hx.{}."
+    'file, a hyperscript file (<script type="text/hyperscript" src=...>), a template in site-packages, or a '
+    "helper the view calls can {}. If one does, silence dj_hx.{}."
 )
 
 
@@ -895,9 +907,14 @@ def check_events(app_configs=None, **kwargs):
     """
     if not _should_run(app_configs):
         return []
+    from django.conf import settings
+
     from .hxmap import map_with_interactions
     from .interactions import registry
     from .mapcore import Handler, unpaired_events
+
+    if not getattr(settings, "ROOT_URLCONF", None):
+        return []  # the map resolves literal-path controls through it, as check_url_tags reverses through it
 
     m, routed = map_with_interactions()
     handlers, owner = dict(m.handlers), {}
@@ -917,8 +934,8 @@ def check_events(app_configs=None, **kwargs):
             messages.append(
                 Warning(
                     f"{who} announces '{event}' {how}, but no project template listens for it (hx-trigger, hx-on, or "
-                    f"a hyperscript 'on {event}' in an attribute or a <script type=\"text/hyperscript\">), and no "
-                    "script there names it.",
+                    f"a hyperscript 'on {event}' in an attribute or an inline <script type=\"text/hyperscript\">), "
+                    "and no script there names it.",
                     hint=f'Listen where the change should show: hx-trigger="{event} from:body", or '
                     f'_="on {event} from body ..."; or stop announcing it. ' + _UNSEEN.format("listen", "W024"),
                     obj=f"{it.view.__module__}.{it.name}" if it else h.endpoint,

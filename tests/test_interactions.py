@@ -931,7 +931,7 @@ THROWS = "With innerMorph, htmx 4.0.2 throws (HierarchyRequestError, logged as h
 @pytest.mark.parametrize(
     "template, says, effect",
     [
-        (control(NOTIFY, rest='hx-target="#notify"'), "it has no hx-swap, so htmx 4 swaps innerHTML", TWO_IDS),
+        (control(NOTIFY, rest='hx-target="#notify"'), "it has no hx-swap, so htmx 4 swaps innerHTML by default", TWO_IDS),
         (swapping("innerHTML"), "its hx-swap is 'innerHTML'", TWO_IDS),
         (swapping("beforeend"), "its hx-swap is 'beforeend'", TWO_IDS),
         (swapping("afterend"), "its hx-swap is 'afterend'", TWO_IDS),
@@ -1131,6 +1131,25 @@ def test_e015_an_interaction_whose_partial_does_not_exist(scratch, startup, part
     assert the(messages, "dj_hx.E015").msg.startswith(f"gone() replies with {partial}, which does not load: {says}")
 
 
+def test_e015_an_interaction_whose_partial_does_not_parse(scratch, startup):
+    # Django's TemplateSyntaxError escaped the check run, so manage.py check, runserver and migrate stopped with a
+    # traceback and no message; it is E015, with Django's message, and every other check still runs.
+    def typo(request):
+        return None
+
+    interaction("POST", partial="typo.html#typo", context=nothing, route="t/typo")(typo)
+    messages = startup(
+        **{
+            "typo.html": '{% partialdef typo inline %}<div id="typo">{% for x in xs %}{{ x }}{% endfo %}</div>{% endpartialdef %}',
+            "extra.html": control("{% act 'typo' %}", rest='hx-target="#typo" hx-swap="innerHTML"'),
+        }
+    )
+    assert found(messages) == [("dj_hx.E013", "extra.html:2"), ("dj_hx.E015", "tests.test_interactions.typo")]
+    message = the(messages, "dj_hx.E015").msg
+    assert message.startswith("typo() replies with typo.html#typo, which does not load: ")
+    assert "Invalid block tag on line 1: 'endfo', expected 'empty' or 'endfor'." in message  # Django's own words
+
+
 @pytest.mark.parametrize(
     "root, says",
     [
@@ -1317,10 +1336,11 @@ def test_w024_an_interactions_trigger_no_template_listens_for(startup):
     assert warning.level == WARNING
     assert warning.msg == (
         "notify() announces 'rota-changed' in its triggers=, but no project template listens for it (hx-trigger, "
-        "hx-on, or a hyperscript 'on rota-changed' in an attribute or a <script type=\"text/hyperscript\">), and no "
-        "script there names it."
+        "hx-on, or a hyperscript 'on rota-changed' in an attribute or an inline <script type=\"text/hyperscript\">), "
+        "and no script there names it."
     )
-    assert 'hx-trigger="rota-changed from:body"' in warning.hint and "a JavaScript file" in warning.hint
+    assert 'hx-trigger="rota-changed from:body"' in warning.hint
+    assert 'a JavaScript file, a hyperscript file (<script type="text/hyperscript" src=...>),' in warning.hint
 
 
 @pytest.mark.parametrize(

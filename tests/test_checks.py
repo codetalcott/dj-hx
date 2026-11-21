@@ -204,10 +204,20 @@ def test_w024_a_views_trigger_no_template_listens_for(tmp_path):
         (
             "contacts",
             "contacts() announces 'contacts-changed' with .trigger(), but no project template listens for it "
-            "(hx-trigger, hx-on, or a hyperscript 'on contacts-changed' in an attribute or a "
+            "(hx-trigger, hx-on, or a hyperscript 'on contacts-changed' in an attribute or an inline "
             '<script type="text/hyperscript">), and no script there names it.',
         )
     ]
+
+
+def test_w024_and_w025_are_skipped_without_root_urlconf(no_interactions, tmp_path):
+    # The map resolves a literal-path control through ROOT_URLCONF; without one that raised AttributeError and
+    # stopped the check run. The event checks skip, as the interaction routes and {% url %} checks do.
+    (tmp_path / "page.html").write_text('<button hx-post="/notify/" hx-target="#out">Go</button><p id="out"></p>')
+    with override_settings(TEMPLATES=on_disk(tmp_path)):
+        del settings.ROOT_URLCONF
+        messages = hx_check_messages()
+    assert [m.id for m in messages if m.id in ("dj_hx.W024", "dj_hx.W025")] == []
 
 
 @pytest.mark.parametrize(
