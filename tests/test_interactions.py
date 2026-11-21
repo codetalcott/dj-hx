@@ -1092,6 +1092,7 @@ def test_e014_an_interaction_no_template_writes_an_act_for(startup, url):
         "hand-written path is not counted, because E011 to E013 cannot check it."
     )
     assert """hx-post="{% act 'sign_off' member=... %}" hx-target="#signoff" hx-swap="outerHTML\"""" in message.hint
+    assert 'root carries hx-status:40x:inherited="swap:none" hx-status:5xx:inherited="swap:none"' in message.hint
 
 
 SIGN_OFF_ACT = "{% act 'sign_off' member=member %}"

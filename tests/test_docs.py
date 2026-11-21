@@ -53,3 +53,14 @@ def test_the_status_policy_in_the_docs_is_the_measured_desk(doc):
     for body in BODY.findall(blocks):  # llms.txt shows no <body>
         assert body == BODY.search(LAYOUT).group()
     assert "htmx-config" not in blocks
+
+
+PARTIALS = re.compile(r"{% partialdef \w+ inline %}\s*(<[^>]*>)(.*?){% endpartialdef %}", re.S)
+
+
+@pytest.mark.parametrize("doc", ["README.md", "llms.txt"])
+def test_every_interaction_partial_the_docs_show_carries_the_policy(doc):
+    """A reader copies the first example they see, so every partial with an {% act %} control carries the pair."""
+    shown = [root for block in FENCED.findall((ROOT / doc).read_text()) for root, body in PARTIALS.findall(block) if "{% act " in body]
+    for root in shown:
+        assert STATUS.findall(root) == STATUS.findall(ROOTS.findall(DESK)[0]), root

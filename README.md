@@ -225,7 +225,7 @@ def notify(request, contest: str, member: int):
 {% load hx %}
 <p _="on notified from body put 'A member was notified.' into me"></p>
 {% partialdef notify inline %}
-<div id="notify">
+<div id="notify" hx-status:40x:inherited="swap:none" hx-status:5xx:inherited="swap:none">
   {% for member in contest.members %}
     <button hx-post="{% act 'notify' contest=contest.slug member=member.id %}"
             hx-target="#notify" hx-swap="outerHTML">Notify {{ member }}</button>

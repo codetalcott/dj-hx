@@ -649,7 +649,9 @@ def _interaction_messages(it, controlled: set, sources: dict) -> list:
                 f"{{% url 'dj_hx:{it.name}' %}} or a hand-written path is not counted, because E011 to E013 cannot "
                 "check it.",
                 hint=f'Write it into the control that sends the request: hx-{it.method.lower()}="{act_form(it)}" '
-                f'hx-target="#{it.partial}" hx-swap="outerHTML". Or delete the interaction.',
+                f'hx-target="#{it.partial}" hx-swap="outerHTML", inside the partial, whose root carries '
+                'hx-status:40x:inherited="swap:none" hx-status:5xx:inherited="swap:none" so an error reply keeps '
+                "the controls (README, The status policy). Or delete the interaction.",
                 obj=where,
                 id="dj_hx.E014",
             )
