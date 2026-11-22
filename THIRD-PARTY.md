@@ -3,7 +3,8 @@
 ## Vendored into the package
 
 - `dj_hx/hxlint.py`, `dj_hx/hx_vocab.py` — from [hx-flask], the sibling project
-  for Flask. The vocabulary is generated there from the htmx 4.0.0 source tree.
+  for Flask. The vocabulary is generated there from htmx's repository at the
+  `v4.0.2` tag.
   Vendored so dj-hx has no dependency on it. MIT.
 - `dj_hx/urlconf.py` — from [dj-fixi], the sibling project for Fixi.js. MIT.
 

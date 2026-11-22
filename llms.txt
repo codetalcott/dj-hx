@@ -651,6 +651,6 @@ as `HxRedirectIntoFragment`. Always build URLs with `{% url %}`, or `{% act %}` 
 - [dj_hx/checks.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/checks.py): W001 to W025
 - [dj_hx/errors.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/errors.py): every exception
 - [dj_hx/hxlint.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/hxlint.py): the htmx 4 lint (vendored from hx-flask)
-- [dj_hx/hx_vocab.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/hx_vocab.py): the htmx 4.0.0 vocabulary, generated
+- [dj_hx/hx_vocab.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/hx_vocab.py): the htmx 4.0.2 vocabulary, generated
 - [example/](https://github.com/codetalcott/dj-hx/tree/main/example): contact.app on the ORM, the complete reference project
 - [tests/](https://github.com/codetalcott/dj-hx/tree/main/tests): one test per row of the failure catalogue
