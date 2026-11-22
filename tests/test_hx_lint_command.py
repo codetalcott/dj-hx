@@ -29,6 +29,15 @@ def test_template_syntax_becomes_html_the_parser_can_judge():
     assert URLFOR not in strip_template_syntax("{% url 'x' as u %}<a hx-get=\"{{ u }}\">", url_marker=True)
 
 
+def test_ids_a_template_builds_are_not_one_id():
+    # A production form gave two fields' {{ field.id_for_label }}; 0.1.0 reported them as one id twice.
+    source = '<input id="{{ form.name.id_for_label }}"><input id="{{ form.collaborator_emails.id_for_label }}">'
+    assert lint_template_source(source) == []
+    assert rules(lint_template_source('<i id="spin"></i><i id="spin"></i>')) == ["duplicate-id"]
+    # Not followed: an id in both branches of an {% if %} counts twice though one renders.
+    assert rules(lint_template_source('{% if a %}<h2 id="t">A</h2>{% else %}<h2 id="t">B</h2>{% endif %}')) == ["duplicate-id"]
+
+
 def test_source_mode_leaves_page_level_rules_off():
     assert lint_template_source('<a hx-get="/x/" hx-target="#defined-in-layout">x</a>') == []
 

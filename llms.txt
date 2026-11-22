@@ -431,7 +431,7 @@ Agents default to htmx 1/2. These are what the lint reports (`[error]` raises in
 | `hx-trigger="click from:closest form"` | `hx-trigger="click from:'closest form'"` | `trigger-unquoted-selector` |
 | `hx-delete` with the default swap on `closest tr` | `hx-swap="delete"` or `outerHTML` | `delete-default-swap` (warning) |
 | `hx-target="#nope"` with no such id on the page | an existing id | `missing-target` |
-| two elements with the same `id` | unique ids | `duplicate-id` |
+| two elements with the same literal `id` (an id built with `{{ }}` is not compared; one in two exclusive `{% if %}` branches is reported) | unique ids | `duplicate-id` |
 | `hx-select="#main"` with a non-body target | let the server send the fragment | `select-not-body` (info) |
 
 Also `unknown-attribute`, `unknown-swap-style`, `unknown-swap-modifier`, `unknown-trigger-modifier`,
