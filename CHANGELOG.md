@@ -2,8 +2,26 @@
 
 ## Unreleased
 
+### Added
+
+- Check `dj_hx.E026`: an `hx-select` reaches an `{% act %}` control, its own
+  or an ancestor's `hx-select:inherited`. htmx 4 then sends
+  `HX-Request-Type: full`, so the interaction's reply records
+  `HxFragmentIntoPage`, and it swaps in only what the selector finds in the
+  reply: in Chromium on htmx 4.0.2, a selector that matches nothing removes the
+  partial's region. In a private production project a page-wide
+  `hx-select:inherited` emptied a reminder button's reply this way, and E011
+  to E013 passed it. An own `hx-select=""` is no select to htmx 4.0.2 and
+  stops an inherited one.
+
 ### Fixed
 
+- `hx_map` read only a control's own `hx-select` when it classified the
+  request: a control under an `hx-select:inherited` is now `full`
+  (`hx-select:inherited from div#card`), as htmx 4.0.2 sends it, and one with
+  an own `hx-select=""` is `partial`. The lint's `select-not-body` info no
+  longer fires on `hx-select=""`. `mapcore.py` and `hxlint.py` are synced
+  from hx-flask.
 - `hx_lint` gave four htmx 2 events htmx 4.0.0's renames, which htmx 4.0.1
   corrected: `htmx:afterOnLoad` is `htmx:after:request` (it said
   `htmx:after:init`), `htmx:beforeOnLoad` is `htmx:before:response` (said

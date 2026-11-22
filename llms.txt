@@ -10,7 +10,8 @@ Facts to hold while writing code against this package:
 - Requires htmx **4** (`HX-Request-Type` header). htmx 1/2 idioms are rejected by a lint that runs on every
   test-client response. Django 4.2, 5.2, 6.0 and 6.1; Python 3.10 to 3.13.
 - The only client fact a handler reads is `HX-Request-Type`: `full` (browser, boosted link, or a control
-  whose target is `body` or that sets `hx-select`) or `partial` (a control targeting an element). Never
+  whose target is `body` or that an `hx-select` reaches, its own or an ancestor's `hx-select:inherited`) or
+  `partial` (a control targeting an element). Never
   read `HX-Source` or `HX-Target`; never branch on an element id.
 - One template per resource. A fragment is a named `{% partialdef name inline %}` region of that page
   template. A partial name containing a dot (`rows.html`) is a separate file instead.
@@ -402,7 +403,9 @@ A button whose response is a page (a redirect after delete from an edit page):
 
 htmx 4 rules the templates rely on (verified against htmx.js 4.0.0):
 
-- `HX-Request-Type` is `full` when the target is `body` or `hx-select` is set or the element is boosted.
+- `HX-Request-Type` is `full` when the target is `body`, an `hx-select` reaches the element (its own or an
+  ancestor's `hx-select:inherited`; an own `hx-select=""` is no select), or the element is boosted. The reply
+  is cut down to what that selector finds in it before the swap.
 - Attributes reach descendants only with `:inherited` (`hx-target:inherited`, `hx-boost:inherited`).
 - `hx-delete` sends its parameters in the query string and excludes the enclosing form unless
   `hx-include="closest form"`; the handler reads them from `request.GET`.
@@ -564,6 +567,7 @@ System checks (tag `dj_hx`):
 | I023 | a `{% url %}` not checked: its route takes a custom converter or a `re_path` group, which has no placeholder. Usually a third-party `re_path` in a template the project overrides: admin's `{% url 'admin:app_list' app_label=... %}`, allauth's `account_confirm_email` |
 | W024 | an event a view announces with `.trigger()` (as `hx_map` finds it) or an interaction declares in `triggers=` that no project template listens for (`hx-trigger`, `hx-on`, hyperscript `on` in `_`/`script`/`data-script` or an inline `<script type="text/hyperscript">`, behaviors included); an interaction in site-packages is not warned about |
 | W025 | an event a project template listens for that nothing announces; browser events, hyperscript's observers (`on intersection`, `on mutation`, `on resize`) and names with a colon (`htmx:*`, `sse:message`, `contact:saved`) are left out, though they still pair with a `.trigger()` or `triggers=` of that name (so no W024); a name built in the template is not read as a listener. For both, an event a script in the templates names (a quoted name in a `<script>` or `hx-on`, a hyperscript `send`/`trigger`, even inside a quoted string) counts as heard and announced. W024 and W025 are Warnings because a JavaScript file, a hyperscript file (`<script type="text/hyperscript" src=...>`), an Alpine listener (`@x.window`, `x-on:`; not read), a template in site-packages or a helper the view calls can be the other side; both skip without `ROOT_URLCONF` |
+| E026 | an `hx-select` reaches an `{% act %}` control: its own, or the nearest ancestor's `hx-select:inherited` (htmx 4 has no `hx-disinherit`; an own `hx-select=""` is an empty value, no select, and stops an ancestor's). htmx 4 then sends `HX-Request-Type: full`, so each reply records `HxFragmentIntoPage`, and swaps in only what the selector finds in the reply. Measured on htmx 4.0.2: a selector that matches nothing in the reply removes the partial's region; one that matches inside it puts that element in the region's place. A computed `hx-select` is not judged |
 
 `HxMiddleware` also: adds `Vary` to every response, runs the guard, bridges pending messages onto partial
 2xx HTML responses (peeking before consuming), logs findings as warnings on the `dj_hx` logger, and under
@@ -648,7 +652,7 @@ as `HxRedirectIntoFragment`. Always build URLs with `{% url %}`, or `{% act %}` 
 - [dj_hx/urls.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/urls.py): the URLconf that serves every interaction
 - [dj_hx/templatetags/hx.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/templatetags/hx.py): `{% act %}`
 - [dj_hx/testing.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/testing.py): `HxTestClient`, `assert_no_hx_check_issues`
-- [dj_hx/checks.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/checks.py): W001 to W025
+- [dj_hx/checks.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/checks.py): W001 to E026
 - [dj_hx/errors.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/errors.py): every exception
 - [dj_hx/hxlint.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/hxlint.py): the htmx 4 lint (vendored from hx-flask)
 - [dj_hx/hx_vocab.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/hx_vocab.py): the htmx 4.0.2 vocabulary, generated

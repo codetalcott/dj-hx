@@ -34,9 +34,10 @@ E022     Error    A {% url %} with a quoted name does not reverse with its argum
 I023     Info     A {% url %} not checked: its route takes a converter with no placeholder
 W024     Warning  An event a view or interaction announces that no template listens for
 W025     Warning  An event a template listens for that nothing announces
+E026     Error    An hx-select (own or :inherited) reaches an {% act %} control
 =======  =======  ==========================================================
 
-E009 to E016, I021, E022 and I023 read the project's template files as hx_lint
+E009 to E016, I021, E022, I023 and E026 read the project's template files as hx_lint
 does, never site-packages. A computed hx-swap or hx-method is not judged. A
 templated id or hx-target is judged by its literal parts (``_could_equal``):
 skipped only when it could equal the expected value (id="{{ name }}"), an Error
@@ -54,6 +55,15 @@ element with the id. In Chromium on htmx 4.0.2 (tests/test_interactions_browser.
 each does; innerHTML, beforeend, afterbegin, beforebegin and afterend leave two,
 and on innerMorph htmx throws (HierarchyRequestError, logged as htmx:error), so
 the reply never reaches the page.
+E026 reads hx-select as htmx 4.0.2 does, as it reads hx-target: the control's
+own, else the nearest ancestor's hx-select:inherited. An own hx-select="" is an
+empty value, which selects nothing and stops an ancestor's. Any other that
+reaches an {% act %} control makes the request full, so the interaction's
+fragment() records HxFragmentIntoPage on each reply, and the reply is cut down
+to what the selector finds in it (querySelectorAll) before the swap. In
+Chromium on htmx 4.0.2 (tests/test_interactions_browser.py) a selector that
+matches nothing in the reply removes the partial's region, and one that matches
+inside it puts that element in the region's place.
 E022 reads each {% url %} as Django's lexer does (not in a comment or {% verbatim %}),
 skips a name built at run time, and reverses the name through Django's resolver
 with a placeholder for each argument, chosen by the converter the pattern
@@ -623,6 +633,40 @@ def _control_messages(it, node, attr: str, where: str) -> list:
                 "outerMorph and outerSync are outer swaps too.",
                 obj=where,
                 id="dj_hx.E013",
+            )
+        )
+    # htmx 4.0.2 reads hx-select as it reads hx-target: the control's own, else the nearest ancestor's
+    # hx-select:inherited. One that reaches the control makes the request full, and the reply is cut down to the
+    # elements the selector finds in it (querySelectorAll) before the swap. An own hx-select="" is a value, empty:
+    # no select, and it stops an ancestor's.
+    selecting, select = node.resolving("hx-select"), node.resolved("hx-select")
+    if selecting is not None and select and JINJA not in select:
+        own = selecting is node
+        says = (
+            f"its hx-select is {select!r}"
+            if own
+            else f'it inherits hx-select:inherited="{select}" from {_described(selecting)}'
+        )
+        if _could_equal(select.strip(), f"#{partial}"):
+            effect = "it picks the partial's root, so the swap itself is unchanged."
+        else:
+            effect = (
+                f"Where none match, #{partial} is emptied away; where one inside the partial matches, it replaces "
+                f"#{partial}, and the next reply has no #{partial} to target."
+            )
+        messages.append(
+            Error(
+                f"{tag}: {it.name}() replies with its partial, #{partial}, but {says}. htmx 4 then sends "
+                "HX-Request-Type: full, so each reply records HxFragmentIntoPage, and swaps in only the reply's "
+                f"elements that match the selector: {effect}",
+                hint=(
+                    "Remove hx-select from the control: its interaction already replies with its partial alone."
+                    if own
+                    else "Narrow the ancestor's hx-select:inherited to elements that do not hold the control (htmx 4 "
+                    'has no hx-disinherit), or write hx-select="" on the control, which htmx 4.0.2 reads as no select.'
+                ),
+                obj=where,
+                id="dj_hx.E026",
             )
         )
     return messages

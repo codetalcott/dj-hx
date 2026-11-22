@@ -1017,6 +1017,62 @@ def test_e012_and_e013_read_an_ancestors_inherited_target_and_swap(startup):
     assert found(startup(**{"extra.html": template})) == []
 
 
+FULL = "htmx 4 then sends HX-Request-Type: full, so each reply records HxFragmentIntoPage"
+EMPTIED = "Where none match, #notify is emptied away; where one inside the partial matches, it replaces #notify"
+
+
+# What each does is measured in Chromium on htmx 4.0.2 by tests/test_interactions_browser.py.
+@pytest.mark.parametrize(
+    "template, says, effect, hint",
+    [
+        (
+            '{% load hx %}\n<div id="card" hx-select:inherited="#card"><button hx-post="' + NOTIFY
+            + '" hx-target="#notify" hx-swap="outerHTML">Go</button></div>',
+            'it inherits hx-select:inherited="#card" from a <div> with id="card"',
+            EMPTIED,
+            'hx-select="" on the control',
+        ),
+        (
+            control(NOTIFY, rest='hx-target="#notify" hx-swap="outerHTML" hx-select=".done"'),
+            "its hx-select is '.done'",
+            EMPTIED,
+            "Remove hx-select from the control",
+        ),
+        (
+            control(NOTIFY, rest='hx-target="#notify" hx-swap="outerHTML" hx-select="#notify"'),
+            "its hx-select is '#notify'",
+            "it picks the partial's root, so the swap itself is unchanged",
+            "Remove hx-select from the control",
+        ),
+    ],
+    ids=["inherited", "own", "own-root"],
+)
+def test_e026_an_hx_select_that_reaches_a_control(startup, template, says, effect, hint):
+    messages = startup(**{"extra.html": template})
+    assert found(messages) == [("dj_hx.E026", "extra.html:2")]
+    message = the(messages, "dj_hx.E026")
+    assert "notify() replies with its partial, #notify, but " + says in message.msg
+    assert FULL in message.msg and effect in message.msg
+    assert [sentence for sentence in (EMPTIED,) if sentence in message.msg] == ([EMPTIED] if effect == EMPTIED else [])
+    assert hint in message.hint
+
+
+@pytest.mark.parametrize(
+    "template",
+    [
+        '{% load hx %}\n<div hx-select:inherited="#card"><button hx-post="' + NOTIFY
+        + '" hx-target="#notify" hx-swap="outerHTML" hx-select="">Go</button></div>',
+        '{% load hx %}\n<div hx-select="#card"><button hx-post="' + NOTIFY + '" hx-target="#notify" hx-swap="outerHTML">Go</button></div>',
+        control(NOTIFY, rest='hx-target="#notify" hx-swap="outerHTML" hx-select="{{ select }}"'),
+    ],
+    ids=["own-empty", "plain-ancestor", "computed"],
+)
+def test_e026_takes_no_select_an_empty_one_and_a_computed_one(startup, template):
+    # htmx 4.0.2: an own hx-select="" is a value, empty, so no select; a plain hx-select on an ancestor does not
+    # reach the control; a computed value is not judged, as E011 to E013 judge none
+    assert found(startup(**{"extra.html": template})) == []
+
+
 @pytest.mark.parametrize(
     "verb, rest",
     [
