@@ -20,14 +20,14 @@ No virtualenv is checked in: `.venv/` is gitignored, and an old local one can po
 uv venv <venv> && uv pip install -p <venv>/bin/python "django~=6.1.0" pytest pytest-django ruff "playwright==1.64.0"  # below Django 6, add django-template-partials
 <venv>/bin/python -m playwright install chromium
 
-<venv>/bin/python -m pytest -q                      # 405 tests, ~11 s
-<venv>/bin/python -m pytest -q -m "not browser"     # 373, ~1 s, skipping Chromium
-<venv>/bin/python -m pytest -q -m browser           # the 32 Playwright tests alone, ~9 s
+<venv>/bin/python -m pytest -q                      # 416 tests, ~12 s
+<venv>/bin/python -m pytest -q -m "not browser"     # 381, ~1 s, skipping Chromium
+<venv>/bin/python -m pytest -q -m browser           # the 35 Playwright tests alone, ~11 s
 <venv>/bin/python -m pytest tests/test_verbs.py::test_text_escapes
 <venv>/bin/ruff check .
 ```
 
-Counts and times measured 2026-11-20 on an Apple M4: Python 3.13.6, Django 6.1.3, Playwright 1.64.0.
+Counts and times measured 2026-11-22 on an Apple M4: Python 3.13.6, Django 6.1.3, Playwright 1.64.0.
 `pytest.ini` puts the repo and `example/` on the path, so no `PYTHONPATH` is needed. On macOS 27.2 here,
 Playwright 1.65.2's headless shell crash-loops ("icudtl.dat not found in bundle"); pin `playwright==1.64.0`
 locally. CI installs its own and is unaffected.
@@ -90,7 +90,7 @@ top-level name its templates read: `tests/urlconfs/lib.py`'s `PAGE` carries `ext
 **Ordering matters.** `HxMiddleware` must run its response phase before `MessageMiddleware` stores
 messages, which means it is listed *after* it. [checks.py](dj_hx/checks.py) enforces that as `dj_hx.E002`;
 the check ids are documented in that module's docstring: W001 to W008 for settings, middleware, the lint and `HxMixin`,
-E009 to E017, W018, W019, E020 and I021 for interactions, E022 and I023 for `{% url %}`, and W024 and W025
+E009 to E017, W018, W019, E020, I021 and E026 for interactions, E022 and I023 for `{% url %}`, and W024 and W025
 for events.
 
 **The lint has two surfaces over one rule set.** [hxlint.py](dj_hx/hxlint.py) works on rendered HTML

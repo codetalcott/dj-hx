@@ -8,7 +8,8 @@ README's status policy (``hx-status`` on each interaction partial's root, and th
 404 page, which a global ``noSwap`` would keep from it. Then six of the forms checks E011 to E013 accept, each measured once: an outer morph and an
 outer sync (E013), a self-replacing control, click-to-edit's ``hx-target:inherited="this"`` and
 ``closest #<partial>`` (E012), and a ``<form method="post" hx-action>`` (E011); the other forms they accept
-are read from htmx 4.0.2's source. Last, what the swaps E013 rejects do instead. tests/test_interactions.py
+are read from htmx 4.0.2's source. Then what the swaps E013 rejects do instead, and what an ``hx-select`` that
+reaches a control does (E026), with the ``hx-select=""`` that stops an inherited one. tests/test_interactions.py
 shows the desk passes every check.
 """
 
@@ -278,3 +279,55 @@ def test_an_inner_morph_makes_htmx_throw_and_the_reply_never_reaches_the_page(pa
     assert error.startswith("htmx: htmx:error: ") and "HierarchyRequestError" in error  # the swap threw
     expect(page.locator("#morphed .replies")).to_have_text("0")  # and the reply's 1 is nowhere on the page
     expect(page.locator("#trouble")).to_be_visible()  # the layout's alert hears htmx:error
+
+
+# ------------------------------------------- what an hx-select that reaches a control does (E026)
+
+
+def select_from_body(page, selector):
+    """An hx-select:inherited on <body>, set in the page (htmx reads it per request), so the desk's templates
+    keep passing the checks."""
+    page.evaluate("selector => document.body.setAttribute('hx-select:inherited', selector)", selector)
+
+
+def request_types(page):
+    """Each POST's HX-Request-Type, in the order the page sends them."""
+    types = []
+    page.on("request", lambda request: request.method == "POST" and types.append(request.headers.get("hx-request-type")))
+    return types
+
+
+def test_an_inherited_hx_select_sends_a_full_request_and_its_reply_empties_the_partial(page, live, desk):
+    open_desk(page, live)
+    types = request_types(page)
+    select_from_body(page, "#elsewhere")
+    page.get_by_test_id("nearest").click()
+    finished(page, 1)
+    assert types == ["full"] and desk.DESK["replies"]["nearest"] == 1  # the server replied with its partial
+    expect(one(page, "nearest")).to_have_count(0)  # and nothing of it took #nearest's place
+    expect(page.get_by_test_id("nearest")).to_have_count(0)
+    assert page.console_errors == []
+
+
+def test_an_inherited_hx_select_that_matches_inside_the_reply_puts_that_element_in_the_partials_place(page, live, desk):
+    open_desk(page, live)
+    select_from_body(page, "#nearest .replies")
+    page.get_by_test_id("nearest").click()
+    finished(page, 1)
+    expect(one(page, "nearest")).to_have_count(0)  # the region lost its id
+    expect(page.locator(".replies", has_text="1")).to_have_count(1)  # the reply's counter stands in its place
+    expect(page.get_by_test_id("nearest")).to_have_count(0)
+    assert page.console_errors == []
+
+
+def test_an_own_empty_hx_select_stops_the_inherited_one(page, live, desk):
+    open_desk(page, live)
+    types = request_types(page)
+    select_from_body(page, "#elsewhere")
+    page.get_by_test_id("nearest").evaluate("element => element.setAttribute('hx-select', '')")
+    page.get_by_test_id("nearest").click()
+    finished(page, 1)
+    assert types == ["partial"]
+    expect(one(page, "nearest")).to_have_count(1)
+    expect(page.locator("#nearest .replies")).to_have_text("1")
+    assert page.console_errors == []

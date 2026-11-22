@@ -449,6 +449,7 @@ by `HxTestClient`. Nothing is gated on `DEBUG` that a test needs.
 | An interaction's reply sets a key its context does not define | `ImproperlyConfigured`, naming the key and the context function: define each there with its default. `error` is always defined, because every reply carries it |
 | `{% act %}` with a positional argument, a keyword the handler does not take, a missing one, or a name no interaction has | `TemplateSyntaxError` at render, naming the handler's parameters, or listing the interactions there are; at start-up, checks `dj_hx.E009` (no such interaction) and `E010` (the arguments), naming template:line |
 | An `{% act %}` control that sends another method than its interaction answers (for `hx-action`: its `hx-method`, an ancestor's `hx-method:inherited`, its `method` attribute, else GET; a submit button's `formmethod` is not read), that does not target the element with id `<partial name>` (`hx-target="#<partial name>"`, its own or an ancestor's `hx-target:inherited`, or an htmx 4.0.2 extended selector whose CSS part is that, such as `closest #<partial name>`; or no `hx-target`, or `hx-target="this"`, on the element with that id), or whose `hx-swap` (its own or inherited) is not an outer swap (`outerHTML`, `outerMorph` or `outerSync`, read from htmx 4.0.2's swap code and measured in Chromium) | checks `dj_hx.E011`, `E012` and `E013`, naming template:line and the attribute to write; a plain `hx-target` or `hx-swap` on an ancestor is named as not reaching the control. E013 says what the swap does instead: two elements with the id (`innerHTML`, `beforeend`, `afterbegin`, `beforebegin`, `afterend`), or, for `innerMorph`, an htmx 4.0.2 `HierarchyRequestError` (logged as `htmx:error`), so the reply never reaches the page. E013 does not read a page's `htmx.config.defaultSwap`: a control without `hx-swap` is judged as htmx 4's default, `innerHTML`, because the design is that each control writes its swap |
+| An `hx-select` that reaches an `{% act %}` control: its own, or the nearest ancestor's `hx-select:inherited` (an own `hx-select=""` is an empty value to htmx 4.0.2: no select, and it stops an ancestor's). htmx 4 then sends `HX-Request-Type: full`, so each reply records `HxFragmentIntoPage`, and swaps in only what the selector finds in the reply | check `dj_hx.E026`, naming template:line and the element the select comes from. In Chromium on htmx 4.0.2 a selector that matches nothing in the reply removes the partial's region, and one that matches inside it puts that element in the region's place, so the next reply has no target; a selector naming the partial's root leaves the swap as it was. A computed `hx-select` is not judged |
 | An interaction no project `.html` or `.htm` template writes an `{% act %}` for (a `{% url 'dj_hx:…' %}` or hand-written path is not counted: E011 to E013 cannot check it), whose partial does not load or does not parse, or whose partial's root element is not `id="<partial name>"` | checks `dj_hx.E014`, `E015` (with `HxUnknownPartial`'s reason, or Django's `TemplateSyntaxError` message, so a typo in the partial is a message, not a traceback that stops `manage.py check`) and `E016` (the start-up twin of `HxPartialRootId`, judged where the source shows the root). E014 skips an interaction whose handler's module is in site-packages: its controls are in that app's templates, which are never read |
 | An interaction registered after `dj_hx.urls` was first read, so its route is the bare view and the decorators above it do not apply | check `dj_hx.E017`, naming the module to import before the URLconf is loaded |
 | Interactions registered, but `dj_hx.urls` not included | check `dj_hx.E020`; `{% act %}` raises `ImproperlyConfigured`; both name `path("", include("dj_hx.urls"))` |
@@ -536,7 +537,8 @@ Site-packages, wherever dj-hx skips it (`hx_lint`, `hx_map`, the checks,
 `pip install --user` fills included.
 
 `hx_map` classifies every control as full or partial by htmx 4's own rule
-(the target is `body`, `hx-select` is present, or the element is boosted),
+(the target is `body`, an `hx-select` reaches it, its own or an ancestor's
+`hx-select:inherited`, or the element is boosted),
 resolves it through `{% url %}`, `{% act %}` or the literal path, and checks it
 against the verbs its view calls, with `if request.method == "DELETE":` branches
 attributed to that method. An `{% act %}` control resolves through the
@@ -583,7 +585,9 @@ swap modifiers) are accepted from htmx 4.0.2's source, not measured.
 All verified against `src/htmx.js` at tag v4.0.0; the line numbers are into
 that file.
 
-- `HX-Request-Type` is `full` when the target is the body or `hx-select` is set, else `partial` (L578).
+- `HX-Request-Type` is `full` when the target is the body or an `hx-select` reaches the element (its own or an ancestor's
+  `hx-select:inherited`, read as `hx-target` is, L389), else `partial` (L578). The reply is cut down to what that selector
+  finds in it before the swap (L1319).
 - `hx-push-url="true"` pushes the URL after redirects (L1675), so a plain 303 updates the location bar.
 - A `delete` swap runs regardless of response content (L1314) and honors `swap:1s`.
 - `HX-Trigger` fires on the source element, or `document` if the swap removed it (L620, L1296); that is why `.trigger()` always sets a `target`.
