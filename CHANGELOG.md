@@ -13,6 +13,12 @@
   htmx.onLoad(fn)": `htmx:after:process` reaches new content as `htmx:load`
   did. `hxlint.py` and `hx_vocab.py` are synced from hx-flask, whose vocabulary
   is now generated from htmx's `v4.0.2` tag.
+- `hx_lint`'s `duplicate-id` no longer compares ids built in the template:
+  `id="{{ form.name.id_for_label }}"` and
+  `id="{{ form.collaborator_emails.id_for_label }}"` were reported as one id
+  twice. Literal ids are compared as before. The lint does not follow
+  `{% if %}`, so an id in two exclusive branches is still reported; llms.txt
+  says so.
 
 ## 0.1.0 (2026-11-21)
 
