@@ -55,6 +55,11 @@ def test_vocabulary_is_generated_from_htmx_and_knows_the_facts_that_bit_us():
     assert {"swap", "settle", "show", "showTarget", "transition"} <= set(V.SWAP_MODIFIERS)
     assert {"once", "changed", "delay", "throttle", "from", "consume"} <= set(V.TRIGGER_MODIFIERS)
     assert V.HTMX2_EVENT_NAMES["htmx:afterSwap"] == "htmx:after:swap"
+    # htmx 4.0.1 corrected these in its upgrade guide and htmx-2-compat; 4.0.0's (and 0.1.0's) said init.
+    assert V.HTMX2_EVENT_NAMES["htmx:afterOnLoad"] == "htmx:after:request"
+    assert V.HTMX2_EVENT_NAMES["htmx:beforeOnLoad"] == "htmx:before:response"
+    assert V.HTMX2_EVENT_NAMES["htmx:load"] == "htmx:after:process"
+    assert V.HTMX2_EVENT_NAMES["htmx:beforeProcessNode"] == "htmx:before:init"
 
 
 # ---------------------------------------------------------------- the rules
@@ -110,6 +115,12 @@ def test_htmx2_event_names_in_hx_on():
     assert rules(lint_html('<div hx-on="htmx:beforeRequest -> x()"></div>')) == ["htmx2-event-name"]
     assert rules(lint_html('<form hx-post="/a" hx-on::after-request="this.reset()"></form>')) == ["htmx2-event-name"]
     assert rules(lint_html('<div hx-get="/a" hx-trigger="htmx:after-swap from:body"></div>')) == ["htmx2-event-name"]
+
+
+def test_a_save_button_waiting_for_its_request_is_pointed_at_after_request():
+    # A production port wrote this; 0.1.0 sent it to htmx:after:init, which fires when an element initializes.
+    [finding] = lint_html('<button _="on click toggle .disabled until htmx:afterOnLoad from closest <form/>">Save</button>')
+    assert finding.message == "htmx:afterOnLoad is the htmx 2 event name; htmx 4 calls it htmx:after:request."
     assert lint_html('<div hx-get="/a" hx-trigger="htmx:after:swap from:body"></div>') == []
 
 

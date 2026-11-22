@@ -160,7 +160,7 @@ is genuinely Django-specific; the core is vendored from hx-flask (see below).
 `dj_hx/urlconf.py` is dj-fixi's body under a local docstring. Fix them upstream and run
 `python tools/sync_shared.py` (`HX_FLASK` / `DJ_FIXI` env vars point at the checkouts).
 `tests/test_shared_core.py` pins the copies and fails when the neighbours are checked out and differ.
-`hx_vocab.py` is generated from the htmx 4.0.0 source tree by hx-flask's `tools/gen_vocab.py`.
+`hx_vocab.py` is generated from htmx's repository at the `v4.0.2` tag by hx-flask's `tools/gen_vocab.py`.
 
 ## Conventions
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- `hx_lint` gave four htmx 2 events htmx 4.0.0's renames, which htmx 4.0.1
+  corrected: `htmx:afterOnLoad` is `htmx:after:request` (it said
+  `htmx:after:init`), `htmx:beforeOnLoad` is `htmx:before:response` (said
+  `htmx:before:init`), `htmx:load` is `htmx:after:process` (said
+  `htmx:after:init`), and `htmx:beforeProcessNode` is `htmx:before:init` (said
+  `htmx:before:process`). The `htmx:load` message no longer adds "call
+  htmx.onLoad(fn)": `htmx:after:process` reaches new content as `htmx:load`
+  did. `hxlint.py` and `hx_vocab.py` are synced from hx-flask, whose vocabulary
+  is now generated from htmx's `v4.0.2` tag.
+
 ## 0.1.0 (2026-11-21)
 
 First release: the handler-first design built for Flask in hx-flask,
