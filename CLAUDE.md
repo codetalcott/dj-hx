@@ -161,9 +161,12 @@ is genuinely Django-specific; the core is vendored from hx-flask (see below).
 ## Vendored files: do not edit in place
 
 `dj_hx/hxlint.py`, `dj_hx/hx_vocab.py` and `dj_hx/mapcore.py` are hx-flask's byte for byte apart from one or two import lines, and
-`dj_hx/urlconf.py` is dj-fixi's body under a local docstring. Fix them upstream and run
-`python tools/sync_shared.py` (`HX_FLASK` / `DJ_FIXI` env vars point at the checkouts).
-`tests/test_shared_core.py` pins the copies and fails when the neighbours are checked out and differ.
+`dj_hx/urlconf.py` is dj-fixi's body under a local docstring. Fix them upstream, push, and run
+`python tools/sync_shared.py` (`HX_FLASK` / `DJ_FIXI` env vars point at the checkouts). It copies the files and
+writes the commit each came from to `tools/shared.lock`, refusing a commit that is not on a remote branch or a
+dirty checkout. `tests/test_shared_core.py` fetches the files at the locked commits from GitHub and compares, so
+the pin holds in CI with no neighbour checked out (it skips only when GitHub is unreachable); with a neighbour
+checkout present it also compares against that, which is the "upstream moved, resync" signal.
 `hx_vocab.py` is generated from htmx's repository at the `v4.0.2` tag by hx-flask's `tools/gen_vocab.py`.
 
 ## Conventions
