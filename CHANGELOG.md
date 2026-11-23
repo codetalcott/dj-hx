@@ -4,6 +4,10 @@
 
 ### Changed
 
+- README's Interactions section states each rule in a line and shows the
+  status policy's two blocks; the whole of each rule, the `manage.py check`
+  detail and the status policy's reasoning moved to INTERACTIONS.md, which
+  `tests/test_docs.py` pins to the measured desk as it pins README.
 - An htmx request without `HX-Request-Type` raises `HxProtocolError` under
   `DEBUG` only. In production it is answered as `full` (the page) and the
   finding is recorded and logged, as every other post-hoc finding is: it
