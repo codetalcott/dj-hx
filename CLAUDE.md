@@ -21,8 +21,8 @@ No virtualenv is checked in: `.venv/` is gitignored, and an old local one can po
 uv venv <venv> && uv pip install -p <venv>/bin/python "django~=6.1.0" pytest pytest-django ruff "playwright==1.64.0"  # below Django 6, add django-template-partials
 <venv>/bin/python -m playwright install chromium
 
-<venv>/bin/python -m pytest -q                      # 421 tests, ~16 s
-<venv>/bin/python -m pytest -q -m "not browser"     # 385, ~3 s, skipping Chromium
+<venv>/bin/python -m pytest -q                      # 425 tests, ~16 s
+<venv>/bin/python -m pytest -q -m "not browser"     # 389, ~3 s, skipping Chromium
 <venv>/bin/python -m pytest -q -m browser           # the 36 Playwright tests alone, ~14 s
 <venv>/bin/python -m pytest tests/test_verbs.py::test_text_escapes
 <venv>/bin/ruff check .
