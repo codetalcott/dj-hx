@@ -136,7 +136,8 @@ element `hx-target="this"` names through `Node.resolving()`; both are hx-flask's
 template checks read each `{% act %}` through `strip_template_syntax(source, acts=[...])`, which marks
 the n-th tag `__ACT<n>__` so its holding element is found in hxlint's tree, and `partial_sources()`
 for `{% partialdef %}` bodies. E022 reads `{% url %}` through `url_tags()`, which is Django's own lexer:
-a tag in `{% verbatim %}` or across lines is text to Django, and `strip_template_syntax` would read both.
+a tag in `{% verbatim %}` is text to Django, and `strip_template_syntax` would read it. A tag written across lines
+is text before Django 6.2 and a tag from it (`templates.tags_span_lines()` asks the lexer); the canary job found that.
 It reverses through `django.urls.reverse()`, taking each placeholder from the converter the resolver holds
 for that parameter (the namespace walk mirrors `reverse()`'s), never from the route string; a keyword naming
 a route's extra kwarg is passed that default. It skips `{% url ... as var %}`: Django's documented form for a
