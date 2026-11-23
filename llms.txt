@@ -647,6 +647,7 @@ as `HxRedirectIntoFragment`. Always build URLs with `{% url %}`, or `{% act %}` 
 
 - [README.md](https://github.com/codetalcott/dj-hx/blob/main/README.md): the design, the vocabulary, the silent-failure catalogue in one line per row
 - [FAILURES.md](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md): the catalogue in full, one entry per row
+- [INTERACTIONS.md](https://github.com/codetalcott/dj-hx/blob/main/INTERACTIONS.md): every interaction rule in full, and the status policy with what was measured
 - [CHANGELOG.md](https://github.com/codetalcott/dj-hx/blob/main/CHANGELOG.md): release notes
 - [dj_hx/verbs.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/verbs.py): the verbs and `HxResponse`
 - [dj_hx/request.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/request.py): `HX-Request-Type` and the `wants_*` helpers

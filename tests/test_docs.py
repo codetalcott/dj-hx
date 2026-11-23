@@ -21,10 +21,11 @@ DESK = (DESK_PAGES / "desk.html").read_text()
 
 
 def section(path, start, end):
-    """The code blocks of ``path`` between the line that starts with ``start`` and the next one with ``end``."""
+    """The code blocks of ``path`` from ``start`` to the next ``end``, or to the end of the file."""
     text = (ROOT / path).read_text()
     begin = text.index(start)
-    return "\n".join(FENCED.findall(text[begin : text.index(end, begin + len(start))]))
+    stop = text.find(end, begin + len(start))
+    return "\n".join(FENCED.findall(text[begin : stop if stop != -1 else len(text)]))
 
 
 def flat(html):
@@ -33,6 +34,7 @@ def flat(html):
 
 DOCS = {
     "README.md": section("README.md", "### The status policy", "\n## "),
+    "INTERACTIONS.md": section("INTERACTIONS.md", "## The status policy", "\n## "),
     "llms.txt": section("llms.txt", "Status policy for a site with interactions", "\n### "),
 }
 
@@ -58,7 +60,7 @@ def test_the_status_policy_in_the_docs_is_the_measured_desk(doc):
 PARTIALS = re.compile(r"{% partialdef \w+ inline %}\s*(<[^>]*>)(.*?){% endpartialdef %}", re.S)
 
 
-@pytest.mark.parametrize("doc", ["README.md", "llms.txt"])
+@pytest.mark.parametrize("doc", ["README.md", "INTERACTIONS.md", "llms.txt"])
 def test_every_interaction_partial_the_docs_show_carries_the_policy(doc):
     """A reader copies the first example they see, so every partial with an {% act %} control carries the pair."""
     shown = [root for block in FENCED.findall((ROOT / doc).read_text()) for root, body in PARTIALS.findall(block) if "{% act " in body]
