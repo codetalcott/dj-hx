@@ -36,7 +36,7 @@ header, offers no way to read the others, and makes each of htmx 4's silent
 outcomes loud (see [Beside the alternatives](#beside-the-alternatives)). The
 same design for Flask is [hx-flask]; the sibling for Fixi.js is [dj-fixi].
 
-**Status:** 0.2.0 (2026-11-23), alpha, installed from its git tag; not on PyPI. Django 4.2, 5.2,
+**Status:** 0.2.1 (2026-11-23), alpha, installed from its git tag; not on PyPI. Django 4.2, 5.2,
 6.0 and 6.1; Python 3.10 to 3.13.
 
 ## Two checks for any Django project
@@ -135,8 +135,8 @@ What was rejected, and why:
 ## Install
 
 ```sh
-pip install "dj-hx @ git+https://github.com/codetalcott/dj-hx@v0.2.0"
-pip install "dj-hx[partials] @ git+https://github.com/codetalcott/dj-hx@v0.2.0"   # Django 4.2 to 5.x
+pip install "dj-hx @ git+https://github.com/codetalcott/dj-hx@v0.2.1"
+pip install "dj-hx[partials] @ git+https://github.com/codetalcott/dj-hx@v0.2.1"   # Django 4.2 to 5.x
 ```
 
 ```python
@@ -197,19 +197,6 @@ A partial name containing a dot (`rows.html`) is a separate template file;
 anything else is a `{% partialdef %}` of the page template. A partial used as
 an `<hx-partial>` (`.partial("count")`, the messages partial) must have a root
 element whose `id` is the partial's name; the render checks it.
-
-**Generic views.** `HxMixin` puts the verbs under Django's generic views,
-overriding three hooks: `render_to_response` (negotiates on `partial`),
-`form_invalid` (422) and `form_valid` (raises when Django's redirect would
-answer a partial request). Put it first; check `dj_hx.E007` says so when it is
-not.
-
-```python
-class ContactList(HxMixin, ListView):
-    model = Contact
-    template_name = "index.html"
-    partial = "rows"
-```
 
 ## The messages bridge
 
@@ -272,7 +259,7 @@ urlpatterns = [
 ```
 
 The rules, each in a line; the whole of each, with what the checks read and what was measured, is
-[INTERACTIONS.md](INTERACTIONS.md#the-rules).
+[INTERACTIONS.md](https://github.com/codetalcott/dj-hx/blob/main/INTERACTIONS.md#the-rules).
 
 - **The route is minted from the handler**, `x/<app label>/<handler>/<param>/…/`, one segment per
   parameter after `request`, `<int:…>` for an `int` annotation; `route=` chooses the path instead.
@@ -320,51 +307,51 @@ says not to swap those, and the layout carries one alert:
 still swaps; the alert hears every other error and a request that got no reply, and hides itself when
 the next request starts. Both are hyperscript, so that layout loads `_hyperscript` after htmx. Why each
 line is written as it is, what htmx's global `noSwap` would do instead, and what was measured:
-[INTERACTIONS.md](INTERACTIONS.md#the-status-policy).
+[INTERACTIONS.md](https://github.com/codetalcott/dj-hx/blob/main/INTERACTIONS.md#the-status-policy).
 
 ## What is loud
 
 Every row of the design's silent-failure catalogue has a test in `tests/`, and a full
-entry in [FAILURES.md](FAILURES.md).
+entry in [FAILURES.md](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md).
 The verbs raise where the outcome is certain at call time; everything else is
 recorded on `response.hx_findings`, logged to the `dj_hx` logger, and raised
 by `HxTestClient`. Nothing is gated on `DEBUG` that a test needs.
 
 | Failure | What happens | Full entry |
 |---|---|---|
-| A page answers a request that targets an element | `page()` raises `HxPageIntoFragment` | [more](FAILURES.md#a-page-answers-a-request-that-targets-an-element) |
-| A fragment answers a boosted or body-targeted request | `fragment()` / `text()` record `HxFragmentIntoPage` | [more](FAILURES.md#a-fragment-answers-a-boosted-or-body-targeted-request) |
-| A 3xx answers a partial request | `redirect()` raises; the guard records `HxRedirectIntoFragment`, `APPEND_SLASH`'s 301 and `login_required`'s 302 included; `navigate()` leaves the page | [more](FAILURES.md#a-3xx-answers-a-partial-request) |
-| A 204 answers a partial request | `HxNoSwap`: htmx 4 leaves the target untouched | [more](FAILURES.md#a-204-answers-a-partial-request) |
-| A response no verb built answers a partial request | `HxBareResponse` | [more](FAILURES.md#a-response-no-verb-built-answers-a-partial-request) |
-| Messages added on a fragment with no messages template | `HxMessagesUnconfigured` | [more](FAILURES.md#messages-added-on-a-fragment-with-no-messages-template) |
-| A partial's root element is not its name | `HxPartialRootId` at the render | [more](FAILURES.md#a-partials-root-element-is-not-its-name) |
-| partial names a partial the template does not define | `HxUnknownPartial`, listing the partials it does | [more](FAILURES.md#partial-names-a-partial-the-template-does-not-define) |
-| An htmx request without HX-Request-Type | `HxProtocolError`: raised under `DEBUG`; in production answered as the page and recorded | [more](FAILURES.md#an-htmx-request-without-hx-request-type) |
-| htmx 2 idioms in the HTML | the lint: on every test-client response, in the `DEBUG` log, in `manage.py hx_lint`, as check `dj_hx.W005` | [more](FAILURES.md#htmx-2-idioms-in-the-html) |
-| A template reads a name nobody supplies | `HxTestClient` raises `HxUndefinedVariable`, naming each variable and template:line, `{% if %}` and `{% for %}` included | [more](FAILURES.md#a-template-reads-a-name-nobody-supplies) |
-| Logging disabled, so the undefined-variable check is blind | `HxTestClient` raises `ImproperlyConfigured`, naming which | [more](FAILURES.md#logging-disabled-so-the-undefined-variable-check-is-blind) |
-| A control points at a view of the other kind | `manage.py hx_map` | [more](FAILURES.md#a-control-points-at-a-view-of-the-other-kind) |
-| A control points at a view that calls no verb, or a view retargets | `manage.py hx_map`, as warnings | [more](FAILURES.md#a-control-points-at-a-view-that-calls-no-verb-or-a-view-retargets) |
-| Middleware or settings misconfigured | checks `dj_hx.W001`, `E002`, `W003`, `W004`, `W006`, `E007` | [more](FAILURES.md#middleware-or-settings-misconfigured) |
-| HX_EXTENSIONS names an unknown extension | check `dj_hx.W008` | [more](FAILURES.md#hxextensions-names-an-unknown-extension) |
-| The module holds the raw handler under its name | `ImproperlyConfigured` when the URLconf is first read; `dj_hx.W018` for a decorator without `functools.wraps` | [more](FAILURES.md#the-module-holds-the-raw-handler-under-its-name) |
-| An interaction that cannot work | `ImproperlyConfigured` at import, naming the handler | [more](FAILURES.md#an-interaction-that-cannot-work) |
-| An interaction returns a response | `ImproperlyConfigured`: leave the page from a view that returns `navigate()` | [more](FAILURES.md#an-interaction-returns-a-response) |
-| A refusal whose message is empty | `HxEmptyRefusal`, recorded on the 422 | [more](FAILURES.md#a-refusal-whose-message-is-empty) |
-| A reply sets a key its context does not define | `ImproperlyConfigured`, naming the key and the context function | [more](FAILURES.md#a-reply-sets-a-key-its-context-does-not-define) |
-| act with the wrong arguments, or an unknown interaction | `TemplateSyntaxError` at render; checks `dj_hx.E009`, `E010` at start-up | [more](FAILURES.md#act-with-the-wrong-arguments-or-an-unknown-interaction) |
-| An act control sends the wrong method, target or swap | checks `dj_hx.E011`, `E012`, `E013` | [more](FAILURES.md#an-act-control-sends-the-wrong-method-target-or-swap) |
-| An hx-select reaches an act control | check `dj_hx.E026` | [more](FAILURES.md#an-hx-select-reaches-an-act-control) |
-| An interaction with no control, or a partial that fails | checks `dj_hx.E014`, `E015`, `E016` | [more](FAILURES.md#an-interaction-with-no-control-or-a-partial-that-fails) |
-| An interaction registered after dj_hx.urls was read | check `dj_hx.E017` | [more](FAILURES.md#an-interaction-registered-after-djhxurls-was-read) |
-| Interactions registered but dj_hx.urls not included | check `dj_hx.E020`; `{% act %}` raises `ImproperlyConfigured` | [more](FAILURES.md#interactions-registered-but-djhxurls-not-included) |
-| A decorator without functools.wraps, or below the interaction | checks `dj_hx.W018`, `W019` | [more](FAILURES.md#a-decorator-without-functoolswraps-or-below-the-interaction) |
-| An act the checks cannot tie to a control | check `dj_hx.I021`, an Info | [more](FAILURES.md#an-act-the-checks-cannot-tie-to-a-control) |
-| A url tag that does not reverse | check `dj_hx.E022`; `I023` for a route it cannot reverse with a placeholder | [more](FAILURES.md#a-url-tag-that-does-not-reverse) |
-| An event nobody listens for, or nobody announces | checks `dj_hx.W024`, `W025` | [more](FAILURES.md#an-event-nobody-listens-for-or-nobody-announces) |
+| A page answers a request that targets an element | `page()` raises `HxPageIntoFragment` | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-page-answers-a-request-that-targets-an-element) |
+| A fragment answers a boosted or body-targeted request | `fragment()` / `text()` record `HxFragmentIntoPage` | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-fragment-answers-a-boosted-or-body-targeted-request) |
+| A 3xx answers a partial request | `redirect()` raises; the guard records `HxRedirectIntoFragment`, `APPEND_SLASH`'s 301 and `login_required`'s 302 included; `navigate()` leaves the page | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-3xx-answers-a-partial-request) |
+| A 204 answers a partial request | `HxNoSwap`: htmx 4 leaves the target untouched | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-204-answers-a-partial-request) |
+| A response no verb built answers a partial request | `HxBareResponse` | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-response-no-verb-built-answers-a-partial-request) |
+| Messages added on a fragment with no messages template | `HxMessagesUnconfigured` | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#messages-added-on-a-fragment-with-no-messages-template) |
+| A partial's root element is not its name | `HxPartialRootId` at the render | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-partials-root-element-is-not-its-name) |
+| partial names a partial the template does not define | `HxUnknownPartial`, listing the partials it does | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#partial-names-a-partial-the-template-does-not-define) |
+| An htmx request without HX-Request-Type | `HxProtocolError`: raised under `DEBUG`; in production answered as the page and recorded | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#an-htmx-request-without-hx-request-type) |
+| htmx 2 idioms in the HTML | the lint: on every test-client response, in the `DEBUG` log, in `manage.py hx_lint`, as check `dj_hx.W005` | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#htmx-2-idioms-in-the-html) |
+| A template reads a name nobody supplies | `HxTestClient` raises `HxUndefinedVariable`, naming each variable and template:line, `{% if %}` and `{% for %}` included | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-template-reads-a-name-nobody-supplies) |
+| Logging disabled, so the undefined-variable check is blind | `HxTestClient` raises `ImproperlyConfigured`, naming which | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#logging-disabled-so-the-undefined-variable-check-is-blind) |
+| A control points at a view of the other kind | `manage.py hx_map` | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-control-points-at-a-view-of-the-other-kind) |
+| A control points at a view that calls no verb, or a view retargets | `manage.py hx_map`, as warnings | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-control-points-at-a-view-that-calls-no-verb-or-a-view-retargets) |
+| Middleware or settings misconfigured | checks `dj_hx.W001`, `E002`, `W003`, `W004`, `W006` | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#middleware-or-settings-misconfigured) |
+| HX_EXTENSIONS names an unknown extension | check `dj_hx.W008` | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#hxextensions-names-an-unknown-extension) |
+| The module holds the raw handler under its name | `ImproperlyConfigured` when the URLconf is first read; `dj_hx.W018` for a decorator without `functools.wraps` | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#the-module-holds-the-raw-handler-under-its-name) |
+| An interaction that cannot work | `ImproperlyConfigured` at import, naming the handler | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#an-interaction-that-cannot-work) |
+| An interaction returns a response | `ImproperlyConfigured`: leave the page from a view that returns `navigate()` | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#an-interaction-returns-a-response) |
+| A refusal whose message is empty | `HxEmptyRefusal`, recorded on the 422 | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-refusal-whose-message-is-empty) |
+| A reply sets a key its context does not define | `ImproperlyConfigured`, naming the key and the context function | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-reply-sets-a-key-its-context-does-not-define) |
+| act with the wrong arguments, or an unknown interaction | `TemplateSyntaxError` at render; checks `dj_hx.E009`, `E010` at start-up | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#act-with-the-wrong-arguments-or-an-unknown-interaction) |
+| An act control sends the wrong method, target or swap | checks `dj_hx.E011`, `E012`, `E013` | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#an-act-control-sends-the-wrong-method-target-or-swap) |
+| An hx-select reaches an act control | check `dj_hx.E026` | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#an-hx-select-reaches-an-act-control) |
+| An interaction with no control, or a partial that fails | checks `dj_hx.E014`, `E015`, `E016` | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#an-interaction-with-no-control-or-a-partial-that-fails) |
+| An interaction registered after dj_hx.urls was read | check `dj_hx.E017` | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#an-interaction-registered-after-djhxurls-was-read) |
+| Interactions registered but dj_hx.urls not included | check `dj_hx.E020`; `{% act %}` raises `ImproperlyConfigured` | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#interactions-registered-but-djhxurls-not-included) |
+| A decorator without functools.wraps, or below the interaction | checks `dj_hx.W018`, `W019` | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-decorator-without-functoolswraps-or-below-the-interaction) |
+| An act the checks cannot tie to a control | check `dj_hx.I021`, an Info | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#an-act-the-checks-cannot-tie-to-a-control) |
+| A url tag that does not reverse | check `dj_hx.E022`; `I023` for a route it cannot reverse with a placeholder | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-url-tag-that-does-not-reverse) |
+| An event nobody listens for, or nobody announces | checks `dj_hx.W024`, `W025` | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#an-event-nobody-listens-for-or-nobody-announces) |
 
-On an existing site the first `manage.py check` is a worklist, `dj_hx.E022` above all; [FAILURES.md](FAILURES.md#a-url-tag-that-does-not-reverse) says how to work through it one id at a time.
+On an existing site the first `manage.py check` is a worklist, `dj_hx.E022` above all; [FAILURES.md](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-url-tag-that-does-not-reverse) says how to work through it one id at a time.
 
 ## Testing
 

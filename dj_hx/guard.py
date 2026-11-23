@@ -13,6 +13,7 @@ the one place to look.
 from __future__ import annotations
 
 from django.conf import settings
+from django.http import HttpResponse
 
 from .errors import HxBareResponse, HxError, HxNoSwap, HxProtocolError, HxRedirectIntoFragment
 from .request import REQUEST_TYPE_HEADER, is_htmx, protocol_message, who
@@ -52,7 +53,7 @@ def _routing_redirect(request, response) -> bool:
         from django.middleware.common import CommonMiddleware
 
         try:
-            return CommonMiddleware(lambda r: None).should_redirect_with_slash(request)
+            return CommonMiddleware(lambda request: HttpResponse()).should_redirect_with_slash(request)  # never called
         except Exception:
             return False
     return False
@@ -104,8 +105,7 @@ def guard(request, response) -> list[HxError]:
                 f"{who(request)} answered a request that targets an element with a response no verb built "
                 "(django.shortcuts.render, a plain HttpResponse, a TemplateResponse); whether it is a page or a "
                 "fragment cannot be checked, and django.shortcuts.render sends the whole page into the element. "
-                "Use render(request, template, partial), fragment(), text() or removed(), or HxMixin on a "
-                "generic view."
+                "Use render(request, template, partial), fragment(), text() or removed()."
             )
         )
     return found

@@ -6,7 +6,7 @@ own protocol; the template keeps the request-side controls; fragments are
 partials of the page template. See README.md.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 from .errors import (
     HxBareResponse,
@@ -25,14 +25,13 @@ from .errors import (
     HxUnknownPartial,
 )
 from .interactions import interaction
-from .mixins import HxMixin
 from .request import current_url, is_htmx, request_type, vary_on_hx, wants_fragment, wants_page
 from .verbs import HxRedirectResponse, HxResponse, fragment, invalid, navigate, page, redirect, removed, render, text
 
 __all__ = [
     "render", "page", "fragment", "invalid", "redirect", "navigate", "removed", "text",
     "is_htmx", "request_type", "wants_page", "wants_fragment", "current_url", "vary_on_hx",
-    "HxResponse", "HxRedirectResponse", "HxMixin", "interaction",
+    "HxResponse", "HxRedirectResponse", "interaction",
     "HxError", "HxProtocolError", "HxPageIntoFragment", "HxFragmentIntoPage", "HxRedirectIntoFragment",
     "HxNoSwap", "HxBareResponse", "HxUnknownPartial", "HxPartialRootId", "HxMessagesUnconfigured", "HxLintError", "HxRedirectError",
     "HxUndefinedVariable", "HxEmptyRefusal",

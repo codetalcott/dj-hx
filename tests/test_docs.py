@@ -70,7 +70,7 @@ def test_every_interaction_partial_the_docs_show_carries_the_policy(doc):
 
 # ------------------------------------------------------------- the catalogue
 
-ROW = re.compile(r"^\| (?P<title>[^|]+?) \| [^|]+ \| \[more\]\(FAILURES\.md#(?P<anchor>[a-z0-9-]+)\) \|$", re.M)
+ROW = re.compile(r"^\| (?P<title>[^|]+?) \| [^|]+ \| \[more\]\(https://github\.com/codetalcott/dj-hx/blob/main/FAILURES\.md#(?P<anchor>[a-z0-9-]+)\) \|$", re.M)
 HEADING = re.compile(r"^## (.+)$", re.M)
 
 

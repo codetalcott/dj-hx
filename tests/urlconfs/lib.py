@@ -121,7 +121,7 @@ def bare_page(request):
 
 
 def bare_template_response(request):
-    return TemplateResponse(request, "index.html", PAGE)  # what a generic view without HxMixin returns
+    return TemplateResponse(request, "index.html", PAGE)  # what a generic view returns
 
 
 def escaped(request):

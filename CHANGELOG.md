@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.2.1 (2026-11-23)
+
+### Removed
+
+- `HxMixin` and check `dj_hx.E007`. Nothing outside dj-hx's own tests used
+  the generic-views mixin; its first production consumer writes function
+  views. The id E007 is retired, not reused.
+- `HX_REQUEST_TYPE_FALLBACK`. Since 0.2.0 an htmx request without
+  `HX-Request-Type` is answered as the page in production and raises only
+  under `DEBUG`, which is what the setting was for.
+
+### Fixed
+
+- The package type-checks: `mypy dj_hx` is clean, so the `Typing :: Typed`
+  classifier and the shipped `py.typed` are true. 21 findings in dj-hx's own
+  files and 11 in the vendored ones, fixed upstream in hx-flask and dj-fixi
+  and synced; none a behaviour change.
+- THIRD-PARTY.md names `mapcore.py` among the files vendored from hx-flask
+  and describes the pin as `tools/shared.lock` holds it.
+- README's links to FAILURES.md and INTERACTIONS.md are absolute, so they
+  resolve wherever the README is shown, not only on GitHub.
+
+### Changed
+
+- CI's lint job runs `mypy dj_hx`; `mypy` and `django-stubs` are in the `dev`
+  extra.
+
 ## 0.2.0 (2026-11-23)
 
 The interaction layer, as it shipped to its first production project (a

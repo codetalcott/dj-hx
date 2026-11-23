@@ -29,8 +29,8 @@ Facts to hold while writing code against this package:
 Not on PyPI; install from the release tag:
 
 ```sh
-pip install "dj-hx @ git+https://github.com/codetalcott/dj-hx@v0.2.0"
-pip install "dj-hx[partials] @ git+https://github.com/codetalcott/dj-hx@v0.2.0"   # Django 4.2 to 5.x
+pip install "dj-hx @ git+https://github.com/codetalcott/dj-hx@v0.2.1"
+pip install "dj-hx[partials] @ git+https://github.com/codetalcott/dj-hx@v0.2.1"   # Django 4.2 to 5.x
 ```
 
 ```python
@@ -129,9 +129,7 @@ vary_on_hx(response) -> response    # Vary: HX-Request, HX-Request-Type (the ver
 ```
 
 An htmx request without `HX-Request-Type` is `HxProtocolError` (this needs htmx 4): raised under `DEBUG`, and in
-production answered as `full` (the page) and recorded, so a stripping proxy cannot 500 the site. A proxy can
-be worked around under `DEBUG` too with `HX_REQUEST_TYPE_FALLBACK = "full"` or `"partial"`; the guard still
-records the finding.
+production answered as `full` (the page) and recorded, so a stripping proxy cannot 500 the site.
 
 ### Verbs
 
@@ -189,28 +187,6 @@ unpacked into the scope of `hx-on` handlers.
 return render(request, "index.html", "rows", ctx).trigger("contacts-changed")
 return fragment(request, "index.html", "rows", ctx).partial("count")   # also refreshes #count
 ```
-
-### Generic views
-
-```python
-from dj_hx import HxMixin
-
-class ContactList(HxMixin, ListView):          # HxMixin FIRST (check dj_hx.E007)
-    model = Contact
-    template_name = "index.html"
-    partial = "rows"                            # None means page() only, which raises on a partial request
-
-class ContactCreate(HxMixin, CreateView):
-    model = Contact
-    fields = ["first", "last", "email"]
-    template_name = "new.html"
-    partial = "form"
-    success_url = reverse_lazy("contacts")
-```
-
-`HxMixin` overrides three hooks: `render_to_response` (goes through `render` when `partial` is set, else
-`page`), `form_invalid` (422), and `form_valid` (raises `HxRedirectIntoFragment` if Django's redirect would
-answer a partial request; override it to return `render`/`fragment`/`removed` for element-targeted forms).
 
 ### Interactions
 
@@ -334,7 +310,6 @@ layout:
 | Setting | Meaning |
 |---|---|
 | `HX_MESSAGES_TEMPLATE = "layout.html#messages"` | Partial used to render pending `django.contrib.messages` into fragment responses. `#name` defaults to `messages`. Root element must be `id="<name>"`. |
-| `HX_REQUEST_TYPE_FALLBACK = "full"` | Answer htmx requests missing `HX-Request-Type` as this type under `DEBUG` too, instead of raising (production answers `full` by default). Proxies only. |
 | `HX_LINT_IGNORE = ("implicit-inheritance",)` | Lint rules to silence everywhere (test client, middleware, `hx_lint`, W005). |
 | `HX_EXTENSIONS = ("hx-live", "sse")` | Extensions the pages load, for the lint (also detected from `<script src>`). The file name (`hx-sse`) or the name htmx registers (`sse`, as in `htmx.config.extensions`); W008 flags any other. |
 | `SILENCED_SYSTEM_CHECKS = ["dj_hx.W005"]` | Standard Django; the check ids are below. An Error's id can be silenced too, as while working through E022's first run on an existing site: an Error stops `check`, `runserver`, `migrate`, `makemigrations`, `createsuperuser` and `manage.py test`. |
@@ -346,12 +321,12 @@ All subclass `HxError` except `HxRedirectError` (an `AssertionError` from the te
 | Error | Raised or recorded | Cause | Fix |
 |---|---|---|---|
 | `HxPageIntoFragment` | raised by `page()` | page answers an element-targeted request | `hx-target="body"` on the control, or `render(..., partial)` |
-| `HxRedirectIntoFragment` | raised by `redirect()` / `HxMixin.form_valid`; recorded by the guard for any other 3xx, including `APPEND_SLASH`'s 301 | 3xx answers an element-targeted request | target body, `navigate()` to leave the page, or return a fragment; match the route's trailing slash (`{% url %}` does) |
+| `HxRedirectIntoFragment` | raised by `redirect()`; recorded by the guard for any other 3xx, including `APPEND_SLASH`'s 301 | 3xx answers an element-targeted request | target body, `navigate()` to leave the page, or return a fragment; match the route's trailing slash (`{% url %}` does) |
 | `HxFragmentIntoPage` | recorded by `fragment()` / `text()` | bare fragment answers a boosted or body-targeted request | target an element, or render a page |
 | `HxNoSwap` | recorded by the guard | 204 answers a partial request; htmx 4 does not swap | `removed()` + `hx-swap="delete"`, or a fragment |
-| `HxBareResponse` | recorded by the guard | a `text/html` 2xx no verb built answers an element-targeted request (`django.shortcuts.render`, `HttpResponse`, `TemplateResponse`) | use a verb, or `HxMixin` on a generic view |
+| `HxBareResponse` | recorded by the guard | a `text/html` 2xx no verb built answers an element-targeted request (`django.shortcuts.render`, `HttpResponse`, `TemplateResponse`) | use a verb |
 | `HxMessagesUnconfigured` | recorded by the middleware | messages added on a fragment response, `HX_MESSAGES_TEMPLATE` unset | set it |
-| `HxProtocolError` | raised by `request_type()` under `DEBUG`; recorded by the guard (production answers `full`) | `HX-Request` without `HX-Request-Type` | use htmx 4; `HX_REQUEST_TYPE_FALLBACK` for proxies |
+| `HxProtocolError` | raised by `request_type()` under `DEBUG`; recorded by the guard (production answers `full`) | `HX-Request` without `HX-Request-Type` | use htmx 4 |
 | `HxUnknownPartial` | raised at render | `partial=` names no partial of the template; message lists the ones it defines | write `{% partialdef name inline %}` around the region |
 | `HxEmptyRefusal` | recorded by an interaction's reply | a declared refusal with an empty or blank message: the 422 reply's `{% if error %}` shows nothing | raise it with a message: `raise NotOnRota("Member 9 is not on the rota.")` |
 | `HxPartialRootId` | raised at render | a partial used as `<hx-partial>`, or an interaction's reply, does not start with one element carrying `id="<name>"` | wrap the region in `<div id="name">` |
@@ -553,7 +528,6 @@ System checks (tag `dj_hx`):
 | W004 | `HX_MESSAGES_TEMPLATE` does not resolve to a template partial |
 | W005 | a project template fails the lint |
 | W006 | Django < 6 without django-template-partials |
-| E007 | a Django base class listed before `HxMixin` shadows its hooks |
 | W008 | `HX_EXTENSIONS` is a string, or names an extension htmx 4 does not ship |
 | E009 | `{% act %}` in a project template names no interaction (lists those there are) |
 | E010 | `{% act %}`'s arguments are not its handler's parameters (positional, unknown or missing) |
@@ -654,7 +628,6 @@ as `HxRedirectIntoFragment`. Always build URLs with `{% url %}`, or `{% act %}` 
 - [dj_hx/guard.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/guard.py): the recorded findings
 - [dj_hx/middleware.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/middleware.py): `HxMiddleware`
 - [dj_hx/messages.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/messages.py): the messages bridge
-- [dj_hx/mixins.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/mixins.py): `HxMixin`
 - [dj_hx/interactions.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/interactions.py): `@interaction`, its registry and the wrapper view
 - [dj_hx/urls.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/urls.py): the URLconf that serves every interaction
 - [dj_hx/templatetags/hx.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/templatetags/hx.py): `{% act %}`

@@ -18,14 +18,15 @@ No virtualenv is checked in: `.venv/` is gitignored, and an old local one can po
 `pip install -e ".[dev,browser,partials]"` on each Python/Django pair, then `playwright install --with-deps chromium`):
 
 ```
-uv venv <venv> && uv pip install -p <venv>/bin/python "django~=6.1.0" pytest pytest-django ruff "playwright==1.64.0"  # below Django 6, add django-template-partials
+uv venv <venv> && uv pip install -p <venv>/bin/python "django~=6.1.0" pytest pytest-django ruff mypy django-stubs "playwright==1.64.0"  # below Django 6, add django-template-partials
 <venv>/bin/python -m playwright install chromium
 
-<venv>/bin/python -m pytest -q                      # 425 tests, ~16 s
-<venv>/bin/python -m pytest -q -m "not browser"     # 389, ~3 s, skipping Chromium
+<venv>/bin/python -m pytest -q                      # 420 tests, ~16 s
+<venv>/bin/python -m pytest -q -m "not browser"     # 384, ~3 s, skipping Chromium
 <venv>/bin/python -m pytest -q -m browser           # the 36 Playwright tests alone, ~14 s
 <venv>/bin/python -m pytest tests/test_verbs.py::test_text_escapes
 <venv>/bin/ruff check .
+<venv>/bin/mypy dj_hx                                # typed: the Typing :: Typed classifier is a claim, and this is what backs it
 ```
 
 Counts and times measured 2026-11-23 on an Apple M4: Python 3.13.7, Django 6.0.5, Playwright 1.62.0.
@@ -92,7 +93,7 @@ top-level name its templates read: `tests/urlconfs/lib.py`'s `PAGE` carries `ext
 
 **Ordering matters.** `HxMiddleware` must run its response phase before `MessageMiddleware` stores
 messages, which means it is listed *after* it. [checks.py](dj_hx/checks.py) enforces that as `dj_hx.E002`;
-the check ids are documented in that module's docstring: W001 to W008 for settings, middleware, the lint and `HxMixin`,
+the check ids are documented in that module's docstring: W001 to W008 for settings, middleware and the lint (E007 is retired),
 E009 to E017, W018, W019, E020, I021 and E026 for interactions, E022 and I023 for `{% url %}`, and W024 and W025
 for events.
 

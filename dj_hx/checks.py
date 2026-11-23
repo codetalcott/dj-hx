@@ -15,7 +15,7 @@ W003     Warning  django.contrib.messages installed but HX_MESSAGES_TEMPLATE uns
 W004     Warning  HX_MESSAGES_TEMPLATE does not resolve to a template partial
 W005     Warning  A project template fails the htmx 4 lint (htmx 2 idioms, typos)
 W006     Warning  Django < 6 without django-template-partials installed
-E007     Error    A Django class before HxMixin in a routed view's bases shadows its hooks
+E007     retired  HxMixin and its order check were removed in 0.2.1; the id is not reused
 W008     Warning  HX_EXTENSIONS is a string, or names an extension htmx 4 does not ship
 E009     Error    {% act %} names no interaction
 E010     Error    {% act %}'s keywords are not its handler's parameters
@@ -95,11 +95,10 @@ from __future__ import annotations
 import re
 
 import django
-from django.core.checks import Error, Info, Tags, Warning, register
+from django.core.checks import CheckMessage, Error, Info, Tags, Warning, register
 
 from .hxlint import SELECTOR_HEADS
 
-HOOKS = ("render_to_response", "form_invalid", "form_valid")
 _ELEMENT = re.compile(r"<[a-zA-Z]")
 _ELSEWHERE = re.compile(r"\{%\s*(?:include|partial)\b")  # a tag that renders another template or partial in place
 _OUTER_SWAPS = {"outerHTML", "outerMorph", "outerSync"}  # one element carries the id after the swap (htmx 4.0.2)
@@ -318,34 +317,6 @@ def check_partials_available(app_configs=None, **kwargs):
 
 
 @register("dj_hx", Tags.urls)
-def check_mixin_order(app_configs=None, **kwargs):
-    """``class V(ListView, HxMixin)`` renders, returns 200, and never negotiates."""
-    if not _should_run(app_configs):
-        return []
-    from .mixins import HxMixin
-    from .urlconf import routed_view_classes
-
-    messages = []
-    for view_class, routed in routed_view_classes(HxMixin).items():
-        mro = view_class.__mro__
-        index = mro.index(HxMixin)
-        for hook in HOOKS:
-            for earlier in mro[:index]:
-                if hook in vars(earlier) and earlier.__module__.startswith("django."):
-                    messages.append(
-                        Error(
-                            f"{view_class.__name__} lists {earlier.__name__} before HxMixin, so "
-                            f"HxMixin.{hook}() never runs (routed at {routed.route!r}).",
-                            hint=f"Put HxMixin first: class {view_class.__name__}(HxMixin, ...).",
-                            obj=view_class,
-                            id="dj_hx.E007",
-                        )
-                    )
-                    break
-    return messages
-
-
-@register("dj_hx", Tags.urls)
 def check_interaction_routes(app_configs=None, **kwargs):
     """Each interaction routed, through dj_hx.urls, to what its module holds (W018, W019, E020, E017)."""
     if not _should_run(app_configs):
@@ -491,7 +462,7 @@ def _act_messages(act, where: str, node, attr: str | None) -> list:
     it = registry.get(act.name)
     if it is None:
         return [Error(act_unknown(act.name), obj=where, id="dj_hx.E009")]
-    messages = []
+    messages: list[CheckMessage] = []
     problem = act_mismatch(it, act.positional, act.keywords)
     if problem:
         messages.append(Error(problem, obj=where, id="dj_hx.E010"))
@@ -588,7 +559,8 @@ def _control_messages(it, node, attr: str, where: str) -> list:
     if targeted is not None:
         right = _could_equal(targeted.attrs.get("id") or "", partial)
     else:
-        right = _could_equal(_EXTENDED_SELECTOR.fullmatch(value).group(1).strip(), f"#{partial}")
+        extended = _EXTENDED_SELECTOR.fullmatch(value)
+        right = extended is not None and _could_equal(extended.group(1).strip(), f"#{partial}")
     if not right:
         if target is None:
             says = (
@@ -807,7 +779,8 @@ def _url_patterns(name: str):
 
     resolver = get_resolver()
     *path, view = name.split(":")
-    inside, ns_pattern, ns_converters = [], "", {}
+    inside: list[str] = []
+    ns_pattern, ns_converters = "", {}
     for namespace in path:
         instances = resolver.app_dict.get(namespace)
         if instances and namespace not in instances:

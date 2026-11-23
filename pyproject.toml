@@ -1,6 +1,6 @@
 [project]
 name = "dj-hx"
-version = "0.2.0"
+version = "0.2.1"
 description = "Handler-first htmx 4 for Django: the view names the outcome, the template keeps the controls. Also checks every {% url %} and every template variable, for any Django project"
 authors = [{name = "William Talcott"}]
 readme = "README.md"
@@ -43,6 +43,8 @@ dev = [
     "ruff>=0.1.0",
     "pytest>=7.0",
     "pytest-django>=4.5",
+    "mypy>=1.0",
+    "django-stubs>=5.0",
 ]
 
 [build-system]
@@ -51,6 +53,12 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["dj_hx"]
+
+[tool.mypy]
+# The Typing :: Typed classifier is a claim; CI's lint job runs `mypy dj_hx` to keep it true.
+files = ["dj_hx"]
+python_version = "3.10"
+ignore_missing_imports = true
 
 [tool.ruff]
 line-length = 120

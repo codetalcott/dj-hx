@@ -249,15 +249,6 @@ def test_in_production_a_missing_request_type_is_answered_as_full_and_logged(cap
     assert sum("HX-Request-Type is not" in m for m in caplog.messages) == 1
 
 
-@override_settings(HX_REQUEST_TYPE_FALLBACK="full", DEBUG=True)
-def test_a_fallback_answers_a_stripped_header_under_debug_too_and_is_still_recorded():
-    r = HxTestClient(strict=False).get("/lib/", HTTP_HX_REQUEST="true")
-    assert r.status_code == 200 and b"<html>" in r.content
-    assert [type(f) for f in r.hx_findings] == [HxProtocolError]
-    with override_settings(HX_REQUEST_TYPE_FALLBACK="partial"):
-        assert b"<html>" not in HxTestClient(strict=False).get("/lib/", HTTP_HX_REQUEST="true").content
-
-
 # ------------------------------------------------------------------ text, provenance
 
 
