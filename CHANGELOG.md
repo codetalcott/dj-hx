@@ -1,42 +1,14 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 (2026-11-23)
 
-### Changed
-
-- The vendored core (`hxlint.py`, `hx_vocab.py`, `mapcore.py` from hx-flask,
-  `urlconf.py` from dj-fixi) is pinned to a commit in `tools/shared.lock`,
-  written by `tools/sync_shared.py`, and `tests/test_shared_core.py` fetches
-  the files at that commit from GitHub to compare. The pin used to hold only
-  where both neighbours were checked out, so never in CI, which skipped it.
-  The sync script refuses an unpushed commit or a dirty checkout, since the
-  lock names what GitHub must serve.
-- README's Interactions section states each rule in a line and shows the
-  status policy's two blocks; the whole of each rule, the `manage.py check`
-  detail and the status policy's reasoning moved to INTERACTIONS.md, which
-  `tests/test_docs.py` pins to the measured desk as it pins README.
-- An htmx request without `HX-Request-Type` raises `HxProtocolError` under
-  `DEBUG` only. In production it is answered as `full` (the page) and the
-  finding is recorded and logged, as every other post-hoc finding is: it
-  used to raise there too, so a proxy that stripped the header 500ed every
-  htmx request on the site. `HX_REQUEST_TYPE_FALLBACK` still chooses the
-  answer under `DEBUG` as well. `HxTestClient` raises the finding either way.
-
-### Added
-
-- The reason `.trigger()` always writes a target is measured, not only read
-  from htmx's source: in Chromium on htmx 4.0.2, after a `delete` swap, an
-  `HX-Trigger` written without a target is dispatched on `document` and a
-  `from body` listener never hears it; one with `target: body` is heard
-  (`tests/test_interactions_browser.py`, the desk's two `drop` rows).
-
-### Fixed
-
-- `dj_hx.E022` on Django 6.2, whose lexer reads a `{% %}` written across
-  lines as a tag (release notes, "Multiline template tags"): such a
-  `{% url %}` is now checked there, as Django renders it, and stays text
-  before 6.2, as Django renders it there. `templates.tags_span_lines()` asks
-  the lexer which. The CI canary on Django `main` found it on its first run.
+The interaction layer, as it shipped to its first production project (a
+private site): interactions are discovered in each app's
+`interactions.py`, which is the one breaking change; `manage.py check` judges
+every `{% act %}` control and every `{% url %}`; and the test client raises
+every finding at once. The README is compared with django-htmx 1.29 and djxi
+from a run, and the claims it makes about htmx 4 are measured in Chromium
+where they were read from source.
 
 ### Changed
 
@@ -47,10 +19,32 @@
   when something imports that module, which check `dj_hx.E017` or `E009`
   reports at start-up. To migrate, move the handlers, or write
   `from . import views  # noqa: F401` in the app's `interactions.py`.
+
+- The vendored core (`hxlint.py`, `hx_vocab.py`, `mapcore.py` from hx-flask,
+  `urlconf.py` from dj-fixi) is pinned to a commit in `tools/shared.lock`,
+  written by `tools/sync_shared.py`, and `tests/test_shared_core.py` fetches
+  the files at that commit from GitHub to compare. The pin used to hold only
+  where both neighbours were checked out, so never in CI, which skipped it.
+  The sync script refuses an unpushed commit or a dirty checkout, since the
+  lock names what GitHub must serve.
+
+- README's Interactions section states each rule in a line and shows the
+  status policy's two blocks; the whole of each rule, the `manage.py check`
+  detail and the status policy's reasoning moved to INTERACTIONS.md, which
+  `tests/test_docs.py` pins to the measured desk as it pins README.
+
+- An htmx request without `HX-Request-Type` raises `HxProtocolError` under
+  `DEBUG` only. In production it is answered as `full` (the page) and the
+  finding is recorded and logged, as every other post-hoc finding is: it
+  used to raise there too, so a proxy that stripped the header 500ed every
+  htmx request on the site. `HX_REQUEST_TYPE_FALLBACK` still chooses the
+  answer under `DEBUG` as well. `HxTestClient` raises the finding either way.
+
 - README's "What is loud" table is one line per row again; the full entries moved
   to FAILURES.md, which each row links. A new section at the top names the two
   checks that have no htmx in them, `dj_hx.E022` and `HxUndefinedVariable`, and
   the package description says so.
+
 - README compares dj-hx with django-htmx 1.29.0 and djxi 0.1.9 from a run
   (2026-11-23, Django 6.1.3), not from memory: neither guards a 204, a 3xx
   or a whole page answering a partial request, and both offer
@@ -59,16 +53,26 @@
   0.1.0 entry below said `HX-Location` is gone or ignored in htmx 4; htmx
   4.0.2 honours it. The headers it does not read are `HX-Trigger-After-Swap`
   and `-After-Settle`. The entry is corrected in place.
+
 - README states what pytest-django's `--fail-on-template-vars` catches and
   misses beside `HxUndefinedVariable`, from a run on pytest-django 4.14.0.
+
 - `HxTestClient` raises the first finding with every other finding on that
   response listed in its message, so a view with three is fixed in one run.
+
 - `X-HX-Template` has one owner, the verb that rendered the response;
   `HxMiddleware.observe` no longer sets it again.
+
 - CI has a non-blocking canary job on Django's `main`, for the undefined-variable
   check's reliance on Django internals that are not promised.
 
 ### Added
+
+- The reason `.trigger()` always writes a target is measured, not only read
+  from htmx's source: in Chromium on htmx 4.0.2, after a `delete` swap, an
+  `HX-Trigger` written without a target is dispatched on `document` and a
+  `from body` listener never hears it; one with `target: body` is heard
+  (`tests/test_interactions_browser.py`, the desk's two `drop` rows).
 
 - Check `dj_hx.E026`: an `hx-select` reaches an `{% act %}` control, its own
   or an ancestor's `hx-select:inherited`. htmx 4 then sends
@@ -82,12 +86,19 @@
 
 ### Fixed
 
+- `dj_hx.E022` on Django 6.2, whose lexer reads a `{% %}` written across
+  lines as a tag (release notes, "Multiline template tags"): such a
+  `{% url %}` is now checked there, as Django renders it, and stays text
+  before 6.2, as Django renders it there. `templates.tags_span_lines()` asks
+  the lexer which. The CI canary on Django `main` found it on its first run.
+
 - `hx_map` read only a control's own `hx-select` when it classified the
   request: a control under an `hx-select:inherited` is now `full`
   (`hx-select:inherited from div#card`), as htmx 4.0.2 sends it, and one with
   an own `hx-select=""` is `partial`. The lint's `select-not-body` info no
   longer fires on `hx-select=""`. `mapcore.py` and `hxlint.py` are synced
   from hx-flask.
+
 - `hx_lint` gave four htmx 2 events htmx 4.0.0's renames, which htmx 4.0.1
   corrected: `htmx:afterOnLoad` is `htmx:after:request` (it said
   `htmx:after:init`), `htmx:beforeOnLoad` is `htmx:before:response` (said
@@ -97,6 +108,7 @@
   htmx.onLoad(fn)": `htmx:after:process` reaches new content as `htmx:load`
   did. `hxlint.py` and `hx_vocab.py` are synced from hx-flask, whose vocabulary
   is now generated from htmx's `v4.0.2` tag.
+
 - `hx_lint`'s `duplicate-id` no longer compares ids built in the template:
   `id="{{ form.name.id_for_label }}"` and
   `id="{{ form.collaborator_emails.id_for_label }}"` were reported as one id
