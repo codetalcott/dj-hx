@@ -230,16 +230,27 @@ def test_every_response_varies_on_the_htmx_headers(client):
 
 
 def test_htmx_request_without_request_type_is_a_protocol_error(client):
+    # DEBUG is off in tests.settings: the verb answers with the page, the guard records, the client raises.
     with pytest.raises(HxProtocolError, match="needs htmx 4"):
-        client.get("/lib/", HTTP_HX_REQUEST="true")  # raised by the verb
+        client.get("/lib/", HTTP_HX_REQUEST="true")
     with pytest.raises(HxProtocolError, match="needs htmx 4"):
-        client.get("/lib/plain/", HTTP_HX_REQUEST="true")  # raised by the guard
+        client.get("/lib/plain/", HTTP_HX_REQUEST="true")  # no verb: the guard alone
+    with override_settings(DEBUG=True), pytest.raises(HxProtocolError, match="Under DEBUG this raises"):
+        client.get("/lib/", HTTP_HX_REQUEST="true")  # the verb raises inside the view
 
 
-@override_settings(HX_REQUEST_TYPE_FALLBACK="full")
-def test_a_fallback_answers_a_stripped_header_and_is_still_recorded():
-    # A proxy that drops HX-Request-Type must not be a 500: the page goes out,
-    # and the guard's finding is still on the response for the log.
+def test_in_production_a_missing_request_type_is_answered_as_full_and_logged(caplog):
+    """A proxy that strips the header must not 500 every htmx request: the page goes out, and the log says so."""
+    client = HxTestClient(strict=False)
+    with caplog.at_level("WARNING", logger="dj_hx"):
+        r = client.get("/lib/", HTTP_HX_REQUEST="true")
+    assert r.status_code == 200 and b"<html>" in r.content
+    assert [type(f) for f in r.hx_findings] == [HxProtocolError]
+    assert sum("HX-Request-Type is not" in m for m in caplog.messages) == 1
+
+
+@override_settings(HX_REQUEST_TYPE_FALLBACK="full", DEBUG=True)
+def test_a_fallback_answers_a_stripped_header_under_debug_too_and_is_still_recorded():
     r = HxTestClient(strict=False).get("/lib/", HTTP_HX_REQUEST="true")
     assert r.status_code == 200 and b"<html>" in r.content
     assert [type(f) for f in r.hx_findings] == [HxProtocolError]
