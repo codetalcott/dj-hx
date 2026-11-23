@@ -6,7 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `dj-hx` is a standalone Django package for htmx 4 (no django-htmx dependency). The handler names the
 outcome and the template keeps the request-side controls. README.md is the user-facing reference for the
-verbs, the settings and the failure catalogue; read it before changing public behavior.
+verbs, the settings and the failure catalogue, one line per row; FAILURES.md is the catalogue in full. Read
+both before changing public behavior.
 `llms.txt` is the self-contained reference an agent uses to write code against the package; any change
 to a verb signature, a setting, an error, a check id or a lint rule must be mirrored there.
 
@@ -20,8 +21,8 @@ No virtualenv is checked in: `.venv/` is gitignored, and an old local one can po
 uv venv <venv> && uv pip install -p <venv>/bin/python "django~=6.1.0" pytest pytest-django ruff "playwright==1.64.0"  # below Django 6, add django-template-partials
 <venv>/bin/python -m playwright install chromium
 
-<venv>/bin/python -m pytest -q                      # 418 tests, ~16 s
-<venv>/bin/python -m pytest -q -m "not browser"     # 383, ~3 s, skipping Chromium
+<venv>/bin/python -m pytest -q                      # 419 tests, ~16 s
+<venv>/bin/python -m pytest -q -m "not browser"     # 384, ~3 s, skipping Chromium
 <venv>/bin/python -m pytest -q -m browser           # the 35 Playwright tests alone, ~14 s
 <venv>/bin/python -m pytest tests/test_verbs.py::test_text_escapes
 <venv>/bin/ruff check .
@@ -175,8 +176,8 @@ is genuinely Django-specific; the core is vendored from hx-flask (see below).
   are the documentation for the failure catalogue in README.md.
 - Ruff: line length 120 but `E501` ignored, `N818` ignored (exception names mirror hx-flask, except `HxUnknownPartial` for its `HxUnknownBlock` and `HxMessagesUnconfigured` for its `HxFlashUnconfigured`), vendored
   files excluded.
-- Every row of the README's "What is loud" table has a test. Adding a failure mode means adding a row and
-  a test.
+- Every row of the README's "What is loud" table has a test and an entry in FAILURES.md, in the same order.
+  Adding a failure mode means adding all three.
 
 ## Test layout
 
