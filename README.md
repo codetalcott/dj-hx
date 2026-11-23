@@ -270,10 +270,11 @@ The rules:
   (`{% load hx %}`). A positional argument, a name the handler does not take, or a missing one
   raises `TemplateSyntaxError` at render, naming the parameters. Without `dj_hx.urls` included it
   raises `ImproperlyConfigured`, naming the include.
-- **Interactions live in an app's `views.py`.** dj-hx's `ready()` imports the `views` module of
-  every installed app outside site-packages, so every route exists before the URLconf is read. An
-  interaction defined anywhere else has to be imported before then, and one in a pip-installed app
-  is not registered until something imports its views. One registered after the URLconf was read
+- **Interactions live in an app's `interactions.py`.** dj-hx's `ready()` imports the `interactions`
+  module of every installed app outside site-packages, as admin imports each app's `admin`, so every
+  route exists before the URLconf is read and no other module's import order changes. An interaction
+  defined anywhere else is registered when its module is imported: import it from `interactions.py`.
+  One in a pip-installed app is not registered until something imports its module. One registered after the URLconf was read
   is routed to its view alone, without the view decorators above it; check `dj_hx.E017` says so.
 - **The reply is always the partial**, through `fragment()`. `context` is called on every reply
   with the route parameters it names, and the handler's keys are laid over it. A parameter of

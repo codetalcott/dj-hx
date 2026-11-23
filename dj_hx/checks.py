@@ -412,7 +412,7 @@ def check_interaction_routes(app_configs=None, **kwargs):
         module, where = it.view.__module__, f"{it.view.__module__}.{it.name}"
         late = (
             f"{it.name}() was registered after dj_hx.urls was first read, or {module} rebound {it.name} since. Import "
-            f"{module} before the URLconf is loaded: from the app's ready(), or from its views module, which dj-hx "
+            f"{module} before the URLconf is loaded: from the app's ready(), or from its interactions module, which dj-hx "
             "imports at start-up."
         )
         try:

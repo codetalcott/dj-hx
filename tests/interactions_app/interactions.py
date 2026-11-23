@@ -1,5 +1,6 @@
 """
-A rota: a page of members to notify, and four interactions. dj-hx's ready() imports this module.
+A rota: a page of members to notify, and four interactions. dj-hx's ready() imports this module, as it
+imports every project app's ``interactions``.
 The templates are in-memory, served by the ``rota`` fixture in tests/test_interactions.py.
 """
 

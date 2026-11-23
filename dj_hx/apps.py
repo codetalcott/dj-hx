@@ -10,8 +10,8 @@ class DjHxConfig(AppConfig):
 
     def ready(self):
         from . import checks  # noqa: F401  (registration side effect)
-        from .interactions import import_views
+        from .interactions import import_interactions
 
-        # Interactions live in <app>/views.py; importing each now registers every route before the
+        # Interactions live in <app>/interactions.py; importing each now registers every route before the
         # URLconf is first read, whatever order the project's urls.py imports things in.
-        import_views()
+        import_interactions()
