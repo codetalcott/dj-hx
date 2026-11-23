@@ -4,6 +4,13 @@
 
 ### Changed
 
+- The vendored core (`hxlint.py`, `hx_vocab.py`, `mapcore.py` from hx-flask,
+  `urlconf.py` from dj-fixi) is pinned to a commit in `tools/shared.lock`,
+  written by `tools/sync_shared.py`, and `tests/test_shared_core.py` fetches
+  the files at that commit from GitHub to compare. The pin used to hold only
+  where both neighbours were checked out, so never in CI, which skipped it.
+  The sync script refuses an unpushed commit or a dirty checkout, since the
+  lock names what GitHub must serve.
 - README's Interactions section states each rule in a line and shows the
   status policy's two blocks; the whole of each rule, the `manage.py check`
   detail and the status policy's reasoning moved to INTERACTIONS.md, which

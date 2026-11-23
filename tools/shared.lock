@@ -1,0 +1,4 @@
+# The commit each vendored file was copied from, written by tools/sync_shared.py. tests/test_shared_core.py
+# fetches the files at these commits from GitHub and compares, so the pin holds in CI too.
+hx-flask 3ba6a0a08297f4cac4a669533f46dc9450115219
+dj-fixi f1e3d26ba4f363c6132815469b1a2e98820f29ef
