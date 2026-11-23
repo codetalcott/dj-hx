@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Changed
+
+- An htmx request without `HX-Request-Type` raises `HxProtocolError` under
+  `DEBUG` only. In production it is answered as `full` (the page) and the
+  finding is recorded and logged, as every other post-hoc finding is: it
+  used to raise there too, so a proxy that stripped the header 500ed every
+  htmx request on the site. `HX_REQUEST_TYPE_FALLBACK` still chooses the
+  answer under `DEBUG` as well. `HxTestClient` raises the finding either way.
+
 ### Fixed
 
 - `dj_hx.E022` on Django 6.2, whose lexer reads a `{% %}` written across

@@ -456,7 +456,7 @@ by `HxTestClient`. Nothing is gated on `DEBUG` that a test needs.
 | Messages added on a fragment with no messages template | `HxMessagesUnconfigured` | [more](FAILURES.md#messages-added-on-a-fragment-with-no-messages-template) |
 | A partial's root element is not its name | `HxPartialRootId` at the render | [more](FAILURES.md#a-partials-root-element-is-not-its-name) |
 | partial names a partial the template does not define | `HxUnknownPartial`, listing the partials it does | [more](FAILURES.md#partial-names-a-partial-the-template-does-not-define) |
-| An htmx request without HX-Request-Type | `HxProtocolError`; `HX_REQUEST_TYPE_FALLBACK` answers instead, still recorded | [more](FAILURES.md#an-htmx-request-without-hx-request-type) |
+| An htmx request without HX-Request-Type | `HxProtocolError`: raised under `DEBUG`; in production answered as the page and recorded | [more](FAILURES.md#an-htmx-request-without-hx-request-type) |
 | htmx 2 idioms in the HTML | the lint: on every test-client response, in the `DEBUG` log, in `manage.py hx_lint`, as check `dj_hx.W005` | [more](FAILURES.md#htmx-2-idioms-in-the-html) |
 | A template reads a name nobody supplies | `HxTestClient` raises `HxUndefinedVariable`, naming each variable and template:line, `{% if %}` and `{% for %}` included | [more](FAILURES.md#a-template-reads-a-name-nobody-supplies) |
 | Logging disabled, so the undefined-variable check is blind | `HxTestClient` raises `ImproperlyConfigured`, naming which | [more](FAILURES.md#logging-disabled-so-the-undefined-variable-check-is-blind) |

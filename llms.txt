@@ -128,8 +128,9 @@ current_url(request) -> str|None    # HX-Current-URL
 vary_on_hx(response) -> response    # Vary: HX-Request, HX-Request-Type (the verbs and middleware do this)
 ```
 
-An htmx request without `HX-Request-Type` raises `HxProtocolError` (this needs htmx 4). A proxy that strips
-the header can be worked around with `HX_REQUEST_TYPE_FALLBACK = "full"` or `"partial"`; the guard still
+An htmx request without `HX-Request-Type` is `HxProtocolError` (this needs htmx 4): raised under `DEBUG`, and in
+production answered as `full` (the page) and recorded, so a stripping proxy cannot 500 the site. A proxy can
+be worked around under `DEBUG` too with `HX_REQUEST_TYPE_FALLBACK = "full"` or `"partial"`; the guard still
 records the finding.
 
 ### Verbs
@@ -333,7 +334,7 @@ layout:
 | Setting | Meaning |
 |---|---|
 | `HX_MESSAGES_TEMPLATE = "layout.html#messages"` | Partial used to render pending `django.contrib.messages` into fragment responses. `#name` defaults to `messages`. Root element must be `id="<name>"`. |
-| `HX_REQUEST_TYPE_FALLBACK = "full"` | Answer htmx requests missing `HX-Request-Type` as this type instead of raising. Proxies only. |
+| `HX_REQUEST_TYPE_FALLBACK = "full"` | Answer htmx requests missing `HX-Request-Type` as this type under `DEBUG` too, instead of raising (production answers `full` by default). Proxies only. |
 | `HX_LINT_IGNORE = ("implicit-inheritance",)` | Lint rules to silence everywhere (test client, middleware, `hx_lint`, W005). |
 | `HX_EXTENSIONS = ("hx-live", "sse")` | Extensions the pages load, for the lint (also detected from `<script src>`). The file name (`hx-sse`) or the name htmx registers (`sse`, as in `htmx.config.extensions`); W008 flags any other. |
 | `SILENCED_SYSTEM_CHECKS = ["dj_hx.W005"]` | Standard Django; the check ids are below. An Error's id can be silenced too, as while working through E022's first run on an existing site: an Error stops `check`, `runserver`, `migrate`, `makemigrations`, `createsuperuser` and `manage.py test`. |
@@ -350,7 +351,7 @@ All subclass `HxError` except `HxRedirectError` (an `AssertionError` from the te
 | `HxNoSwap` | recorded by the guard | 204 answers a partial request; htmx 4 does not swap | `removed()` + `hx-swap="delete"`, or a fragment |
 | `HxBareResponse` | recorded by the guard | a `text/html` 2xx no verb built answers an element-targeted request (`django.shortcuts.render`, `HttpResponse`, `TemplateResponse`) | use a verb, or `HxMixin` on a generic view |
 | `HxMessagesUnconfigured` | recorded by the middleware | messages added on a fragment response, `HX_MESSAGES_TEMPLATE` unset | set it |
-| `HxProtocolError` | raised by `request_type()`; recorded by the guard | `HX-Request` without `HX-Request-Type` | use htmx 4; `HX_REQUEST_TYPE_FALLBACK` for proxies |
+| `HxProtocolError` | raised by `request_type()` under `DEBUG`; recorded by the guard (production answers `full`) | `HX-Request` without `HX-Request-Type` | use htmx 4; `HX_REQUEST_TYPE_FALLBACK` for proxies |
 | `HxUnknownPartial` | raised at render | `partial=` names no partial of the template; message lists the ones it defines | write `{% partialdef name inline %}` around the region |
 | `HxEmptyRefusal` | recorded by an interaction's reply | a declared refusal with an empty or blank message: the 422 reply's `{% if error %}` shows nothing | raise it with a message: `raise NotOnRota("Member 9 is not on the rota.")` |
 | `HxPartialRootId` | raised at render | a partial used as `<hx-partial>`, or an interaction's reply, does not start with one element carrying `id="<name>"` | wrap the region in `<div id="name">` |

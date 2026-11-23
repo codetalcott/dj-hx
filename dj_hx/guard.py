@@ -15,7 +15,7 @@ from __future__ import annotations
 from django.conf import settings
 
 from .errors import HxBareResponse, HxError, HxNoSwap, HxProtocolError, HxRedirectIntoFragment
-from .request import REQUEST_TYPE_HEADER, is_htmx, who
+from .request import REQUEST_TYPE_HEADER, is_htmx, protocol_message, who
 
 __all__ = ["guard", "findings_of", "is_html"]
 
@@ -69,13 +69,7 @@ def guard(request, response) -> list[HxError]:
         return found
     rtype = request.headers.get(REQUEST_TYPE_HEADER)
     if rtype not in ("full", "partial"):
-        found.append(
-            HxProtocolError(
-                f"{who(request)}: HX-Request is set but HX-Request-Type is not; this needs htmx 4. "
-                "A proxy stripping headers, or an htmx 2 client, are the usual causes. "
-                'HX_REQUEST_TYPE_FALLBACK = "full" answers such requests with the page instead of raising.'
-            )
-        )
+        found.append(HxProtocolError(protocol_message(request)))
         return found
     if rtype != "partial":
         return found

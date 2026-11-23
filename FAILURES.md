@@ -56,7 +56,7 @@ silently, what dj-hx does instead, what it reads to decide, and what it cannot s
 
 **Failure.** An htmx request without `HX-Request-Type`
 
-**What happens.** `HxProtocolError`: this needs htmx 4. `HX_REQUEST_TYPE_FALLBACK = "full"` answers with the page instead, for a proxy that strips the header; the guard still records it
+**What happens.** `HxProtocolError`: this needs htmx 4. Under `DEBUG` the verb raises, so a wrong htmx or a stripping proxy is found at the desk. In production the request is answered as `full` (the page) and the guard records the finding on the response, which `HxMiddleware` logs: a 500 there would take every htmx request on the site down with it, and the page is what a boosted link wanted anyway. `HX_REQUEST_TYPE_FALLBACK = "full"` or `"partial"` answers that way under `DEBUG` too. `HxTestClient` raises the recorded finding whatever `DEBUG` is
 
 ## htmx 2 idioms in the HTML
 

@@ -29,6 +29,7 @@ __all__ = [
     "current_url",
     "vary_on_hx",
     "who",
+    "protocol_message",
 ]
 
 
@@ -41,11 +42,14 @@ def request_type(request) -> str | None:
     """
     ``"full"``, ``"partial"``, or ``None`` for a browser.
 
-    An htmx request without ``HX-Request-Type`` is not htmx 4 and raises, so
-    the problem is found in the first test rather than in production. A
-    deployment whose proxy strips the header can set
-    ``HX_REQUEST_TYPE_FALLBACK = "full"`` (or ``"partial"``) to answer as that
-    type instead; the guard still records the finding on every such request.
+    An htmx request without ``HX-Request-Type`` is not htmx 4. Under ``DEBUG``
+    it raises, so the problem is found at the desk; in production it is
+    answered as ``"full"`` (the page), because a proxy that strips the header
+    would otherwise 500 every htmx request, and the guard records
+    ``HxProtocolError`` on each such response for the log. Setting
+    ``HX_REQUEST_TYPE_FALLBACK = "full"`` (or ``"partial"``) answers as that
+    type under ``DEBUG`` too; ``HxTestClient`` raises the recorded finding
+    either way.
     """
     if not is_htmx(request):
         return None
@@ -55,10 +59,18 @@ def request_type(request) -> str | None:
     fallback = getattr(settings, "HX_REQUEST_TYPE_FALLBACK", None)
     if fallback in ("full", "partial"):
         return fallback
-    raise HxProtocolError(
+    if not settings.DEBUG:
+        return "full"  # the guard records HxProtocolError on the response; a 500 would take the whole site down with it
+    raise HxProtocolError(protocol_message(request))
+
+
+def protocol_message(request) -> str:
+    """What the verb raises under ``DEBUG`` and the guard records: one wording for both."""
+    return (
         f"{who(request)}: HX-Request is set but HX-Request-Type is not; this needs htmx 4. "
-        "A proxy stripping headers, or an htmx 2 client, are the usual causes. "
-        'HX_REQUEST_TYPE_FALLBACK = "full" answers such requests with the page instead of raising.'
+        "A proxy stripping headers, or an htmx 2 client, are the usual causes. Under DEBUG this raises; in "
+        'production the request is answered as "full" (the page) and this finding is logged. '
+        'HX_REQUEST_TYPE_FALLBACK = "full" (or "partial") answers that way under DEBUG too.'
     )
 
 
