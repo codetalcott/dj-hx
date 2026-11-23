@@ -81,7 +81,7 @@ class HxTestClient(Client):
         if undefined:
             findings.append(HxUndefinedVariable(undefined, where))  # recorded like the guard's: response.hx_findings
         if self.strict and findings:
-            raise findings[0]
+            raise _with_the_rest(findings)
         if self.lint:
             response.hx_lint = self._lint(response, where)
         return response
@@ -155,6 +155,20 @@ class HxTestClient(Client):
         if isinstance(data, dict):
             data = urlencode(data)
         return {"data": data or "", "content_type": "application/x-www-form-urlencoded", **kwargs}
+
+
+def _with_the_rest(findings):
+    """
+    The first finding, to raise, carrying the others in its message: a response with three findings
+    is fixed in one run, not three. The type stays the first's, so ``pytest.raises(HxNoSwap)`` holds.
+    """
+    first, *rest = findings
+    if rest:
+        first.args = (
+            f"{first}\n\nAlso recorded on this response, {len(rest)} more:\n  "
+            + "\n  ".join(f"{type(f).__name__}: {f}" for f in rest),
+        )
+    return first
 
 
 # ------------------------------------------------------- undefined variables

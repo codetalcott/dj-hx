@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+### Changed
+
+- README compares dj-hx with django-htmx 1.29.0 and djxi 0.1.9 from a run
+  (2026-11-23, Django 6.1.3), not from memory: neither guards a 204, a 3xx
+  or a whole page answering a partial request, and both offer
+  `request.htmx.target`. The paragraph that said django-htmx "was written for
+  htmx 2" is gone; django-htmx has read `HX-Request-Type` since 1.28. The
+  0.1.0 entry below said `HX-Location` is gone or ignored in htmx 4; htmx
+  4.0.2 honours it. The headers it does not read are `HX-Trigger-After-Swap`
+  and `-After-Settle`. The entry is corrected in place.
+- README states what pytest-django's `--fail-on-template-vars` catches and
+  misses beside `HxUndefinedVariable`, from a run on pytest-django 4.14.0.
+- `HxTestClient` raises the first finding with every other finding on that
+  response listed in its message, so a view with three is fixed in one run.
+- `X-HX-Template` has one owner, the verb that rendered the response;
+  `HxMiddleware.observe` no longer sets it again.
+- CI has a non-blocking canary job on Django's `main`, for the undefined-variable
+  check's reliance on Django internals that are not promised.
+
 ### Added
 
 - Check `dj_hx.E026`: an `hx-select` reaches an `{% act %}` control, its own
@@ -41,11 +60,12 @@
 ## 0.1.0 (2026-11-21)
 
 First release: the handler-first design built for Flask in hx-flask,
-standalone on Django. It does not build on django-htmx, which was written
-against htmx 2: django-htmx 1.27 still writes `HX-Trigger-After-Swap`/
-`-After-Settle` and offers `HttpResponseLocation`, both gone or ignored in
-htmx 4, and exposes `request.htmx.target` and `.trigger`, the id-sniffing this
-design forbids. Two more htmx 4 facts shaped it: a 204 does not swap, and an
+standalone on Django. It does not build on django-htmx, whose
+`trigger_client_event(after="swap")` still writes `HX-Trigger-After-Swap`/
+`-After-Settle`, which htmx 4 does not read, and which exposes
+`request.htmx.target` and `.trigger`, the id-sniffing this design forbids.
+(This entry said `HttpResponseLocation`'s `HX-Location` was gone too; htmx
+4.0.2 honours it. Corrected 2026-11-23.) Two more htmx 4 facts shaped it: a 204 does not swap, and an
 event fired without a target lands on `document` after a delete swap, where a
 `from:body` listener never hears it.
 

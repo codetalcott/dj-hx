@@ -28,10 +28,13 @@ def contacts_view(request, contact_id):
 </tbody>
 ```
 
-Nothing here depends on django-htmx, which was written for htmx 2: a 204 no
-longer swaps, an event fired without a target lands where a `from:body`
-listener cannot hear it, and the headers it still writes are gone. The same
-design for Flask is [hx-flask]; the sibling for Fixi.js is [dj-fixi].
+Nothing here depends on django-htmx. The difference is a stance, not htmx 4
+support, which django-htmx has had since 1.28: django-htmx and djxi hand the
+view `request.htmx.target` and `.source` and a setter for every response
+header, and leave it to the view to use them well. dj-hx reads one request
+header, offers no way to read the others, and makes each of htmx 4's silent
+outcomes loud (see [Beside the alternatives](#beside-the-alternatives)). The
+same design for Flask is [hx-flask]; the sibling for Fixi.js is [dj-fixi].
 
 **Status:** 0.1.0 (2026-11-21), alpha, installed from its git tag; not on PyPI. Django 4.2, 5.2,
 6.0 and 6.1; Python 3.10 to 3.13.
@@ -493,8 +496,9 @@ silences one id.
 
 Every `text/html` response is linted (`HxLintError` on an error-level
 finding, a warning otherwise; `lint_ignore=(...)` or `HX_LINT_IGNORE`
-silence a rule). Recorded findings raise; `HxTestClient(strict=False)` turns
-that off. A 3xx to a full request must be chosen with `follow=`, because
+silence a rule). Recorded findings raise: the first, with every other finding
+on that response listed in its message, so one run shows them all;
+`HxTestClient(strict=False)` turns that off. A 3xx to a full request must be chosen with `follow=`, because
 htmx's fetch follows it and the browser never sees it.
 
 A project template that reads a name nobody supplies, or an attribute an
@@ -579,6 +583,47 @@ and so are six of the forms checks E011 to E013 accept: `outerMorph`,
 accept (`find`, `findAll`, `next`, `previous` and `global` selectors, an
 ancestor's `hx-target:inherited="#x"`, `hx-method` and `hx-method:inherited`,
 swap modifiers) are accepted from htmx 4.0.2's source, not measured.
+
+## Beside the alternatives
+
+Measured 2026-11-23: Django 6.1.3, Python 3.14.7, each library installed and
+configured as its own README says (django-htmx 1.29.0: the app and
+`HtmxMiddleware`; djxi 0.1.9: the app and `DjxiHeadersMiddleware`, with
+`DX_HTMX_VERSION` at its default `"4"`), Django's test client sending
+`HX-Request: true`, `HX-Request-Type: partial`, `HX-Target: div#rows`, and the
+root logger captured at DEBUG. Only headers and bodies were inspected, not a
+browser.
+
+| A view that | django-htmx 1.29.0 | djxi 0.1.9 | dj-hx |
+|---|---|---|---|
+| answers a partial request with a 204 | goes out as is; nothing logged | same | `HxNoSwap` recorded, raised in tests |
+| answers a partial request with a 302 | goes out as is; nothing logged | same | `redirect()` raises; the guard records any other 3xx |
+| answers a partial request with `django.shortcuts.render` | the whole page goes out; nothing logged | same | `HxBareResponse` recorded |
+| fires an event | `trigger_client_event(r, "x")` writes `{"x": {}}`, no target | `set_trigger("x")` writes `x`, no target | `.trigger()` always writes a target |
+| writes an htmx 2 header | `trigger_client_event(..., after="swap")` writes `HX-Trigger-After-Swap`, which htmx 4.0.2 does not read; the docs do not label it | no such helper | none offered |
+| reads the target | `request.htmx.target`, `.source` | the same | not offered |
+
+Neither library's docs say what htmx 4 does with a 204 or a 3xx. Both have
+things dj-hx does not: django-htmx vendors htmx 2 and 4 and the htmx 4
+extensions behind `{% htmx_script version=4 %}`, has `ptag`, Jinja support and
+a setter for every response header, `HX-Location` included, which htmx 4.0.2
+honours and which dj-hx leaves out on purpose (see what was rejected). djxi
+bundles URLs, views and `<dx-section>` HTML in one class, and calls itself
+pre-alpha.
+
+Use django-htmx when you want a thin layer over the headers and will use
+`HX-Location` or `HX-Retarget` deliberately, when you need Jinja, or when a
+project is still on or moving from htmx 2. Use dj-hx when you want the server
+to refuse, record or raise on what htmx 4 would do silently, and accept the
+stance that comes with it.
+
+For the undefined-variable check, the alternative is pytest-django's
+`--fail-on-template-vars`. On pytest-django 4.14.0 with Django 6.1.3
+(2026-11-23) it fails `{{ missing }}`, `{{ user.emial }}` and
+`{{ missing|default:"" }}`, and passes `{% if missing %}` and
+`{% for x in missing %}`: it works through `string_if_invalid`, which those
+tags never consult. `HxTestClient` catches all five, by reading the
+`django.template` DEBUG record instead.
 
 ## htmx 4 facts this depends on
 

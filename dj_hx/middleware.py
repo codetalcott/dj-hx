@@ -1,6 +1,6 @@
 """
 ``HxMiddleware``: ``Vary`` on every response, the guard, the messages bridge,
-and under ``DEBUG`` the lint and the template each fragment came from.
+and under ``DEBUG`` the lint over every htmx response.
 
 Nothing here raises. Findings are recorded on ``response.hx_findings`` and
 logged to ``dj_hx``; ``HxTestClient`` is where they become exceptions.
@@ -41,10 +41,7 @@ class HxMiddleware:
         return response
 
     def observe(self, request, response) -> None:
-        """Under DEBUG: the lint over every htmx response, and where it came from."""
-        template = getattr(response, "hx_template", None)
-        if template:
-            response["X-HX-Template"] = template
+        """Under DEBUG: the lint over every htmx response. (``X-HX-Template`` is the verb's to set: ``verbs._response``.)"""
         if not is_html(response) or response.status_code >= 500:
             return
         from . import hxlint

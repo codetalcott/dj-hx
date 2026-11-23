@@ -465,7 +465,7 @@ def test_dj_hx_is_configured():
 
 What the client enforces on every request, including plain `client.get`:
 
-- Recorded findings (the verbs' and the guard's) raise the first one. `HxTestClient(strict=False)` records
+- Recorded findings (the verbs' and the guard's) raise the first one, with every other finding on that response listed in its message. `HxTestClient(strict=False)` records
   instead.
 - Every `text/html` response is linted; an error-level finding raises `HxLintError`, a warning is a
   `HxLintWarning` (`warnings.warn`). `lint=False` or `lint_ignore=("rule",)` per client.
@@ -571,7 +571,7 @@ System checks (tag `dj_hx`):
 
 `HxMiddleware` also: adds `Vary` to every response, runs the guard, bridges pending messages onto partial
 2xx HTML responses (peeking before consuming), logs findings as warnings on the `dj_hx` logger, and under
-`DEBUG` lints every htmx response and sets `X-HX-Template`.
+`DEBUG` lints every htmx response (`X-HX-Template` is set by the verb that rendered the response).
 
 ## A resource end to end
 
