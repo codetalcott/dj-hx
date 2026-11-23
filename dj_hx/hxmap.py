@@ -16,6 +16,7 @@ from __future__ import annotations
 import ast
 import inspect
 import textwrap
+from typing import Any
 
 from django.urls import Resolver404, resolve
 
@@ -129,15 +130,6 @@ def _scan_handlers(urlconf=None) -> tuple[dict[str, Handler], dict[int, Handler]
                     func = getattr(cls, hook, None)
                     if func is not None and not getattr(func, "__module__", "django.").startswith(("django.", "dj_hx.")):
                         _scan(h, func, verb_names)
-                from .mixins import HxMixin
-
-                if issubclass(cls, HxMixin):
-                    partial = routed.attr("partial")
-                    template = routed.attr("template_name")
-                    h.verbs.add("render" if partial else "page")
-                    h.by_method.setdefault(ALL_METHODS, set()).add("render" if partial else "page")
-                    if template:
-                        h.templates.add(f"{template}#{partial}" if partial and "." not in partial else (partial or template))
             elif it is not None:
                 _scan(h, it.func, verb_names)
                 _as_interaction(h, it)
@@ -174,10 +166,10 @@ def map_with_interactions(urlconf=None, sources: dict[str, str] | None = None) -
     site-packages, which the map does not scan. An interaction missing from the second is not routed.
     """
     handlers, by_callback, interactions = _scan_handlers(urlconf)
-    short = {}
+    short: dict[str, Any] = {}
     for ep, h in handlers.items():
         short.setdefault(ep.rsplit(":", 1)[-1], h)
-    acts = []  # one list for every template, so each __ACT<n>__ marker names one tag
+    acts: list = []  # one list for every template, so each __ACT<n>__ marker names one tag
 
     def resolve_control(url: str, method: str) -> tuple[str | None, str | None]:
         act = ACT_MARK.match(url)

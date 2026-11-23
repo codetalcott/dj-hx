@@ -2,14 +2,14 @@
 
 ## Vendored into the package
 
-- `dj_hx/hxlint.py`, `dj_hx/hx_vocab.py` — from [hx-flask], the sibling project
-  for Flask. The vocabulary is generated there from htmx's repository at the
-  `v4.0.2` tag.
-  Vendored so dj-hx has no dependency on it. MIT.
+- `dj_hx/hxlint.py`, `dj_hx/hx_vocab.py`, `dj_hx/mapcore.py` — from [hx-flask], the
+  sibling project for Flask. The vocabulary is generated there from htmx's
+  repository at the `v4.0.2` tag. Vendored so dj-hx has no dependency on it. MIT.
 - `dj_hx/urlconf.py` — from [dj-fixi], the sibling project for Fixi.js. MIT.
 
-`tools/sync_shared.py` refreshes all three and `tests/test_shared_core.py`
-pins them when the neighbouring checkouts are present.
+`tools/sync_shared.py` refreshes all four and records the commit each came from
+in `tools/shared.lock`; `tests/test_shared_core.py` fetches the files at those
+commits from GitHub and compares, so the pin holds in CI.
 
 ## Vendored into the example
 

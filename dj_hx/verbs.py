@@ -31,7 +31,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from django.conf import settings
 from django.http import HttpResponse
@@ -69,18 +69,24 @@ __all__ = [
 
 logger = logging.getLogger("dj_hx")
 
+if TYPE_CHECKING:  # the mixin uses HttpResponse's get, __setitem__ and write; at run time its base stays object
+    from django.http.response import HttpResponseBase as _ResponseBase
+else:
+    _ResponseBase = object
+
 
 # ------------------------------------------------------------------- responses
 
 
-class _HxResponseMethods:
+class _HxResponseMethods(_ResponseBase):
     """The handler-side vocabulary on a response."""
 
     hx_kind: str = "page"  # page | fragment | text | removed | redirect | navigate
     hx_template: str | None = None  # where the body came from: "index.html" or "index.html#rows"
     hx_page_template: str | None = None  # the page template, for .partial()
     hx_context: dict[str, Any] | None = None
-    hx_request = None
+    hx_request: Any = None
+    hx_findings: list[HxError]  # set by every verb; the guard reads it
 
     def trigger(self, name: str, *, target: str = "body", **detail: Any):
         """
@@ -180,8 +186,10 @@ def wrap_partial(name: str, html: str) -> str:
 
 def _partial_names(template_name: str) -> list[str]:
     try:
-        inner = get_template(template_name).template
+        inner = getattr(get_template(template_name), "template", None)  # the Django engine's own template
     except Exception:
+        return []
+    if inner is None:
         return []
     # Django 5.1+ keeps them on the template; django-template-partials on 4.2
     # and 5.0 keeps them on its origin.
@@ -329,6 +337,7 @@ def navigate(request, to, *args, **kwargs) -> HxResponse | HxRedirectResponse:
     loads the URL as a full page instead of swapping it into the target.
     """
     url = resolve_url(to, *args, **kwargs)
+    response: HxResponse | HxRedirectResponse
     if wants_page(request):
         response = HxRedirectResponse(url)
         response.hx_request = request

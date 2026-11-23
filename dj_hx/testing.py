@@ -215,7 +215,7 @@ class _Lookups:
         self.debug_names = _debug_processor_names()
 
     def take(self, record) -> None:
-        params = getattr(record.exc_info[1], "params", ())
+        params: tuple = getattr(record.exc_info[1], "params", ())
         current = params[1] if len(params) == 2 else _UNKNOWN
         variable = str(record.args[0])
         nodes = _nodes_being_rendered()

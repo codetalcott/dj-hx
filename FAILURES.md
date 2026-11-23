@@ -56,7 +56,7 @@ silently, what dj-hx does instead, what it reads to decide, and what it cannot s
 
 **Failure.** An htmx request without `HX-Request-Type`
 
-**What happens.** `HxProtocolError`: this needs htmx 4. Under `DEBUG` the verb raises, so a wrong htmx or a stripping proxy is found at the desk. In production the request is answered as `full` (the page) and the guard records the finding on the response, which `HxMiddleware` logs: a 500 there would take every htmx request on the site down with it, and the page is what a boosted link wanted anyway. `HX_REQUEST_TYPE_FALLBACK = "full"` or `"partial"` answers that way under `DEBUG` too. `HxTestClient` raises the recorded finding whatever `DEBUG` is
+**What happens.** `HxProtocolError`: this needs htmx 4. Under `DEBUG` the verb raises, so a wrong htmx or a stripping proxy is found at the desk. In production the request is answered as `full` (the page) and the guard records the finding on the response, which `HxMiddleware` logs: a 500 there would take every htmx request on the site down with it, and the page is what a boosted link wanted anyway. `HxTestClient` raises the recorded finding whatever `DEBUG` is
 
 ## htmx 2 idioms in the HTML
 
@@ -90,9 +90,9 @@ silently, what dj-hx does instead, what it reads to decide, and what it cannot s
 
 ## Middleware or settings misconfigured
 
-**Failure.** `HxMiddleware` missing, listed before `MessageMiddleware`, `HX_MESSAGES_TEMPLATE` unset or unresolvable, no partials on Django < 6, `HxMixin` after a Django base
+**Failure.** `HxMiddleware` missing, listed before `MessageMiddleware`, `HX_MESSAGES_TEMPLATE` unset or unresolvable, no partials on Django < 6
 
-**What happens.** checks `dj_hx.W001`, `E002`, `W003`, `W004`, `W006`, `E007`
+**What happens.** checks `dj_hx.W001`, `E002`, `W003`, `W004`, `W006`
 
 ## HX_EXTENSIONS names an unknown extension
 

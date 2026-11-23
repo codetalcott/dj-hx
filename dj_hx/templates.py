@@ -116,6 +116,7 @@ def url_tags(source: str) -> list[UrlTag]:
             stored_as, arguments = arguments[-1], arguments[:-2]
         keywords = tuple(bit.split("=", 1)[0] for bit in arguments if _KEYWORD.match(bit))
         quoted = _QUOTED.fullmatch(name)
+        assert token.lineno is not None  # Django numbers every token it lexes
         found.append(UrlTag(token.lineno, name[1:-1] if quoted else None, len(arguments) - len(keywords), keywords, stored_as))
     return found
 

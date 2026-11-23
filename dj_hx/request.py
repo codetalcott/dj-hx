@@ -46,19 +46,14 @@ def request_type(request) -> str | None:
     it raises, so the problem is found at the desk; in production it is
     answered as ``"full"`` (the page), because a proxy that strips the header
     would otherwise 500 every htmx request, and the guard records
-    ``HxProtocolError`` on each such response for the log. Setting
-    ``HX_REQUEST_TYPE_FALLBACK = "full"`` (or ``"partial"``) answers as that
-    type under ``DEBUG`` too; ``HxTestClient`` raises the recorded finding
-    either way.
+    ``HxProtocolError`` on each such response for the log. ``HxTestClient``
+    raises the recorded finding either way.
     """
     if not is_htmx(request):
         return None
     rtype = request.headers.get(REQUEST_TYPE_HEADER)
     if rtype in ("full", "partial"):
         return rtype
-    fallback = getattr(settings, "HX_REQUEST_TYPE_FALLBACK", None)
-    if fallback in ("full", "partial"):
-        return fallback
     if not settings.DEBUG:
         return "full"  # the guard records HxProtocolError on the response; a 500 would take the whole site down with it
     raise HxProtocolError(protocol_message(request))
@@ -69,8 +64,7 @@ def protocol_message(request) -> str:
     return (
         f"{who(request)}: HX-Request is set but HX-Request-Type is not; this needs htmx 4. "
         "A proxy stripping headers, or an htmx 2 client, are the usual causes. Under DEBUG this raises; in "
-        'production the request is answered as "full" (the page) and this finding is logged. '
-        'HX_REQUEST_TYPE_FALLBACK = "full" (or "partial") answers that way under DEBUG too.'
+        'production the request is answered as "full" (the page) and this finding is logged.'
     )
 
 

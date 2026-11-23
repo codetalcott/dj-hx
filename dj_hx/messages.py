@@ -41,8 +41,10 @@ def pending_messages(request) -> int:
         from django.contrib.messages import get_messages
     except ImportError:
         return 0
+    from django.contrib.messages.storage.base import BaseStorage
+
     storage = get_messages(request)
-    if not storage:
+    if not isinstance(storage, BaseStorage) or not storage:  # a request without the middleware gets a plain list
         return 0
     count = len(list(storage))
     storage.used = False  # peeked, not consumed (the documented way)
