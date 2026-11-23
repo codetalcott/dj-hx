@@ -6,8 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `dj-hx` is a standalone Django package for htmx 4 (no django-htmx dependency). The handler names the
 outcome and the template keeps the request-side controls. README.md is the user-facing reference for the
-verbs, the settings and the failure catalogue, one line per row; FAILURES.md is the catalogue in full. Read
-both before changing public behavior.
+verbs, the settings and the failure catalogue, one line per row; FAILURES.md is the catalogue in full, and
+INTERACTIONS.md every interaction rule and the status policy in full. Read them before changing public behavior.
 `llms.txt` is the self-contained reference an agent uses to write code against the package; any change
 to a verb signature, a setting, an error, a check id or a lint rule must be mirrored there.
 
@@ -209,8 +209,8 @@ is genuinely Django-specific; the core is vendored from hx-flask (see below).
   desk passes every check, so each control the browser measures is one the checks accept; a swap the checks
   reject is set on the control from the test, in the page. Its layout boosts the body as README's Install
   recommends, and each partial's root carries the status policy's `hx-status` pair; `tests/test_docs.py`
-  compares README's and llms.txt's status-policy blocks with those files, so editing one means editing the
-  others. The browser tests wait for htmx with
+  compares README's, INTERACTIONS.md's and llms.txt's status-policy blocks with those files, so editing one means
+  editing the others. The browser tests wait for htmx with
   `finished(page, n)`, which counts `htmx:finally:request` on `document` (htmx dispatches there when the
   swap removed the control), and hold a write in the browser until the test releases it (`hold_writes`).
 - `browser` (one Chromium per module, with `DJANGO_ALLOW_ASYNC_UNSAFE` set while it runs) and `page` are
