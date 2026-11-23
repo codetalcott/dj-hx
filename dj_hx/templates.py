@@ -77,11 +77,22 @@ class UrlTag:
     stored_as: str | None  # the variable of ``{% url ... as var %}``, where a failed reverse stores ""
 
 
+def tags_span_lines() -> bool:
+    """
+    Whether this Django's lexer reads a ``{% %}`` written across lines as a tag: true from 6.2
+    (release notes, "Multiline template tags"), false before, when it is text. Asked of the lexer, not
+    of the version, so a backport or a change of mind cannot make E022 silently wrong.
+    """
+    from django.template.base import Lexer, TokenType
+
+    return Lexer("{% url\n'x' %}").tokenize()[0].token_type is TokenType.BLOCK
+
+
 def url_tags(source: str) -> list[UrlTag]:
     """
     Every ``{% url %}`` tag in a template's source, read by Django's own lexer and split as its url
-    tag splits one. A tag in a comment or in ``{% verbatim %}`` is not a tag, and neither is one
-    written across lines, which Django renders as text.
+    tag splits one. A tag in a comment or in ``{% verbatim %}`` is not a tag. One written across lines
+    is a tag from Django 6.2 (``tags_span_lines()``), and text before, which the lexer decides.
     """
     from django.template.base import Lexer, TokenType
 

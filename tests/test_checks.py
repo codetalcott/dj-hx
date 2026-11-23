@@ -162,15 +162,26 @@ def test_e022_says_how_to_write_the_tag(tmp_path):
         "{% comment 'old' %}{% url 'nowhere' %}{% endcomment %}",
         "{% verbatim %}{% url 'nowhere' %}{% endverbatim %}",
         "{% verbatim js %}{% url 'nowhere' %}{% endverbatim js %}",
-        "{% url 'nowhere'\n %}",
         # Django's documented form for a view that may be missing, as its own admin/base.html writes it
         "{% url 'django-admindocs-docroot' as docsroot %}{% if docsroot %}<a href=\"{{ docsroot }}\">Docs</a>{% endif %}",
         "{% url 'contacts_edit' as edit %}",
     ],
-    ids=["variable", "filter", "comment", "comment-tag", "verbatim", "named-verbatim", "across-lines", "as-var", "as-var-missing-argument"],
+    ids=["variable", "filter", "comment", "comment-tag", "verbatim", "named-verbatim", "as-var", "as-var-missing-argument"],
 )
 def test_e022_skips_a_name_built_at_run_time_and_what_django_does_not_read_as_a_tag(tmp_path, source):
     assert url_messages(tmp_path, source) == []
+
+
+def test_e022_reads_a_tag_written_across_lines_where_django_does(tmp_path):
+    """Django 6.2 lexes a {% %} across lines as a tag, and renders it; before, it is text. E022 follows the lexer."""
+    from dj_hx.templates import tags_span_lines
+
+    messages = url_messages(tmp_path, "<a href=\"{% url\n  'nowhere' %}\">x</a>")
+    if tags_span_lines():
+        assert [(m.id, m.obj) for m in messages] == [("dj_hx.E022", "page.html:1")]
+        assert "names no URL pattern" in messages[0].msg
+    else:
+        assert messages == []
 
 
 @pytest.mark.parametrize(

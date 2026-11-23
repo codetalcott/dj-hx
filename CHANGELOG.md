@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Fixed
+
+- `dj_hx.E022` on Django 6.2, whose lexer reads a `{% %}` written across
+  lines as a tag (release notes, "Multiline template tags"): such a
+  `{% url %}` is now checked there, as Django renders it, and stays text
+  before 6.2, as Django renders it there. `templates.tags_span_lines()` asks
+  the lexer which. The CI canary on Django `main` found it on its first run.
+
 ### Changed
 
 - **Breaking.** `ready()` discovers interactions in each project app's
