@@ -11,6 +11,14 @@
   htmx request on the site. `HX_REQUEST_TYPE_FALLBACK` still chooses the
   answer under `DEBUG` as well. `HxTestClient` raises the finding either way.
 
+### Added
+
+- The reason `.trigger()` always writes a target is measured, not only read
+  from htmx's source: in Chromium on htmx 4.0.2, after a `delete` swap, an
+  `HX-Trigger` written without a target is dispatched on `document` and a
+  `from body` listener never hears it; one with `target: body` is heard
+  (`tests/test_interactions_browser.py`, the desk's two `drop` rows).
+
 ### Fixed
 
 - `dj_hx.E022` on Django 6.2, whose lexer reads a `{% %}` written across
