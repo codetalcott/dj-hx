@@ -44,6 +44,22 @@ jobs:
       - run: playwright install --with-deps chromium
       - run: pytest -q
 
+  canary:
+    # Django's main branch, not required and never blocking. HxTestClient's undefined-variable check
+    # rests on Django internals its documentation does not promise (README, Testing), and a change to
+    # them makes the check go quiet rather than fail; this job is where that shows first.
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    name: canary (py3.13, django main)
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - run: pip install -e ".[dev,browser]" "django @ git+https://github.com/django/django.git@main"
+      - run: playwright install --with-deps chromium
+      - run: pytest -q
+
   ci:
     # The one check branch protection requires. Editing the matrix above cannot
     # silently drop a required check, or leave one pinned by name that never

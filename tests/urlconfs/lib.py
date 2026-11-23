@@ -111,6 +111,11 @@ def plain(request):
     return HttpResponse("plain")  # no verb built it
 
 
+def flash_plain(request):
+    messages.success(request, "pending")
+    return HttpResponse("<p>plain</p>")  # two findings on a partial request: no verb built it, and the messages have nowhere to go
+
+
 def bare_page(request):
     return django_render(request, "index.html", PAGE)  # the whole page, into an element
 
@@ -169,6 +174,7 @@ urlpatterns = [
     path("lib/flash-file/", flash_file),
     path("lib/flash-stream/", flash_stream),
     path("lib/plain/", plain),
+    path("lib/flash-plain/", flash_plain),
     path("lib/bare-page/", bare_page),
     path("lib/bare-template-response/", bare_template_response),
     path("lib/escaped/", escaped),

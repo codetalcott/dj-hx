@@ -7,7 +7,10 @@ The routes reverse under the ``dj_hx`` namespace (``{% act %}`` does that). A mi
 own ``x/`` prefix; a ``route=`` path is used as given.
 """
 
-from .interactions import bind_routes, urlpatterns  # noqa: F401  filled by @interaction as each views module is imported
+from .interactions import (  # noqa: F401  filled by @interaction as each views module is imported
+    bind_routes,
+    urlpatterns,
+)
 
 app_name = "dj_hx"
 

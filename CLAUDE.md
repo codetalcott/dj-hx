@@ -20,14 +20,14 @@ No virtualenv is checked in: `.venv/` is gitignored, and an old local one can po
 uv venv <venv> && uv pip install -p <venv>/bin/python "django~=6.1.0" pytest pytest-django ruff "playwright==1.64.0"  # below Django 6, add django-template-partials
 <venv>/bin/python -m playwright install chromium
 
-<venv>/bin/python -m pytest -q                      # 416 tests, ~12 s
-<venv>/bin/python -m pytest -q -m "not browser"     # 381, ~1 s, skipping Chromium
-<venv>/bin/python -m pytest -q -m browser           # the 35 Playwright tests alone, ~11 s
+<venv>/bin/python -m pytest -q                      # 417 tests, ~16 s
+<venv>/bin/python -m pytest -q -m "not browser"     # 382, ~3 s, skipping Chromium
+<venv>/bin/python -m pytest -q -m browser           # the 35 Playwright tests alone, ~14 s
 <venv>/bin/python -m pytest tests/test_verbs.py::test_text_escapes
 <venv>/bin/ruff check .
 ```
 
-Counts and times measured 2026-11-22 on an Apple M4: Python 3.13.6, Django 6.1.3, Playwright 1.64.0.
+Counts and times measured 2026-11-23 on an Apple M4: Python 3.13.7, Django 6.0.5, Playwright 1.62.0.
 `pytest.ini` puts the repo and `example/` on the path, so no `PYTHONPATH` is needed. On macOS 27.2 here,
 Playwright 1.65.2's headless shell crash-loops ("icudtl.dat not found in bundle"); pin `playwright==1.64.0`
 locally. CI installs its own and is unaffected.
@@ -48,7 +48,9 @@ python manage.py hx_map [--no-check]
 
 CI runs `ruff check .` on 3.13 and the suite on nine Python/Django pairs, covering Django 4.2, 5.2, 6.0 and 6.1
 and Python 3.10 to 3.13: the support README, llms.txt and the `pyproject.toml` classifiers state. Change the
-matrix and those three together. A local run on 3.12 or 3.13 cannot show what the older pathlib of 3.10 and
+matrix and those three together. A tenth job, `canary`, runs the suite on Django `main` with
+`continue-on-error`; it is not part of the required `ci` check, and a red canary means a Django internal the
+undefined-variable check rests on has moved, not that a pull request is blocked. A local run on 3.12 or 3.13 cannot show what the older pathlib of 3.10 and
 3.11 does: it refuses to intern a `SafeString`, which a Django template name often is.
 Any change touching template partials, `{% url %}` handling or middleware ordering has to work on all
 four Django lines; `django.VERSION < (6, 0)` branches already exist in `verbs.py`, `checks.py`,
