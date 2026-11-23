@@ -36,8 +36,8 @@ Interactions: one handler bound to one template partial, by name.
   raise before writing, or call ``transaction.set_rollback(True)`` before raising.
 - ``triggers`` names the facts a successful reply announces, ``.trigger(name)`` for each.
 - A request with any other method gets a 405.
-- dj-hx's ``ready()`` imports each project app's ``views`` module, so every route exists before
-  the URLconf is read.
+- dj-hx's ``ready()`` imports each project app's ``interactions`` module, as admin imports each
+  app's ``admin``, so every route exists before the URLconf is read.
 - ``@interaction`` returns the routed view, and ``dj_hx.urls`` routes each interaction to what its
   module holds under the handler's name, as written, so a decorator written above it
   (``@login_required``) wraps the route, as on any view. Write such decorators with
@@ -68,10 +68,11 @@ from .verbs import HxResponse, _record, check_root_id, fragment
 __all__ = ["interaction"]
 
 registry: dict[str, Interaction] = {}
-urlpatterns: list = []  # served by dj_hx.urls; filled as each app's views module is imported, bound by bind_routes()
+urlpatterns: list = []  # served by dj_hx.urls; filled as each app's interactions module is imported, bound by bind_routes()
 
 METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
 INCLUDE = 'path("", include("dj_hx.urls"))'
+MODULE = "interactions"  # the submodule of each project app that ready() imports
 _VARIADIC = (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
 
 
@@ -249,7 +250,7 @@ def interaction(method: str, *, partial: str, context: Callable[..., dict], refu
             if config is None:
                 raise ImproperlyConfigured(
                     f"{name}() is in {func.__module__}, which is in no installed app, so its route has no app label "
-                    "to be minted from. Define it in an installed app's views.py, or give it route=."
+                    "to be minted from. Define it in an installed app's interactions.py, or give it route=."
                 )
             segments = "".join(f"<{'int' if _is_int(p) else 'str'}:{p.name}>/" for p in params)
             pattern = path(f"x/{config.label}/{name}/{segments}", view, name=name)
@@ -288,7 +289,7 @@ def act_unknown(name) -> str:
     known = ", ".join(sorted(registry)) or "none"
     return (
         f"{{% act {name!r} %}} names no interaction; the interactions are: {known}. An interaction is registered "
-        "when its module is imported, and dj-hx imports each project app's views module at start-up."
+        "when its module is imported, and dj-hx imports each project app's interactions module at start-up."
     )
 
 
@@ -364,23 +365,26 @@ def bind_routes() -> None:
     Route each interaction to what its module holds under the handler's name, as written: the view
     ``@interaction`` returned, inside any decorators written above it (see ``_routed_view``, which
     raises ``ImproperlyConfigured`` when the module holds the raw handler). ``dj_hx.urls`` calls this
-    when it is first imported, after ``ready()`` has imported every views module. The list is rebuilt
+    when it is first imported, after ``ready()`` has imported every interactions module. The list is rebuilt
     in place because ``dj_hx.urls.urlpatterns`` is this same list object, and the resolver for
     ``include("dj_hx.urls")`` reads it lazily and caches it, so a new list would never be seen.
     """
     urlpatterns[:] = [path(it.route, _routed_view(it), name=it.name) for it in registry.values()]
 
 
-def import_views() -> None:
+def import_interactions() -> None:
     """
-    Import every project app's ``views`` module, so each interaction is registered before the URLconf
-    is read. Apps in site-packages are skipped, as template discovery skips them.
+    Import every project app's ``interactions`` module, so each interaction is registered before the
+    URLconf is read: admin's ``autodiscover`` pattern, under a name that exists to be discovered, so no
+    other module's import order changes. Apps in site-packages are skipped, as template discovery skips
+    them. An interaction defined elsewhere is registered when its module is imported, so ``interactions.py``
+    imports it.
     """
     from django.utils.module_loading import module_has_submodule
 
     from .templates import in_site_packages
 
     for config in apps.get_app_configs():
-        if in_site_packages(config.path) or not module_has_submodule(config.module, "views"):
+        if in_site_packages(config.path) or not module_has_submodule(config.module, MODULE):
             continue
-        import_module(f"{config.name}.views")
+        import_module(f"{config.name}.{MODULE}")

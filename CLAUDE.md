@@ -20,8 +20,8 @@ No virtualenv is checked in: `.venv/` is gitignored, and an old local one can po
 uv venv <venv> && uv pip install -p <venv>/bin/python "django~=6.1.0" pytest pytest-django ruff "playwright==1.64.0"  # below Django 6, add django-template-partials
 <venv>/bin/python -m playwright install chromium
 
-<venv>/bin/python -m pytest -q                      # 417 tests, ~16 s
-<venv>/bin/python -m pytest -q -m "not browser"     # 382, ~3 s, skipping Chromium
+<venv>/bin/python -m pytest -q                      # 418 tests, ~16 s
+<venv>/bin/python -m pytest -q -m "not browser"     # 383, ~3 s, skipping Chromium
 <venv>/bin/python -m pytest -q -m browser           # the 35 Playwright tests alone, ~14 s
 <venv>/bin/python -m pytest tests/test_verbs.py::test_text_escapes
 <venv>/bin/ruff check .
@@ -112,7 +112,7 @@ is empty or blank is recorded on its 422 as `HxEmptyRefusal` (through `verbs._re
 `HxTestClient` raises it; never raised in production). Each decorator appends its
 route to the module's `urlpatterns`, which [urls.py](dj_hx/urls.py) serves (`include("dj_hx.urls")`,
 namespace `dj_hx`); [templatetags/hx.py](dj_hx/templatetags/hx.py) is `{% act %}`, which reverses
-from keyword arguments only. [apps.py](dj_hx/apps.py)'s `ready()` imports every project app's `views`
+from keyword arguments only. [apps.py](dj_hx/apps.py)'s `ready()` imports every project app's `interactions`
 module (`templates.in_site_packages` decides what is the project's), so every route is registered
 before the URLconf is read. The decorator returns the routed view; when `dj_hx/urls.py` is first
 imported, `bind_routes()` points each route at whatever the module that defines the handler holds under
@@ -200,7 +200,7 @@ is genuinely Django-specific; the core is vendored from hx-flask (see below).
 - `tests/desk/` is the app `tests/test_interactions_browser.py` drives in Chromium. It is installed (label
   `desk`) for its label and its static files: htmx 4.0.2 and _hyperscript 0.9.94, vendored with their npm
   sources and sha256 in `static/desk/README.md`, while `example/` stays on htmx 4.0.0. Its interactions
-  are in `handlers.py`, not `views.py`, so `ready()` never registers them: the `desk` fixture (conftest)
+  are in `handlers.py`, not `interactions.py`, so `ready()` never registers them: the `desk` fixture (conftest)
   imports it afresh with the rota app's interactions set aside, routes them, serves `pages/` from disk with
   `tests.desk.urls` as the root, and puts the rota app back after. `test_interactions.py` asserts the
   desk passes every check, so each control the browser measures is one the checks accept; a swap the checks

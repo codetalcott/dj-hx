@@ -4,6 +4,13 @@
 
 ### Changed
 
+- **Breaking.** `ready()` discovers interactions in each project app's
+  `interactions.py`, not its `views.py`: admin's `autodiscover` pattern, under
+  a module that exists to be discovered, so importing it changes no other
+  module's import order. An interaction left in `views.py` is registered only
+  when something imports that module, which check `dj_hx.E017` or `E009`
+  reports at start-up. To migrate, move the handlers, or write
+  `from . import views  # noqa: F401` in the app's `interactions.py`.
 - README compares dj-hx with django-htmx 1.29.0 and djxi 0.1.9 from a run
   (2026-11-23, Django 6.1.3), not from memory: neither guards a 204, a 3xx
   or a whole page answering a partial request, and both offer

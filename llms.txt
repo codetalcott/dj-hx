@@ -240,8 +240,9 @@ urlpatterns = [..., path("", include("dj_hx.urls"))]   # once, at the site root
 - `{% act %}` takes keyword arguments only, one per handler parameter. A positional argument, an unknown or
   a missing keyword, or an unknown interaction raises `TemplateSyntaxError` at render. Without `dj_hx.urls`
   included it raises `ImproperlyConfigured`, naming `path("", include("dj_hx.urls"))`.
-- Put interactions in an installed app's `views.py`: dj-hx's `ready()` imports the `views` module of every
-  app outside site-packages. One registered after `dj_hx.urls` was first read keeps the bare view as its
+- Put interactions in an installed app's `interactions.py`: dj-hx's `ready()` imports the `interactions` module
+  of every app outside site-packages (admin's autodiscover pattern). One defined elsewhere is registered when
+  its module is imported: import it from `interactions.py`. One registered after `dj_hx.urls` was first read keeps the bare view as its
   route, without the decorators above it (check E017).
 - Django view decorators go ABOVE `@interaction` (`@login_required` then `@interaction(...)`). It returns the
   routed view and `dj_hx.urls` routes whatever the module that defines the handler holds under the handler's

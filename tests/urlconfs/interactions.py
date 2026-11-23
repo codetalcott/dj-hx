@@ -3,17 +3,17 @@
 from django.urls import include, path
 
 from dj_hx import page
-from tests.interactions_app import views
+from tests.interactions_app import interactions as rota_app
 
 
 def rota_without_error(request, contest):
     """The rota page from a context that forgot `error`, which the page's notify partial reads."""
-    context = {key: value for key, value in views.rota_context(request, contest).items() if key != "error"}
+    context = {key: value for key, value in rota_app.rota_context(request, contest).items() if key != "error"}
     return page(request, "rota.html", context)
 
 
 urlpatterns = [
-    path("rota/<str:contest>/", views.rota, name="rota"),
+    path("rota/<str:contest>/", rota_app.rota, name="rota"),
     path("rota/<str:contest>/without-error/", rota_without_error),
     path("", include("dj_hx.urls")),
 ]

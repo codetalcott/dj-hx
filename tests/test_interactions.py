@@ -26,7 +26,6 @@ from django.http import HttpResponse
 from django.template import Context, Template, TemplateSyntaxError
 from django.test import override_settings
 from django.urls import Resolver404, clear_url_caches, resolve, reverse
-from django.utils.module_loading import module_has_submodule
 
 import dj_hx.urls  # noqa: F401  binds the routes now, after ready(), before any `scratch` snapshot of them
 from dj_hx import (
@@ -43,7 +42,7 @@ from dj_hx.interactions import act_not_included, bind_routes, registry, urlpatte
 from dj_hx.templates import in_site_packages
 from dj_hx.testing import HxTestClient, assert_no_hx_check_issues, hx_check_messages
 from tests.conftest import locmem, on_disk
-from tests.interactions_app import views
+from tests.interactions_app import interactions as rota_app
 
 ROTA = """{% extends "layout.html" %}{% load hx %}{% block content %}<h1>{{ contest }}</h1>
 {% partialdef notify inline %}<div id="notify">{% for member in members %}<button hx-post="{% act 'notify' contest=contest member=member %}" hx-target="#notify" hx-swap="outerHTML">Notify {{ member }}</button>{% endfor %}{% if notified %}<p class="done">Notified {{ notified }}</p>{% endif %}{% if error %}<p class="error">{{ error }}</p>{% endif %}</div>{% endpartialdef %}
@@ -133,7 +132,7 @@ def test_a_postponed_int_annotation_still_mints_an_int_segment(scratch, rota):
     def tally(request, count: "int"):  # what `from __future__ import annotations` makes of `count: int`
         return None
 
-    tally.__module__ = views.__name__  # as if written in the rota app's views.py
+    tally.__module__ = rota_app.__name__  # as if written in the rota app's rota_app.py
     interaction("POST", partial="scratch.html#box", context=nothing)(tally)
     clear_url_caches()
     assert reverse("dj_hx:tally", kwargs={"count": 4}) == "/x/rota/tally/4/"
@@ -146,7 +145,7 @@ def test_a_minted_route_needs_an_installed_app(scratch):
 
     with pytest.raises(
         ImproperlyConfigured,
-        match=r"stray\(\) is in tests\.test_interactions, which is in no installed app.*views\.py, or give it route=",
+        match=r"stray\(\) is in tests\.test_interactions, which is in no installed app.*interactions\.py, or give it route=",
     ):
         interaction("POST", partial="scratch.html#box", context=nothing)(stray)
     assert "stray" not in registry
@@ -184,10 +183,10 @@ def test_two_interactions_cannot_share_a_name(scratch):
 
     with pytest.raises(
         ImproperlyConfigured,
-        match=r"Two interactions are named notify\(\), in tests\.interactions_app\.views and tests\.test_interactions",
+        match=r"Two interactions are named notify\(\), in tests\.interactions_app\.interactions and tests\.test_interactions",
     ):
         interaction("POST", partial="scratch.html#box", context=nothing, route="elsewhere/")(notify)
-    assert registry["notify"].view is views.notify  # @interaction returns the routed view
+    assert registry["notify"].view is rota_app.notify  # @interaction returns the routed view
 
 
 @pytest.mark.parametrize("partial", ["scratch.html", "scratch.html#", "#box", "scratch.html#box.html"])
@@ -261,7 +260,7 @@ def double_star(request, **extra):
 
 @pytest.mark.parametrize("handler, takes", [(star, r"\*extra"), (double_star, r"\*\*extra")], ids=["args", "kwargs"])
 def test_a_handler_takes_named_parameters_only(scratch, monkeypatch, handler, takes):
-    monkeypatch.setattr(handler, "__module__", views.__name__)  # as if written in the rota app's views.py: a minted route
+    monkeypatch.setattr(handler, "__module__", rota_app.__name__)  # as if written in the rota app's rota_app.py: a minted route
     with pytest.raises(
         ImproperlyConfigured,
         match=rf"{handler.__name__}\(\) takes {takes}, which would mint a route segment like <str:extra>\. An interaction "
@@ -325,23 +324,31 @@ def test_context_takes_named_parameters_only(scratch, context, takes):
     assert "show" not in registry
 
 
-def test_ready_imports_each_project_apps_views_and_no_app_in_site_packages(scratch, monkeypatch):
-    third_party = [
-        f"{c.name}.views" for c in apps.get_app_configs()
-        if in_site_packages(c.path) and module_has_submodule(c.module, "views")
-    ]
-    assert third_party  # contenttypes, messages and staticfiles each ship a views module
-    for name in (views.__name__, *third_party):
-        monkeypatch.delitem(sys.modules, name, raising=False)
+def test_ready_imports_each_project_apps_interactions_and_no_app_in_site_packages(scratch, monkeypatch):
+    from dj_hx.interactions import import_interactions
+
+    # No Django app ships an interactions module, so every app is made to look as if it had one; what
+    # import_interactions() then asks for is exactly the project's, never a site-packages app's.
+    project = {f"{c.name}.interactions" for c in apps.get_app_configs() if not in_site_packages(c.path)}
+    third_party = {f"{c.name}.interactions" for c in apps.get_app_configs() if in_site_packages(c.path)}
+    assert rota_app.__name__ in project and third_party  # contenttypes, auth, messages, ...
+    asked = []
+    monkeypatch.setattr("django.utils.module_loading.module_has_submodule", lambda module, name: name == "interactions")
+    monkeypatch.setattr("dj_hx.interactions.import_module", asked.append)
+    import_interactions()
+    assert set(asked) == project
+
+
+def test_ready_registers_the_rota_apps_interactions(scratch, monkeypatch):
+    monkeypatch.delitem(sys.modules, rota_app.__name__, raising=False)
     # The re-import rebinds the package attribute; this puts the original module back afterwards.
-    monkeypatch.setattr(sys.modules["tests.interactions_app"], "views", views)
+    monkeypatch.setattr(sys.modules["tests.interactions_app"], "interactions", rota_app)
     registry.clear()
     urlpatterns.clear()
 
     apps.get_app_config("dj_hx").ready()
 
     assert {"notify", "notify_reviewer"} <= set(registry)
-    assert [name for name in third_party if name in sys.modules] == []
 
 
 # ------------------------------------------------------------- the wrapper view
@@ -369,7 +376,7 @@ def test_a_page_that_renders_the_partial_without_error_fails_the_test(rota, clie
         client.get("/rota/spring/without-error/")
     assert [str(lookup) for lookup in info.value.lookups] == ["rota.html:2: 'error' in {% if error %}"]
     assert str(info.value).startswith("GET /rota/spring/without-error/ read 1 undefined template variable,")
-    assert views.rota_context(None, "spring")["error"] is None
+    assert rota_app.rota_context(None, "spring")["error"] is None
     assert client.get("/rota/spring/").status_code == 200  # the same page, from that context
 
 
@@ -535,7 +542,7 @@ def test_a_view_decorator_above_interaction_wraps_the_route(rota, client, db, dj
 
 
 def test_a_decorator_above_interaction_without_wraps_is_routed_as_written(rota, client, db, django_user_model):
-    url = reverse("dj_hx:approve", kwargs={"member": 5})  # views.staff_only sets no __wrapped__
+    url = reverse("dj_hx:approve", kwargs={"member": 5})  # rota_app.staff_only sets no __wrapped__
     client.force_login(django_user_model.objects.create_user("bob"))
     r = client.hx_post(url)
     assert (r.status_code, r.content.decode()) == (403, "Staff only.")
@@ -705,7 +712,7 @@ def test_hx_map_pairs_an_act_control_with_its_interaction(rota):
     assert m.errors == [] and not [w for w in m.warnings if "computed URL" in w]
     notify = m.handlers["dj_hx:notify"]
     assert (notify.verbs, notify.templates, notify.announces) == ({"fragment"}, {"rota.html#notify"}, {"notified", "rota-changed"})
-    # approve() is routed through views.staff_only, which has no functools.wraps: the map still scans the handler
+    # approve() is routed through rota_app.staff_only, which has no functools.wraps: the map still scans the handler
     assert m.handlers["dj_hx:approve"].label == "approve()"
 
 
@@ -757,8 +764,8 @@ CHECKED = {
 {% partialdef signoff inline %}<div id="signoff"><button hx-post="{% act 'sign_off' member=member %}" hx-target="#signoff" hx-swap="outerHTML">Sign off</button></div>{% endpartialdef %}
 {% partialdef approval inline %}<div id="approval" hx-target:inherited="#approval" hx-swap:inherited="outerHTML"><button hx-post="{% act 'approve' member=member %}">Approve</button></div>{% endpartialdef %}""",
 }
-# views.staff_only wraps approve() without functools.wraps, on purpose, so W018 cannot see the interaction through it.
-APPROVE_UNVERIFIED = ("dj_hx.W018", "tests.interactions_app.views.approve")
+# rota_app.staff_only wraps approve() without functools.wraps, on purpose, so W018 cannot see the interaction through it.
+APPROVE_UNVERIFIED = ("dj_hx.W018", "tests.interactions_app.interactions.approve")
 NOTIFY = "{% act 'notify' contest='spring' member=3 %}"
 NOTIFY_BODY = ROTA.split("{% partialdef notify inline %}")[1].split("{% endpartialdef %}")[0]
 
@@ -1141,7 +1148,7 @@ def test_e014_an_interaction_no_template_writes_an_act_for(startup, url):
     # a control that reaches sign_off() by {% url %} or a hand-written path is not counted: E011-E013 cannot check it
     reviewers = CHECKED["reviewers.html"].replace("{% act 'sign_off' member=member %}", url)
     messages = startup(**{"reviewers.html": reviewers})
-    assert found(messages) == [("dj_hx.E014", "tests.interactions_app.views.sign_off")]
+    assert found(messages) == [("dj_hx.E014", "tests.interactions_app.interactions.sign_off")]
     message = the(messages, "dj_hx.E014")
     assert message.msg == (
         "sign_off() has no control: no project template writes {% act 'sign_off' %}. A {% url 'dj_hx:sign_off' %} or a "
@@ -1160,7 +1167,7 @@ def test_the_interaction_checks_read_html_and_htm_templates_only(startup, suffix
     # E009 to E016 read .html and .htm files, as E022 does: sign_off()'s one {% act %}, in another file, is not seen
     elsewhere = control(SIGN_OFF_ACT.replace("member=member", "member=3"), rest='hx-target="#signoff" hx-swap="outerHTML"')
     messages = startup(**{"reviewers.html": WITHOUT_SIGN_OFF_ACT, f"elsewhere{suffix}": elsewhere})
-    assert found(messages) == ([] if read else [("dj_hx.E014", "tests.interactions_app.views.sign_off")])
+    assert found(messages) == ([] if read else [("dj_hx.E014", "tests.interactions_app.interactions.sign_off")])
 
 
 def test_an_act_inside_verbatim_still_counts_for_e009_and_e014(startup):
@@ -1179,8 +1186,8 @@ def test_e014_skips_an_interaction_whose_handler_is_in_site_packages(scratch, st
 
     user_site = tmp_path / "site-packages"
     monkeypatch.setattr(site, "getusersitepackages", lambda: str(user_site))
-    module = types.ModuleType("shelf.views")
-    module.__file__ = str((user_site if installed else tmp_path / "project") / "shelf" / "views.py")
+    module = types.ModuleType("shelf.interactions")
+    module.__file__ = str((user_site if installed else tmp_path / "project") / "shelf" / "interactions.py")
     monkeypatch.setitem(sys.modules, module.__name__, module)
 
     def shelve(request):
@@ -1188,7 +1195,7 @@ def test_e014_skips_an_interaction_whose_handler_is_in_site_packages(scratch, st
 
     shelve.__module__ = module.__name__
     interaction("POST", partial="rota.html#notify", context=nothing, route="t/shelve")(shelve)
-    assert found(startup()) == ([] if installed else [("dj_hx.E014", "shelf.views.shelve")])
+    assert found(startup()) == ([] if installed else [("dj_hx.E014", "shelf.interactions.shelve")])
 
 
 @pytest.mark.parametrize(
@@ -1285,8 +1292,8 @@ def test_e017_an_interaction_registered_after_the_urlconf_was_read(scratch, rota
     )
     assert error.hint == (
         "remind() was registered after dj_hx.urls was first read, or tests.functional_views rebound remind since. Import "
-        "tests.functional_views before the URLconf is loaded: from the app's ready(), or from its views module, which "
-        "dj-hx imports at start-up."
+        "tests.functional_views before the URLconf is loaded: from the app's ready(), or from its interactions module, "
+        "which dj-hx imports at start-up."
     )
     assert client.hx_post("/t/remind").content.decode() == '<div id="box">reminded</div>'  # signed out, and answered
     bind_routes()  # the binding a URLconf read after the import makes
@@ -1302,11 +1309,11 @@ def test_e017_a_module_that_rebinds_the_name_after_the_urlconf_was_read(rota, mo
 
         return wrapper
 
-    monkeypatch.setattr(views, "sign_off", audited(views.sign_off))  # the route keeps the object it was bound to
+    monkeypatch.setattr(rota_app, "sign_off", audited(rota_app.sign_off))  # the route keeps the object it was bound to
     error = the(routing_messages(), "dj_hx.E017")
-    assert error.obj == "tests.interactions_app.views.sign_off"
-    assert error.msg.startswith("dj_hx.urls routes sign_off() to another object, not to what tests.interactions_app.views holds")
-    assert "or tests.interactions_app.views rebound sign_off since" in error.hint
+    assert error.obj == "tests.interactions_app.interactions.sign_off"
+    assert error.msg.startswith("dj_hx.urls routes sign_off() to another object, not to what tests.interactions_app.interactions holds")
+    assert "or tests.interactions_app.interactions rebound sign_off since" in error.hint
 
 
 def test_e017_names_a_late_module_that_holds_the_raw_handler(scratch, rota, monkeypatch):
@@ -1318,9 +1325,9 @@ def test_e017_names_a_late_module_that_holds_the_raw_handler(scratch, rota, monk
 
 def test_w018_a_routed_attribute_that_does_not_unwrap_to_its_interaction(rota):
     [warning] = [m for m in checks.check_interaction_routes() if m.id == "dj_hx.W018"]
-    assert warning.obj == "tests.interactions_app.views.approve"
+    assert warning.obj == "tests.interactions_app.interactions.approve"
     assert warning.msg == (
-        "approve() is routed to tests.interactions_app.views.approve, which does not unwrap to the view @interaction "
+        "approve() is routed to tests.interactions_app.interactions.approve, which does not unwrap to the view @interaction "
         "returned, so dj-hx cannot tell that it wraps the interaction."
     )
     assert "Use functools.wraps in decorators above @interaction" in warning.hint
@@ -1409,7 +1416,7 @@ HEARS_NOTIFIED = "<p _=\"on notified from body put 'Notified' into me\"></p>"
 
 def test_w024_an_interactions_trigger_no_template_listens_for(startup):
     messages = startup(**{"layout.html": CHECKED["layout.html"].split("\n")[0] + "\n" + HEARS_NOTIFIED})
-    assert found(messages) == [("dj_hx.W024", "tests.interactions_app.views.notify")]
+    assert found(messages) == [("dj_hx.W024", "tests.interactions_app.interactions.notify")]
     warning = the(messages, "dj_hx.W024")
     assert warning.level == WARNING
     assert warning.msg == (
@@ -1500,8 +1507,8 @@ def test_w024_skips_an_interaction_whose_handler_is_in_site_packages(scratch, st
 
     user_site = tmp_path / "site-packages"
     monkeypatch.setattr(site, "getusersitepackages", lambda: str(user_site))
-    module = types.ModuleType("shelf.views")
-    module.__file__ = str((user_site if installed else tmp_path / "project") / "shelf" / "views.py")
+    module = types.ModuleType("shelf.interactions")
+    module.__file__ = str((user_site if installed else tmp_path / "project") / "shelf" / "interactions.py")
     monkeypatch.setitem(sys.modules, module.__name__, module)
 
     def shelve(request):
@@ -1510,7 +1517,7 @@ def test_w024_skips_an_interaction_whose_handler_is_in_site_packages(scratch, st
     shelve.__module__ = module.__name__
     interaction("POST", partial="rota.html#notify", context=nothing, route="t/shelve", triggers=("shelved",))(shelve)
     messages = startup(**{"extra.html": control("{% act 'shelve' %}")})
-    assert [m for m in found(messages) if m[0] == "dj_hx.W024"] == ([] if installed else [("dj_hx.W024", "shelf.views.shelve")])
+    assert [m for m in found(messages) if m[0] == "dj_hx.W024"] == ([] if installed else [("dj_hx.W024", "shelf.interactions.shelve")])
 
 
 def test_assert_no_hx_check_issues_counts_an_info(tmp_path):
