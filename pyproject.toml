@@ -1,12 +1,12 @@
 [project]
 name = "dj-hx"
 version = "0.1.0"
-description = "Handler-first htmx 4 for Django: the view names the outcome, the template keeps the controls"
+description = "Handler-first htmx 4 for Django: the view names the outcome, the template keeps the controls. Also checks every {% url %} and every template variable, for any Django project"
 authors = [{name = "William Talcott"}]
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
-keywords = ["django", "htmx", "hypermedia", "partials", "htmx4"]
+keywords = ["django", "htmx", "hypermedia", "partials", "htmx4", "templates", "checks"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Web Environment",

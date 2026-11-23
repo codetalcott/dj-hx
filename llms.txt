@@ -3,7 +3,10 @@
 > Handler-first htmx 4 for Django. The view names the outcome with a verb (`render`, `page`, `fragment`,
 > `invalid`, `redirect`, `navigate`, `removed`, `text`); the template keeps every request-side control; fragments are
 > `{% partialdef %}` regions of the page template. Nothing depends on django-htmx. Every way htmx 4 fails
-> silently is turned into a raised or recorded error with a message that says what to change.
+> silently is turned into a raised or recorded error with a message that says what to change. Two of its checks
+> have no htmx in them and work on any Django project: every `{% url %}` in the templates reverses (check
+> `dj_hx.E022`), and no template variable is undefined (`HxUndefinedVariable` from `HxTestClient`, in `{% if %}`
+> and `{% for %}` too).
 
 Facts to hold while writing code against this package:
 
@@ -641,7 +644,8 @@ as `HxRedirectIntoFragment`. Always build URLs with `{% url %}`, or `{% act %}` 
 
 ## Files
 
-- [README.md](https://github.com/codetalcott/dj-hx/blob/main/README.md): the design, the vocabulary, the silent-failure catalogue
+- [README.md](https://github.com/codetalcott/dj-hx/blob/main/README.md): the design, the vocabulary, the silent-failure catalogue in one line per row
+- [FAILURES.md](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md): the catalogue in full, one entry per row
 - [CHANGELOG.md](https://github.com/codetalcott/dj-hx/blob/main/CHANGELOG.md): release notes
 - [dj_hx/verbs.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/verbs.py): the verbs and `HxResponse`
 - [dj_hx/request.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/request.py): `HX-Request-Type` and the `wants_*` helpers

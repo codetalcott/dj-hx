@@ -11,6 +11,10 @@
   when something imports that module, which check `dj_hx.E017` or `E009`
   reports at start-up. To migrate, move the handlers, or write
   `from . import views  # noqa: F401` in the app's `interactions.py`.
+- README's "What is loud" table is one line per row again; the full entries moved
+  to FAILURES.md, which each row links. A new section at the top names the two
+  checks that have no htmx in them, `dj_hx.E022` and `HxUndefinedVariable`, and
+  the package description says so.
 - README compares dj-hx with django-htmx 1.29.0 and djxi 0.1.9 from a run
   (2026-11-23, Django 6.1.3), not from memory: neither guards a 204, a 3xx
   or a whole page answering a partial request, and both offer

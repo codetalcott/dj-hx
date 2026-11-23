@@ -64,3 +64,21 @@ def test_every_interaction_partial_the_docs_show_carries_the_policy(doc):
     shown = [root for block in FENCED.findall((ROOT / doc).read_text()) for root, body in PARTIALS.findall(block) if "{% act " in body]
     for root in shown:
         assert STATUS.findall(root) == STATUS.findall(ROOTS.findall(DESK)[0]), root
+
+
+# ------------------------------------------------------------- the catalogue
+
+ROW = re.compile(r"^\| (?P<title>[^|]+?) \| [^|]+ \| \[more\]\(FAILURES\.md#(?P<anchor>[a-z0-9-]+)\) \|$", re.M)
+HEADING = re.compile(r"^## (.+)$", re.M)
+
+
+def test_every_readme_row_has_its_failures_entry_in_the_same_order():
+    """README's "What is loud" table and FAILURES.md are one catalogue: same rows, same order, working anchors."""
+    readme = (ROOT / "README.md").read_text()
+    table = readme[readme.index("## What is loud") : readme.index("\n## Testing")]
+    rows = ROW.findall(table)
+    headings = HEADING.findall((ROOT / "FAILURES.md").read_text())
+    assert len(rows) >= 31
+    assert [title for title, _ in rows] == headings
+    for title, anchor in rows:
+        assert anchor == re.sub(r"[^a-z0-9 -]", "", title.lower()).replace(" ", "-"), title
