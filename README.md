@@ -606,7 +606,7 @@ browser.
 | answers a partial request with a 204 | goes out as is; nothing logged | same | `HxNoSwap` recorded, raised in tests |
 | answers a partial request with a 302 | goes out as is; nothing logged | same | `redirect()` raises; the guard records any other 3xx |
 | answers a partial request with `django.shortcuts.render` | the whole page goes out; nothing logged | same | `HxBareResponse` recorded |
-| fires an event | `trigger_client_event(r, "x")` writes `{"x": {}}`, no target | `set_trigger("x")` writes `x`, no target | `.trigger()` always writes a target |
+| fires an event | `trigger_client_event(r, "x")` writes `{"x": {}}`, no target | `set_trigger("x")` writes `x`, no target | `.trigger()` always writes a target (why: measured under htmx 4 facts) |
 | writes an htmx 2 header | `trigger_client_event(..., after="swap")` writes `HX-Trigger-After-Swap`, which htmx 4.0.2 does not read; the docs do not label it | no such helper | none offered |
 | reads the target | `request.htmx.target`, `.source` | the same | not offered |
 
@@ -642,7 +642,7 @@ that file.
   finds in it before the swap (L1319).
 - `hx-push-url="true"` pushes the URL after redirects (L1675), so a plain 303 updates the location bar.
 - A `delete` swap runs regardless of response content (L1314) and honors `swap:1s`.
-- `HX-Trigger` fires on the source element, or `document` if the swap removed it (L620, L1296); that is why `.trigger()` always sets a `target`.
+- `HX-Trigger` fires on the source element, or `document` if the swap removed it (L620, L1296); that is why `.trigger()` always sets a `target`. Measured in Chromium on 4.0.2 (`tests/test_interactions_browser.py`): after a `delete` swap, an event written without a target is dispatched on `document` and a `from body` listener never hears it; one with `target: body` is heard.
 - Attributes reach descendants only with `:inherited`; `<body hx-boost="true">` boosts nothing (L285).
 - `hx-delete` sends query parameters and excludes the enclosing form unless asked with `hx-include` (L476).
 - Only 204 and 304 skip the swap (L202). A 422 body swaps with no client configuration, and so do a

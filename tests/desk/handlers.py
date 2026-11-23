@@ -8,11 +8,16 @@ interactions set aside, and puts them back after.
 - ``morph``, ``sync``, ``selfswap``, ``retitle`` and ``nearest`` each answer one control that the start-up
   checks accept and the browser tests measure: two outer swaps (E013), a self-replacing control and
   click-to-edit's ``hx-target:inherited="this"`` (E012), and ``hx-target="closest #nearest"`` (E012).
+- ``drop_bare`` and ``drop_targeted`` are plain views answering a ``hx-swap="delete"`` row with ``removed()``:
+  one writes ``HX-Trigger`` by hand without a target, the other through ``.trigger()``, which always sets one.
+  The browser test measures where each event lands once the swap has removed the row.
 """
+
+import json
 
 from django.http import Http404
 
-from dj_hx import interaction, page
+from dj_hx import interaction, page, removed
 
 MEASURED = ("morph", "sync", "selfswap", "retitle", "nearest")
 TITLES = ("Draft", "Revised", "Final")
@@ -47,6 +52,18 @@ def desk_context(request):
 
 def desk(request):
     return page(request, "desk.html", desk_context(request))
+
+
+def drop_bare(request):
+    """The row is gone; the event is announced the htmx 2 way, with no target (django-htmx's helper writes this)."""
+    response = removed(request)
+    response["HX-Trigger"] = json.dumps({"dropped": {}})
+    return response
+
+
+def drop_targeted(request):
+    """The row is gone; ``.trigger()`` announces it with ``target: body``."""
+    return removed(request).trigger("dropped")
 
 
 @interaction("POST", partial="desk.html#notify", context=desk_context, refuses=(AlreadyNotified,), triggers=("notified",))

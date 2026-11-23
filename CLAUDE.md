@@ -21,9 +21,9 @@ No virtualenv is checked in: `.venv/` is gitignored, and an old local one can po
 uv venv <venv> && uv pip install -p <venv>/bin/python "django~=6.1.0" pytest pytest-django ruff "playwright==1.64.0"  # below Django 6, add django-template-partials
 <venv>/bin/python -m playwright install chromium
 
-<venv>/bin/python -m pytest -q                      # 419 tests, ~16 s
-<venv>/bin/python -m pytest -q -m "not browser"     # 384, ~3 s, skipping Chromium
-<venv>/bin/python -m pytest -q -m browser           # the 35 Playwright tests alone, ~14 s
+<venv>/bin/python -m pytest -q                      # 421 tests, ~16 s
+<venv>/bin/python -m pytest -q -m "not browser"     # 385, ~3 s, skipping Chromium
+<venv>/bin/python -m pytest -q -m browser           # the 36 Playwright tests alone, ~14 s
 <venv>/bin/python -m pytest tests/test_verbs.py::test_text_escapes
 <venv>/bin/ruff check .
 ```
@@ -172,7 +172,8 @@ is genuinely Django-specific; the core is vendored from hx-flask (see below).
   the page template. A partial delivered as `<hx-partial>` must have a root element with `id` equal to
   the partial name, checked at render by `check_root_id`.
 - `.trigger()` always emits the JSON form and always sets a target, because after a delete swap htmx 4
-  dispatches on `document` where a `from:body` listener cannot hear it.
+  dispatches on `document` where a `from:body` listener cannot hear it (measured by the desk's two `drop` rows in
+  `tests/test_interactions_browser.py`).
 - Error messages name the handler (`who(request)`) and say what to change. Match that tone; the messages
   are the documentation for the failure catalogue in README.md.
 - Ruff: line length 120 but `E501` ignored, `N818` ignored (exception names mirror hx-flask, except `HxUnknownPartial` for its `HxUnknownBlock` and `HxMessagesUnconfigured` for its `HxFlashUnconfigured`), vendored

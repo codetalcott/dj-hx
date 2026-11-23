@@ -59,6 +59,25 @@ def one(page, element_id):
 # ------------------------------------------------------------- what the reply does
 
 
+def test_an_event_without_a_target_lands_on_document_after_a_delete_swap_where_from_body_cannot_hear_it(page, live, desk):
+    """Why .trigger() always writes a target: htmx 4 dispatches on the source element, or document once a swap removed it."""
+    open_desk(page, live)
+    page.evaluate("document.addEventListener('dropped', e => { window.heardAt = (window.heardAt || []).concat(e.target === document ? 'document' : e.target.tagName) })")
+
+    page.get_by_test_id("drop-bare").click()
+    finished(page, 1)
+    expect(one(page, "drop-bare")).to_have_count(0)  # the delete swap ran
+    assert page.evaluate("window.heardAt") == ["document"]  # dispatched on document: the row is gone
+    assert page.get_by_test_id("drops").inner_text() == "No row dropped yet."  # a `from body` listener never hears it
+
+    page.get_by_test_id("drop-targeted").click()
+    finished(page, 2)
+    expect(one(page, "drop-targeted")).to_have_count(0)
+    assert page.evaluate("window.heardAt") == ["document", "BODY"]  # target: body, which bubbles to document
+    expect(page.get_by_test_id("drops")).to_have_text("A row was dropped.")
+    assert page.console_errors == []
+
+
 def test_feedback_appears_only_after_the_reply(page, live, desk):
     open_desk(page, live)
     held = hold_writes(page)

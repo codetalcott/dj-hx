@@ -3,6 +3,11 @@
 <h1>The desk</h1>
 <p><a data-testid="gone" href="/desk/gone/">A page since removed</a></p>  <!-- boosted by the layout; no route: a 404 -->
 <p data-testid="notices" _="on notified from body put 'A member was notified.' into me">No one notified yet.</p>
+<p data-testid="drops" _="on dropped from body put 'A row was dropped.' into me">No row dropped yet.</p>
+<ul>
+  <li id="drop-bare" data-testid="drop-bare" hx-delete="{% url 'desk_drop_bare' %}" hx-swap="delete">A row whose server announces the drop with no target</li>
+  <li id="drop-targeted" data-testid="drop-targeted" hx-delete="{% url 'desk_drop_targeted' %}" hx-swap="delete">A row whose server announces the drop to body</li>
+</ul>
 
 {% partialdef notify inline %}
 <div id="notify" hx-status:40x:inherited="swap:none" hx-status:5xx:inherited="swap:none">
