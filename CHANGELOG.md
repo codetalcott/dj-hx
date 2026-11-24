@@ -34,6 +34,18 @@ built beside: one on htmx 2 with 96 templates, one with no htmx.
 - README says `check` warns `dj_hx.W001` on a site that uses only the two
   checks for any Django project, and how to silence it.
 
+### Added
+
+- `hx_map` warns on a control targeting an element whose swap is neither
+  `delete` nor `swapEmpty:true` when its view can answer `removed()`. htmx 4
+  skips an empty swap when the reply carries an `<hx-partial>`, and the
+  messages bridge appends one whenever the view adds a message, so the row
+  stayed on the page. A Chromium test found it on the htmx 2 app once it moved to
+  htmx 4; the desk now measures it (vendored core from hx-flask 9bbf36b).
+- README: an existing site's Errors stop `migrate` as well, so a container that
+  migrates before it serves does not start until they are fixed. A test calls
+  `migrate` with an `E022` in place.
+
 ## 0.2.1 (2026-11-23)
 
 ### Removed

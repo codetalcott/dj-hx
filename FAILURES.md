@@ -88,6 +88,12 @@ silently, what dj-hx does instead, what it reads to decide, and what it cannot s
 
 **What happens.** `manage.py hx_map`, as warnings
 
+## A control would keep what removed() empties
+
+**Failure.** A control targeting an element, with a swap that is neither `delete` nor `swapEmpty:true`, reaching a view that can answer `removed()`. htmx 4 skips an empty main swap when the reply carries an `<hx-partial>`, and the messages bridge appends one whenever the view adds a message, so the element stays on the page. Measured in Chromium by the desk's cross-off row (`tests/test_interactions_browser.py`); with no message, the same `outerHTML` swap removes the row.
+
+**What happens.** `manage.py hx_map`, as a warning. Use `hx-swap="delete"`. When the view can also answer with content (a refused delete that sends the row back with the reason), use `hx-swap="outerHTML swapEmpty:true"`.
+
 ## Middleware or settings misconfigured
 
 **Failure.** `HxMiddleware` missing, listed before `MessageMiddleware`, `HX_MESSAGES_TEMPLATE` unset or unresolvable, no partials on Django < 6

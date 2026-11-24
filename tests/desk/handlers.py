@@ -11,10 +11,13 @@ interactions set aside, and puts them back after.
 - ``drop_bare`` and ``drop_targeted`` are plain views answering a ``hx-swap="delete"`` row with ``removed()``:
   one writes ``HX-Trigger`` by hand without a target, the other through ``.trigger()``, which always sets one.
   The browser test measures where each event lands once the swap has removed the row.
+- ``cross_off`` answers a row with ``removed()`` and a message, which the messages bridge appends as an
+  ``<hx-partial>``; the browser test measures which swaps still remove the row (``hx_map`` warns on the rest).
 """
 
 import json
 
+from django.contrib import messages
 from django.http import Http404
 
 from dj_hx import interaction, page, removed
@@ -64,6 +67,12 @@ def drop_bare(request):
 def drop_targeted(request):
     """The row is gone; ``.trigger()`` announces it with ``target: body``."""
     return removed(request).trigger("dropped")
+
+
+def cross_off(request):
+    """The row is gone, and a message says so: the reply's body is empty beside the bridged <hx-partial>."""
+    messages.success(request, "Crossed off.")
+    return removed(request)
 
 
 @interaction("POST", partial="desk.html#notify", context=desk_context, refuses=(AlreadyNotified,), triggers=("notified",))

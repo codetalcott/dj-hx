@@ -67,7 +67,7 @@ SOURCES = {
         <span hx-get="/nowhere" hx-trigger="load"></span>
         <span hx-get="/m/rows" hx-trigger="load" hx-target="#panel"></span>
         <div hx-trigger="orphan from:body" hx-get="{% url 'm-rows' %}" hx-target="#panel"></div>
-        <form><button hx-delete="{% url 'm-items' %}" hx-target="tbody">bulk</button></form>
+        <form><button hx-delete="{% url 'm-items' %}" hx-target="tbody" hx-swap="innerHTML swapEmpty:true">bulk</button></form>
         <a href="{% url 'm-items' %}">items page</a>
         <div id="panel"></div>{% endblock %}""",
     "detail.html": "<html><body>detail</body></html>",
@@ -89,6 +89,23 @@ def test_map_reports_the_mismatches_a_dsl_could_not():
     assert len(m.errors) == 4 and len(m.warnings) == 3
     # the GET branch of items() is a page, so the boosted link to it is fine
     assert m.handlers["m-items"].verbs_for("GET") == {"page"} and m.handlers["m-items"].verbs_for("DELETE") == {"removed"}
+
+
+@override_settings(ROOT_URLCONF="tests.urlconfs.mapping")
+def test_a_control_that_would_keep_what_removed_empties_is_warned():
+    """htmx 4.0.2 skips an empty main swap beside an <hx-partial> (the messages bridge's) unless the swap is delete
+    or says swapEmpty:true, as tests/test_interactions_browser.py measures on the desk's cross-off row; a control
+    targeting the body gets the page, so it is not warned about."""
+    page_html = """{% extends "layout.html" %}{% block content %}
+        <button hx-delete="{% url 'm-items' %}" hx-target="closest li" hx-swap="delete">a</button>
+        <button hx-delete="{% url 'm-items' %}" hx-target="closest li" hx-swap="outerHTML">b</button>
+        <button hx-delete="{% url 'm-items' %}" hx-target="closest li" hx-swap="outerHTML swapEmpty:true">c</button>
+        <button hx-delete="{% url 'm-items' %}" hx-target="closest li">d</button>
+        <button hx-delete="{% url 'm-items' %}" hx-target="body">e</button>{% endblock %}"""
+    m = build_map(sources={**SOURCES, "page.html": page_html})
+    kept = [w for w in m.warnings if "can answer removed()" in w]
+    assert [w.split(" reaches")[0] for w in kept] == ["page.html:3 <button>", "page.html:5 <button>"]
+    assert 'Use hx-swap="delete", or add swapEmpty:true' in kept[0]
 
 
 @override_settings(ROOT_URLCONF="tests.urlconfs.mapping")

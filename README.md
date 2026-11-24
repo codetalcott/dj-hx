@@ -188,7 +188,7 @@ fragment(request, "archive_ui.html", context=ctx) # always a fragment; loud on a
 invalid(request, "new.html", "form", ctx)         # render, status 422
 redirect(request, "contacts", pk=3)               # a plain 303 (resolves like django.shortcuts.redirect); raises on a partial request
 navigate(request, "login")                        # leave the page: a 303, or HX-Redirect on a partial request
-removed(request)                                  # 200, empty; the control's hx-swap="delete" acts
+removed(request)                                  # 200, empty; the control's hx-swap="delete" acts (beside a message, only delete or swapEmpty:true swaps it)
 text(request, "(3 total)")                        # an escaped text fragment
 
 response.trigger("contacts-changed")              # HX-Trigger, always JSON, always with a target (body)
@@ -336,6 +336,7 @@ by `HxTestClient`. Nothing is gated on `DEBUG` that a test needs.
 | Logging disabled, so the undefined-variable check is blind | `HxTestClient` raises `ImproperlyConfigured`, naming which | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#logging-disabled-so-the-undefined-variable-check-is-blind) |
 | A control points at a view of the other kind | `manage.py hx_map` | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-control-points-at-a-view-of-the-other-kind) |
 | A control points at a view that calls no verb, or a view retargets | `manage.py hx_map`, as warnings | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-control-points-at-a-view-that-calls-no-verb-or-a-view-retargets) |
+| A control would keep what removed() empties | `manage.py hx_map`, as a warning: beside a message, htmx 4 swaps an empty reply only with `delete` or `swapEmpty:true` | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-control-would-keep-what-removed-empties) |
 | Middleware or settings misconfigured | checks `dj_hx.W001`, `E002`, `W003`, `W004`, `W006` | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#middleware-or-settings-misconfigured) |
 | HX_EXTENSIONS names an unknown extension | check `dj_hx.W008` | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#hxextensions-names-an-unknown-extension) |
 | The module holds the raw handler under its name | `ImproperlyConfigured` when the URLconf is first read; `dj_hx.W018` for a decorator without `functools.wraps` | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#the-module-holds-the-raw-handler-under-its-name) |
@@ -354,7 +355,7 @@ by `HxTestClient`. Nothing is gated on `DEBUG` that a test needs.
 | A url tag that does not reverse | check `dj_hx.E022`; `I023` for a route it cannot reverse with a placeholder | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-url-tag-that-does-not-reverse) |
 | An event nobody listens for, or nobody announces | checks `dj_hx.W024`, `W025` | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#an-event-nobody-listens-for-or-nobody-announces) |
 
-On an existing site the first `manage.py check` is a worklist, `dj_hx.E022` above all; [FAILURES.md](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-url-tag-that-does-not-reverse) says how to work through it one id at a time.
+On an existing site the first `manage.py check` is a worklist, `dj_hx.E022` above all; [FAILURES.md](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-url-tag-that-does-not-reverse) says how to work through it one id at a time. Its Errors stop `migrate` too, so a container that runs `migrate` before the server does not start until they are fixed: run `check` before the first deploy. A template nothing renders any more fails `E022` like a live one; delete it.
 
 ## Testing
 

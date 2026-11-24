@@ -153,6 +153,17 @@ def test_e022_says_how_to_write_the_tag(tmp_path):
     )
 
 
+def test_e022_stops_migrate(tmp_path, db):
+    # README: an existing site's Errors stop `migrate`, so a container that migrates before it serves does not start.
+    from django.core.management import call_command
+    from django.core.management.base import SystemCheckError
+
+    (tmp_path / "page.html").write_text("{% url 'report_update' 1 %}")
+    with override_settings(ROOT_URLCONF="tests.urlconfs.reversing", TEMPLATES=on_disk(tmp_path)):
+        with pytest.raises(SystemCheckError, match="dj_hx.E022"):
+            call_command("migrate", verbosity=0, skip_checks=False)
+
+
 def test_e022_says_a_template_nothing_renders_fails_too(tmp_path):
     # A private app's five E022s were all in templates left behind by removed views: every hint says so.
     [message] = url_messages(tmp_path, "{% url 'report_update' 1 %}")

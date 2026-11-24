@@ -278,6 +278,29 @@ def swap_with(page, control, swap):
     page.get_by_test_id(control).evaluate("(element, swap) => element.setAttribute('hx-swap', swap)", swap)
 
 
+@pytest.mark.parametrize("swap, rows", [("delete", 0), ("outerHTML swapEmpty:true", 0), ("outerHTML", 1), ("innerHTML", 1)])
+def test_an_empty_reply_beside_a_message_removes_the_row_only_by_delete_or_swap_empty(page, live, desk, swap, rows):
+    """What hx_map's removed() warning rests on: htmx 4 skips an empty main swap when the reply carries an
+    <hx-partial> (here the messages bridge's), unless the swap is delete or says swapEmpty:true."""
+    open_desk(page, live)
+    swap_with(page, "cross-off", swap)
+    page.get_by_test_id("cross-off").click()
+    finished(page, 1)
+    expect(page.locator("#messages")).to_contain_text("Crossed off.")  # the partial was swapped either way
+    expect(one(page, "cross-off")).to_have_count(rows)
+    assert page.console_errors == []
+
+
+def test_an_empty_reply_with_no_partial_is_swapped_by_outer_html(page, live, desk):
+    """The contrast: the same swap removes a row whose reply carries no <hx-partial> (drop_targeted adds no message)."""
+    open_desk(page, live)
+    swap_with(page, "drop-targeted", "outerHTML")
+    page.get_by_test_id("drop-targeted").click()
+    finished(page, 1)
+    expect(one(page, "drop-targeted")).to_have_count(0)
+    assert page.console_errors == []
+
+
 @pytest.mark.parametrize("swap", ["innerHTML", "beforeend", "afterbegin", "beforebegin", "afterend"])
 def test_a_swap_that_keeps_the_target_leaves_two_elements_with_the_id(page, live, desk, swap):
     open_desk(page, live)

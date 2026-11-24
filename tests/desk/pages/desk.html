@@ -7,6 +7,7 @@
 <ul>
   <li id="drop-bare" data-testid="drop-bare" hx-delete="{% url 'desk_drop_bare' %}" hx-swap="delete">A row whose server announces the drop with no target</li>
   <li id="drop-targeted" data-testid="drop-targeted" hx-delete="{% url 'desk_drop_targeted' %}" hx-swap="delete">A row whose server announces the drop to body</li>
+  <li id="cross-off" data-testid="cross-off" hx-delete="{% url 'desk_cross_off' %}" hx-swap="delete">A row whose server also says so in a message</li>
 </ul>
 
 {% partialdef notify inline %}
