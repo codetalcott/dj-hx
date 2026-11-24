@@ -228,17 +228,23 @@ def bare(request):
     return HttpResponse("x")
 
 
-def test_one_boosting_element_makes_every_plain_link_a_boosted_control():
-    # Boost is judged once for the project: the map does not follow {% extends %} or {% include %}, so it cannot
-    # tell which pages a layout's hx-boost:inherited reaches. A pager that boosts its own links boosts every file's.
+def test_a_plain_link_is_boosted_only_where_an_hx_boost_reaches_it():
+    # The map reads one file at a time: an hx-boost:inherited reaches every template only from <body> or <html>.
+    # hx-flask's suite has the rule case by case; this is the adapter end of it, and README's limit.
     urlconf = types.ModuleType("boost_urls")
     urlconf.urlpatterns = [path("m/detail/", mapping.detail, name="m-detail")]
     page = '<a href="/m/detail/">a</a><a href="/m/detail/" hx-boost="false">b</a>'
-    m = build_map(urlconf, sources={"page.html": page})
-    assert m.controls == []
-    pager = '<div hx-boost:inherited="true"><a href="/m/detail/">next</a></div>'
-    m = build_map(urlconf, sources={"page.html": page, "pager.html": pager})
-    assert [(c.file, c.line, c.boosted) for c in m.controls] == [("page.html", 1, True), ("pager.html", 1, True)]
+
+    def boosted(**sources):
+        return [(c.file, c.line) for c in build_map(urlconf, sources={"page.html": page, **sources}).controls if c.boosted]
+
+    assert boosted() == []
+    # a pager boosts its own links, not the page's
+    assert boosted(**{"pager.html": '<div hx-boost:inherited="true"><a href="/m/detail/">next</a></div>'}) == [("pager.html", 1)]
+    # the layout boosts at <body>: every template's links, but the one that opts out
+    assert boosted(**{"layout.html": '<html><body hx-boost:inherited="true"> </body></html>'}) == [("page.html", 1)]
+    # the limit: a wrapper that boosts the block it holds boosts page.html in the browser and not here
+    assert boosted(**{"layout.html": '<html><body><main hx-boost:inherited="true"> </main></body></html>'}) == []
 
 
 def test_a_view_that_calls_no_verb_is_a_warning_on_each_control_that_reaches_it():
