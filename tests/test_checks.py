@@ -44,6 +44,25 @@ def test_w003_and_w004_for_the_messages_template():
     assert [m.id for m in messages] == ["dj_hx.W004"] and "partialdef flash" in messages[0].hint
 
 
+def w004():
+    """W004 alone: with only tmp_path's templates, the example's views announce events nothing hears (W024)."""
+    return [m for m in hx_check_messages() if m.id == "dj_hx.W004"]
+
+
+def test_w004_when_the_messages_partial_root_is_not_its_name(tmp_path):
+    """The start-up twin of the bridge's HxPartialRootId, which since it no longer raises only a log would show."""
+    flash = '<body>\n{% partialdef messages inline %}\n<div id="ID">{% for m in messages %}{{ m }}{% endfor %}</div>\n{% endpartialdef %}\n</body>'
+    (tmp_path / "flash.html").write_text(flash.replace("ID", "flash"))
+    with override_settings(TEMPLATES=on_disk(tmp_path), HX_MESSAGES_TEMPLATE="flash.html#messages"):
+        messages = w004()
+        (tmp_path / "flash.html").write_text(flash.replace("ID", "messages"))
+        quiet = w004()
+    assert [(m.id, m.obj) for m in messages] == [("dj_hx.W004", "flash.html:3")]
+    assert 'its root <div> must carry id="messages"; it has id="flash"' in messages[0].msg
+    assert "records HxPartialRootId" in messages[0].hint
+    assert quiet == []
+
+
 def test_w005_names_the_template_and_the_rule(tmp_path):
     (tmp_path / "old.html").write_text('{# <div hx-ext="sse"> #}\n<div hx-ext="sse" hx-swap="outerhtml"></div>')
     (tmp_path / "fine.html").write_text('<div hx-get="{% url \'x\' %}" hx-swap="outerHTML swap:1s"></div>')

@@ -547,7 +547,7 @@ System checks (tag `dj_hx`):
 | W001 | `HxMiddleware` not installed |
 | E002 | `HxMiddleware` listed before `MessageMiddleware` |
 | W003 | `django.contrib.messages` installed but `HX_MESSAGES_TEMPLATE` unset |
-| W004 | `HX_MESSAGES_TEMPLATE` does not resolve to a template partial |
+| W004 | `HX_MESSAGES_TEMPLATE` does not resolve to a template partial, or the partial's root is not `id="<name>"` (read from the source, as E016 reads an interaction's) |
 | W005 | a project template fails the lint |
 | W006 | Django < 6 without django-template-partials |
 | W008 | `HX_EXTENSIONS` is a string, or names an extension htmx 4 does not ship |

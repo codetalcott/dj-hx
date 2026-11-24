@@ -47,7 +47,7 @@ silently, what dj-hx does instead, what it reads to decide, and what it cannot s
 **What happens.** `HxPartialRootId` at the render. From the messages bridge it is recorded instead, because the bridge
 runs in `HxMiddleware`, which never raises a finding: raising there would turn every fragment response that carries a
 message into a 500. The fragment goes out without the messages, the middleware logs the finding, the messages wait for
-the next page, and `HxTestClient` raises it
+the next page, and `HxTestClient` raises it. Check `dj_hx.W004` reports the same root at start-up, read from the source
 
 ## partial names a partial the template does not define
 
@@ -109,7 +109,7 @@ the fact: `removed(request).trigger("count-changed")`, with `hx-trigger="count-c
 
 ## Middleware or settings misconfigured
 
-**Failure.** `HxMiddleware` missing, listed before `MessageMiddleware`, `HX_MESSAGES_TEMPLATE` unset or unresolvable, no partials on Django < 6
+**Failure.** `HxMiddleware` missing, listed before `MessageMiddleware`, `HX_MESSAGES_TEMPLATE` unset or unresolvable or naming a partial whose root is not `id="<name>"`, no partials on Django < 6
 
 **What happens.** checks `dj_hx.W001`, `E002`, `W003`, `W004`, `W006`
 

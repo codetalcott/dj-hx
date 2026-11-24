@@ -12,6 +12,10 @@
 
 - Python 3.14, the free-threaded 3.14t included, is tested on Django 5.2, 6.0
   and 6.1.
+- Check `dj_hx.W004` also reports a messages partial whose root is not
+  `id="<name>"`, read from the source as `E016` reads an interaction's reply.
+  Since the bridge records that instead of raising, a log line was the only
+  other place it showed outside tests.
 
 ### Changed
 
