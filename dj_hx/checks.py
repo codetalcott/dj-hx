@@ -514,10 +514,10 @@ def _could_equal(value: str, literal: str) -> bool:
 
 
 def _shown(value: str) -> str:
-    """A stripped value as a message shows it, each computed part as {{…}}."""
-    from .hxlint import JINJA
+    """A stripped value as a message shows it: hxlint's shown(), without the newlines the stripper keeps."""
+    from .hxlint import JINJA, shown
 
-    return re.sub(rf"\n*{re.escape(JINJA)}", "{{…}}", value)
+    return shown(re.sub(rf"\n+(?={re.escape(JINJA)})", "", value))
 
 
 def _shown_id(value: str) -> str:
@@ -829,6 +829,8 @@ def _url_messages(tag, where: str) -> list:
     fails = "so the page raises NoReverseMatch at render"
 
     def error(msg, hint):
+        # The check reads every template, rendered or not, so one a removed view left behind fails too.
+        hint += " A template nothing renders any more fails this check too; delete it."
         return [Error(msg, hint=hint, obj=where, id="dj_hx.E022")]
 
     if tag.positional and tag.keywords:

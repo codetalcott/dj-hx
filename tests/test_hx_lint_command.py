@@ -34,8 +34,21 @@ def test_ids_a_template_builds_are_not_one_id():
     source = '<input id="{{ form.name.id_for_label }}"><input id="{{ form.collaborator_emails.id_for_label }}">'
     assert lint_template_source(source) == []
     assert rules(lint_template_source('<i id="spin"></i><i id="spin"></i>')) == ["duplicate-id"]
-    # Not followed: an id in both branches of an {% if %} counts twice though one renders.
-    assert rules(lint_template_source('{% if a %}<h2 id="t">A</h2>{% else %}<h2 id="t">B</h2>{% endif %}')) == ["duplicate-id"]
+
+
+def test_an_id_in_branches_only_one_of_which_renders_counts_once():
+    # A private app with no htmx: <img id="composite-image"> in each branch of {% if %} / {% else %}.
+    assert lint_template_source('{% if a %}<h2 id="t">A</h2>{% else %}<h2 id="t">B</h2>{% endif %}') == []
+    assert lint_template_source('{% for r in rows %}<p id="t">{{ r }}</p>{% empty %}<p id="t">-</p>{% endfor %}') == []
+    assert lint_template_source('{% ifchanged r.day %}<h3 id="t"></h3>{% else %}<hr id="t">{% endifchanged %}') == []
+    across = '{% if a %}\n  <div>\n    <img id="t">\n  </div>\n{% elif b %}\n  <img id="t">\n{% endif %}'
+    assert lint_template_source(across) == []
+    # Both can render: separate {% if %}s, or one outside the branch.
+    assert rules(lint_template_source('{% if a %}<i id="t"></i>{% endif %}{% if b %}<b id="t"></b>{% endif %}')) == ["duplicate-id"]
+    assert rules(lint_template_source('<i id="t"></i>{% if a %}<b id="t"></b>{% endif %}')) == ["duplicate-id"]
+    # A branch inside a start tag keeps the attribute after it, and the line numbers stay the source's.
+    findings = lint_template_source('<p>\n{% if a %}<button {% if b %}hx-swap="sideways"{% endif %}>x</button>{% endif %}')
+    assert [(f.rule, f.line) for f in findings] == [("unknown-swap-style", 2)]
 
 
 def test_source_mode_leaves_page_level_rules_off():
@@ -68,3 +81,22 @@ def test_command_defaults_to_the_projects_template_directories():
     out = io.StringIO()
     call_command("hx_lint", stdout=out)
     assert "6 template(s), 0 error(s), 0 warning(s)" in out.getvalue()
+
+
+def test_the_tools_run_while_check_fails(tmp_path, capsys):
+    """A private app's five E022s, in templates nothing rendered, stopped hx_lint and hx_map, which W005 points to."""
+    from django.core.management import load_command_class
+    from django.test import override_settings
+
+    from dj_hx.testing import hx_check_messages
+    from tests.conftest import on_disk
+
+    (tmp_path / "dead.html").write_text("<a href=\"{% url 'gone' %}\">x</a>\n<img id=\"t\"><img id=\"t\">")
+    with override_settings(ROOT_URLCONF="tests.urlconfs.reversing", TEMPLATES=on_disk(tmp_path)):
+        assert "dj_hx.E022" in {m.id for m in hx_check_messages()}  # manage.py check fails
+        with pytest.raises(SystemExit):  # the lint's own error, not the system check's
+            load_command_class("dj_hx", "hx_lint").run_from_argv(["manage.py", "hx_lint"])
+        out, err = capsys.readouterr()
+        assert "hx_lint: 1 template(s), 1 error(s)" in out and "SystemCheckError" not in err
+        load_command_class("dj_hx", "hx_map").run_from_argv(["manage.py", "hx_map"])
+        assert "hx map: 0 controls" in capsys.readouterr().out

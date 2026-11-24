@@ -3,7 +3,8 @@ HxTestClient's undefined-variable check. A project template that reads a name no
 attribute an object lacks, raises HxUndefinedVariable; a lookup whose outcome depends on the request's
 data does not (None in a chain, a key a mapping lacks, an index past the end, {% firstof %}, the debug
 processor's names, a 500 page). The client reads Django's documented django.template DEBUG log while a
-request runs, which records the lookups {% if %}, {% for %} and |default swallow too.
+request runs, which records the lookups {% if %} and {% for %} swallow too. A name its expression gives a
+|default is not counted: the template says what to show.
 """
 
 import logging
@@ -51,6 +52,11 @@ TEMPLATES = {
     "debug.html": "{% if debug %}<p>{{ sql_queries|length }}</p>{% endif %}<p>ok</p>",
     "500.html": "<h1>Server error{{ nope }}</h1>",
     "after_inner.html": "<p>{{ items|length }} {{ own_miss }}</p>",
+    "defaulted.html": (
+        '<p>{{ gone|default:"-" }} {{ holder.nmae|default:"-" }} {{ gone|lower|default:"-" }}</p>\n'
+        '{% if gone|default:items %}<p>if</p>{% endif %}{% for x in absent|default:"ab" %}{{ x }}{% endfor %}'
+    ),
+    "defaults.html": '<p>{{ gone|default_if_none:"-" }}</p>',
 }
 
 LOOSE = [
@@ -58,8 +64,7 @@ LOOSE = [
     "loose.html:2: 'missing' in {% if missing %}",
     "loose.html:3: 'absent' in {% for x in absent %}",
     "loose.html:4: 'nme' in {{ item.nme }}",  # once, though the loop read it for each of three items
-    """loose.html:5: 'gone' in {{ gone|default:"-" }}""",  # it renders "-", and Django logs the lookup all the same
-]
+]  # not loose.html:5, {{ gone|default:"-" }}: Django logs the lookup, and the template says what to show
 
 
 @pytest.fixture(autouse=True)
@@ -82,7 +87,7 @@ def test_an_undefined_variable_raises_naming_each_one_and_its_template_line(clie
         client.get("/u/show/loose.html")
     assert found(info) == LOOSE
     assert str(info.value) == (
-        "GET /u/show/loose.html read 5 undefined template variables, which Django renders as '', as false in "
+        "GET /u/show/loose.html read 4 undefined template variables, which Django renders as '', as false in "
         "{% if %} and as nothing to loop over in {% for %}, without a word:\n  "
         + "\n  ".join(LOOSE)
         + "\nPut each in the context the view renders with (an interaction's: its context=), with its default, or "
@@ -126,6 +131,18 @@ def test_an_optional_include_parameter_raises_and_says_to_pass_it_in_the_with(cl
         "... subtitle=None)",
         "card.html:1: 'nmae' in {{ holder.nmae }}",  # an attribute: the include's with is not the fix
     ]
+
+
+def test_a_name_its_expression_gives_a_default_is_not_counted(client):
+    # A private app wrote {{ card_class|default:'' }} for an optional include argument, and eight more like it.
+    assert client.get("/u/show/defaulted.html").content == b"<p>- - -</p>\n<p>if</p>ab"
+
+
+def test_default_if_none_is_no_default_for_a_missing_name(client):
+    # A missing name is not None, so {{ gone|default_if_none:"-" }} renders '' (measured on Django 6.0.5).
+    with pytest.raises(HxUndefinedVariable) as info:
+        client.get("/u/show/defaults.html")
+    assert found(info) == ["""defaults.html:1: 'gone' in {{ gone|default_if_none:"-" }}"""]
 
 
 def test_a_lookup_on_none_is_not_counted(client):
@@ -219,8 +236,8 @@ def test_the_template_logger_is_put_back_after_every_request(client):
     with pytest.raises(ValueError, match="boom"):
         client.get("/u/boom/")  # the view raises in the middle of the request
     assert template_logger() == before
-    # A client inside a request: the inner request's five lookups are its own, not the outer one's.
-    assert client.get("/u/nested/").content == b"<p>5 items</p>"
+    # A client inside a request: the inner request's four lookups are its own, not the outer one's.
+    assert client.get("/u/nested/").content == b"<p>4 items</p>"
     assert template_logger() == before
     HxTestClient().get("/u/show/clean.html")
     HxTestClient(strict=False).get("/u/show/loose.html")  # one client after another

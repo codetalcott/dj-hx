@@ -42,13 +42,16 @@ same design for Flask is [hx-flask]; the sibling for Fixi.js is [dj-fixi].
 ## Two checks for any Django project
 
 Nothing in these two is htmx; they live here because this package is where they
-were needed first. Both need only `"dj_hx"` in `INSTALLED_APPS`.
+were needed first. Both need only `"dj_hx"` in `INSTALLED_APPS`; `check` then
+warns `dj_hx.W001` until `HxMiddleware` is listed, which a site with no htmx can
+silence (`SILENCED_SYSTEM_CHECKS = ["dj_hx.W001"]`).
 
 - **Every `{% url %}` reverses.** `manage.py check` reads every
   `{% url 'name' … %}` in the project's templates and reverses it with the
   arguments written there, against `ROOT_URLCONF` (check `dj_hx.E022`). A
   renamed route, a dropped argument or a wrong namespace fails `check`,
-  `runserver` and `migrate` instead of a 500 on the page that has it.
+  `runserver` and `migrate` instead of a 500 on the page that has it. It reads
+  every template, so one that nothing renders any more fails too.
 - **Every template variable exists.** `HxTestClient` raises
   `HxUndefinedVariable` when a project template reads a name nobody supplies or
   an attribute an object lacks, in `{{ }}`, `{% if %}` and `{% for %}` alike,
@@ -391,9 +394,12 @@ documented `django.template` DEBUG log in each request's own context, so an
 `async def` view is checked and a render in a thread pool or a plain thread is
 not. It lowers that logger to DEBUG for the request and passes on to the other
 handlers only the records they received before, then puts the level back.
-Put each name in the context the view renders with, with its default; a
-`|default` filter does not count, because Django logs the lookup before the
-filter runs. `HxTestClient(undefined=False)` turns the check off.
+Put each name in the context the view renders with, with its default, or
+give it one where it is read: a name its own expression gives a `|default`
+(`{{ subtitle|default:"" }}`) is not counted, because the template says what to
+show. `|default_if_none` is no default for a missing name, which is not None,
+so `{{ x|default_if_none:"-" }}` renders `''` and counts.
+`HxTestClient(undefined=False)` turns the check off.
 
 The check rests on details of Django's that its documentation does not promise, which the suite
 pins on Django 4.2, 5.2, 6.0 and 6.1: the DEBUG record's message and its `VariableDoesNotExist`,
@@ -409,6 +415,9 @@ manage.py hx_lint [paths...] [--warnings-as-errors]   # template source, never s
 manage.py hx_map [--no-check] [--by-template]          # controls <-> views <-> events, checked
 ```
 
+Neither runs Django's system checks first, so both work while `check` fails:
+its `W005` hint sends you to `hx_lint` for the whole list.
+
 `--by-template` reads the same map from the other end: every template and
 partial a view names, the views that render it, and the controls that reach
 them, for when you are editing a partial and need to know who serves it.
@@ -423,7 +432,10 @@ Site-packages, wherever dj-hx skips it (`hx_lint`, `hx_map`, the checks,
 `hx-select:inherited`, or the element is boosted),
 resolves it through `{% url %}`, `{% act %}` or the literal path, and checks it
 against the verbs its view calls, with `if request.method == "DELETE":` branches
-attributed to that method. An `{% act %}` control resolves through the
+attributed to that method; a control whose view returns only JSON is an error,
+since htmx swaps it in as text. A control with `hx-swap="none"` (its own or an
+ancestor's `hx-swap:inherited`) is not checked for what its view answers: the
+answer is put nowhere. An `{% act %}` control resolves through the
 interaction registry to its interaction, which answers its one method with its
 partial (`fragment()`) and announces its `triggers=`; one naming no interaction,
 or written while `dj_hx.urls` is not included, is an error. It also pairs `.trigger("x")` with
@@ -500,8 +512,9 @@ For the undefined-variable check, the alternative is pytest-django's
 (2026-11-23) it fails `{{ missing }}`, `{{ user.emial }}` and
 `{{ missing|default:"" }}`, and passes `{% if missing %}` and
 `{% for x in missing %}`: it works through `string_if_invalid`, which those
-tags never consult. `HxTestClient` catches all five, by reading the
-`django.template` DEBUG record instead.
+tags never consult. `HxTestClient` catches the four without a default, by
+reading the `django.template` DEBUG record instead, and passes
+`{{ missing|default:"" }}`, which renders what the template says.
 
 ## htmx 4 facts this depends on
 

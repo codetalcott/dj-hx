@@ -1,5 +1,39 @@
 # Changelog
 
+## Unreleased
+
+Found by installing 0.2.1, as the README says, into two Django apps it was not
+built beside: one on htmx 2 with 96 templates, one with no htmx.
+
+### Changed
+
+- `HxTestClient` no longer counts a name its own expression gives a `|default`
+  (`{{ subtitle|default:"" }}`, `{% if x|default:y %}`): the template says what
+  to show. On the htmx 2 app 9 of the check's 32 findings were that, and none of
+  the 32 was a bug. `|default_if_none` still counts, since a missing name is
+  not None and `{{ x|default_if_none:"-" }}` renders `''`.
+- `hx_lint` and `hx_map` no longer run Django's system checks first, so they
+  work while `check` fails; neither takes `--skip-checks` any more. Five E022s
+  had stopped both, though check's own W005 hint says to run `hx_lint`.
+- Every `dj_hx.E022` hint ends "A template nothing renders any more fails this
+  check too; delete it." All five on the htmx 2 app were in templates left
+  behind by removed views.
+
+### Fixed
+
+- `hx_map` no longer checks what a view answers a control with
+  `hx-swap="none"`: the answer is put nowhere. Ten of the htmx 2 app's 11 map
+  errors were save-on-change fields posting to JSON views.
+- `duplicate-id` over template source (`hx_lint`, check `dj_hx.W005`) counts an
+  id written in two branches of one `{% if %}`, or in a `{% for %}` and its
+  `{% empty %}`, once: only one renders. It was an error on the app with no
+  htmx. An id built from branches now reads as computed, like one built with
+  `{{ }}`.
+- `hx_map` and the lint show a value built in the template as `{{…}}`, not the
+  internal `__JINJA__`.
+- README says `check` warns `dj_hx.W001` on a site that uses only the two
+  checks for any Django project, and how to silence it.
+
 ## 0.2.1 (2026-11-23)
 
 ### Removed

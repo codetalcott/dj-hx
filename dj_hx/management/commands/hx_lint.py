@@ -16,6 +16,8 @@ from dj_hx.templates import iter_template_files, lint_template_source, template_
 
 class Command(BaseCommand):
     help = "Lint template source for the htmx 4 vocabulary (htmx 2 idioms, typos, inheritance)."
+    # A diagnostic runs while manage.py check fails: check's W005 hint sends you here to read the whole list.
+    requires_system_checks: list[str] = []
 
     def add_arguments(self, parser):
         parser.add_argument("paths", nargs="*", help="Template files or directories. Default: every project template directory.")

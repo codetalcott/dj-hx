@@ -149,7 +149,16 @@ def test_e022_says_how_to_write_the_tag(tmp_path):
     [message] = url_messages(tmp_path, "{% url 'shop:item' %}")
     assert message.hint == (
         "Pass one value for each parameter of the route, all by position or all by keyword: "
-        "{% url 'shop:item' store=... item=... %}."
+        "{% url 'shop:item' store=... item=... %}. A template nothing renders any more fails this check too; delete it."
+    )
+
+
+def test_e022_says_a_template_nothing_renders_fails_too(tmp_path):
+    # A private app's five E022s were all in templates left behind by removed views: every hint says so.
+    [message] = url_messages(tmp_path, "{% url 'report_update' 1 %}")
+    assert message.hint == (
+        "Correct the name in the tag, or name the pattern: path(..., name='report_update'). "
+        "A template nothing renders any more fails this check too; delete it."
     )
 
 

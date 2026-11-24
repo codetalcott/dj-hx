@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import hxlint
-from .hxlint import JINJA, Finding
+from .hxlint import JINJA, Finding, branch_marker
 
 __all__ = [
     "URLFOR",
@@ -158,8 +158,10 @@ def strip_template_syntax(source: str, *, url_marker: bool = False, acts: list[A
     source = _EXPR.sub(lambda m: _keep_lines(m, JINJA), source)
 
     def tag(m):
+        # A branch tag ({% if %}, {% else %}, {% empty %}, ...) leaves hxlint's marker, so the lint knows which
+        # elements cannot render together; another block tag leaves a space, a value tag the sentinel.
         body = m.group(0)[2:-2].strip()
-        return _keep_lines(m, " " if _BLOCK_TAGS.match(body) else JINJA)
+        return _keep_lines(m, branch_marker(body) or (" " if _BLOCK_TAGS.match(body) else JINJA))
 
     return _TAG.sub(tag, source)
 
