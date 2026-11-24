@@ -521,9 +521,11 @@ is JSON (a warning when one return is); `navigate` says nothing about shape, so 
 still page-only. A control with `hx-swap="none"` (its own or an ancestor's `hx-swap:inherited`) is not checked
 for what its view answers, since the answer is put nowhere; nor is one that reaches a view in site-packages, by
 `{% url %}` or by path (allauth's `account_login`, `admin:index`), which the map does not read. Limits: boost
-is judged once for the project (when any template sets `hx-boost:inherited`, every plain `<a href>` and
-`<form action>` in every template is a boosted control unless it or an ancestor in its own file says
-`hx-boost="false"`; `{% extends %}` and `{% include %}` are not followed); a view that calls no verb is a
+is read one file at a time (a plain `<a href>` or `<form action>` is a boosted control where an `hx-boost`
+reaches it: its own, an ancestor's `hx-boost:inherited` in the same file, or one on `<body>` or `<html>` in
+any template, which reaches every file; `{% extends %}` and `{% include %}` are not followed, so a wrapper
+that boosts the block it holds is not seen to boost the pages that fill it: boost at `<body>` and opt out
+below it); a view that calls no verb is a
 warning on each control that reaches it; a URL built in the template is listed as "computed URL" and not
 checked; a `.js` file is not read. `if request.method == "DELETE":` branches
 are attributed to that method. It pairs `.trigger("x")` with `hx-trigger="x from:body"` or a hyperscript `_="on x from body ..."` (or the same in an inline `<script type="text/hyperscript">`, behaviors included) both ways (a listener for a browser event such as `click`, a hyperscript observer (`on intersection`, `on mutation`, `on resize`), or a name with a colon (`htmx:*`, an extension's `sse:message`, a namespaced `contact:saved`) is never asked to be announced and still pairs; one built in the template is not read as a listener; an event a script names, `addEventListener('x', ...)` or a hyperscript `send x`, counts for both sides; checks W024 and W025 report the same pairing) and warns

@@ -465,24 +465,25 @@ pairing at start-up.
 
 The map reads what the templates write and each view's own body. On a project
 written before it, most of its output comes from where that stops. Measured
-2026-11-24 on a 325-template project (dj-hx `8e42984`, Django 6.1.3, Python
-3.12.7): 921 controls, 1 error, 817 warnings.
+2026-11-24 on a 325-template project (Django 6.1.3, Python 3.12.7, the map's
+core at hx-flask `70179df`): 108 controls, no errors, 78 warnings.
 
-- **Boost is judged once for the project.** When any template sets
-  `hx-boost:inherited`, every plain `<a href>` and `<form action>` in every
-  template is read as boosted, unless it or an ancestor in its own file says
-  `hx-boost="false"`. The map does not follow `{% extends %}` or
-  `{% include %}`, so it cannot tell which pages a layout's attribute reaches.
-  That project boosts three small includes and one form; 822 of its 921
-  controls were plain links and forms read as boosted, 11 of them in the files
-  that boost. Its one error was among the rest: a form a script file submits,
-  on a page nothing boosts.
+- **Boost is read one file at a time.** A plain `<a href>` or `<form action>`
+  is boosted where an `hx-boost` reaches it: its own, an ancestor's
+  `hx-boost:inherited` in the same file, or one on `<body>` or `<html>` in any
+  template, which reaches every file. The map does not follow `{% extends %}`
+  or `{% include %}`, so a wrapper that boosts the block it holds
+  (`<main hx-boost:inherited="true">`) boosts the page in the browser and not
+  in the map: boost at `<body>`, as [Install](#install) does, and put
+  `hx-boost:inherited="false"` on what should stay plain. That project boosts
+  two pagers, a next/previous bar and one form, and the map reads those nine
+  elements as boosted, the nine a separate parser counted.
 - **A view that calls no verb is a warning on each control that reaches it**,
-  not one for the view: 618 of the 817, for 173 views. `--no-check` prints the
+  not one for the view: 40 of the 78, for 21 views. `--no-check` prints the
   map without them.
 - **A URL built in the template is not resolved** (`hx-get="{{ url }}"`,
   `href="?page={{ n }}"`): the control is listed as "computed URL" and not
-  checked. 175 of the 817. On a second app (92 controls) all 21 were in the
+  checked. 15 of the 78. On a second app (92 controls) all 21 were in the
   templates of its generic CRUD and inline-edit layers, which take their URLs
   from the context.
 - **A script file is not read**, only a `<script>` in a template. A listener
