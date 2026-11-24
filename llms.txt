@@ -156,7 +156,9 @@ navigate(request, to, *args, **kwargs) -> HxRedirectResponse | HxResponse
     # request wants a page; on a partial request a 200 with an empty body and HX-Redirect, a full page load.
 
 removed(request) -> HxResponse
-    # 200 with an empty body. The control's hx-swap="delete" removes its own representation.
+    # 200 with an empty body. The control's hx-swap="delete" removes its own representation. Beside a
+    # message (the bridge's <hx-partial>) htmx 4 skips an empty swap of any other style unless it says
+    # swapEmpty:true; hx_map warns on such a control.
 
 text(request, value) -> HxResponse
     # str(value), HTML-escaped. RECORDS HxFragmentIntoPage on a full htmx request.
@@ -519,7 +521,9 @@ is JSON (a warning when one return is); `navigate` says nothing about shape, so 
 still page-only. A control with `hx-swap="none"` (its own or an ancestor's `hx-swap:inherited`) is not checked
 for what its view answers, since the answer is put nowhere. `if request.method == "DELETE":` branches
 are attributed to that method. It pairs `.trigger("x")` with `hx-trigger="x from:body"` or a hyperscript `_="on x from body ..."` (or the same in an inline `<script type="text/hyperscript">`, behaviors included) both ways (a listener for a browser event such as `click`, a hyperscript observer (`on intersection`, `on mutation`, `on resize`), or a name with a colon (`htmx:*`, an extension's `sse:message`, a namespaced `contact:saved`) is never asked to be announced and still pairs; one built in the template is not read as a listener; an event a script names, `addEventListener('x', ...)` or a hyperscript `send x`, counts for both sides; checks W024 and W025 report the same pairing) and warns
-on `hx-delete` controls that send no values to a handler that reads them. Whether or not a view calls a
+on `hx-delete` controls that send no values to a handler that reads them, and on a control targeting an
+element whose swap is neither `delete` nor `swapEmpty:true` when its view can answer `removed()` (htmx 4
+skips an empty swap beside an `<hx-partial>`, so with a bridged message the element stays). Whether or not a view calls a
 verb, it errors when the view reads the `HX-Trigger` request header (`request.headers`, `request.META`),
 which htmx 4 does not send, or reads `request.POST` on DELETE, which htmx 4 sends as query parameters
 (`request.GET`); it warns when a view reads `HX-Target` or `HX-Source`.
