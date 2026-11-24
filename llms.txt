@@ -11,7 +11,7 @@
 Facts to hold while writing code against this package:
 
 - Requires htmx **4** (`HX-Request-Type` header). htmx 1/2 idioms are rejected by a lint that runs on every
-  test-client response. Django 4.2, 5.2, 6.0 and 6.1; Python 3.10 to 3.13.
+  test-client response. Django 5.2, 6.0 and 6.1; Python 3.11 to 3.14, the free-threaded 3.14 included.
 - The only client fact a handler reads is `HX-Request-Type`: `full` (browser, boosted link, or a control
   whose target is `body` or that an `hx-select` reaches, its own or an ancestor's `hx-select:inherited`) or
   `partial` (a control targeting an element). Never
@@ -30,7 +30,7 @@ Not on PyPI; install from the release tag:
 
 ```sh
 pip install "dj-hx @ git+https://github.com/codetalcott/dj-hx@v0.2.2"
-pip install "dj-hx[partials] @ git+https://github.com/codetalcott/dj-hx@v0.2.2"   # Django 4.2 to 5.x
+pip install "dj-hx[partials] @ git+https://github.com/codetalcott/dj-hx@v0.2.2"   # Django 5.2
 ```
 
 ```python
@@ -46,7 +46,7 @@ MIDDLEWARE = [
 HX_MESSAGES_TEMPLATE = "layout.html#messages"  # flash messages bridged into fragment responses
 ```
 
-Django 4.2 to 5.x has no `{% partialdef %}`; install `django-template-partials` and register its tags
+Django 5.2 has no `{% partialdef %}`; install `django-template-partials` and register its tags
 as a builtin (or every template must `{% load partials %}`). Django 6.0 needs none of this:
 
 ```python
@@ -473,8 +473,10 @@ What the client enforces on every request, including plain `client.get`:
     (`{{ x|default:"" }}`, `{% if x|default:y %}`, `{% for i in x|default:list %}`).
   - Not seen: templates in site-packages or built from a string, a lookup that raised an exception Django
     silences (`DoesNotExist`), a render outside the request's context (a `ThreadPoolExecutor`, a plain thread,
-    a streaming body consumed after the request). An `async def` view is checked.
-  - It rests on Django details the suite pins on 4.2 to 6.1: the DEBUG record's message and its
+    a streaming body consumed after the request). An `async def` view is checked. Where new threads inherit
+    the starting thread's context (the default in Python 3.14's free-threaded build), a thread the view
+    starts is in the request's context, and is checked.
+  - It rests on Django details the suite pins on 5.2 to 6.1: the DEBUG record's message and its
     `VariableDoesNotExist`, the template node on the stack, and the exception's `params == (bit, current)`. A
     Django that changed the record or the node would make it go quiet; one that dropped `params` would make it
     count the lookups it now skips.

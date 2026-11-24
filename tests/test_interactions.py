@@ -17,7 +17,6 @@ import sys
 import types
 from pathlib import Path
 
-import django
 import pytest
 from django.apps import apps
 from django.conf import settings
@@ -453,7 +452,6 @@ def test_a_refusal_is_a_response_so_atomic_requests_commits_what_was_written(
     assert Contact.objects.filter(first="Ada").count() == kept
 
 
-@pytest.mark.skipif(django.VERSION < (5, 1), reason="LoginRequiredMiddleware is new in Django 5.1")
 def test_site_wide_middleware_reaches_every_interaction(rota, db):
     # Interactions are routed by the root include("dj_hx.urls"), not under their app's own include, so only a
     # decorator above @interaction or middleware that sees every request protects them.

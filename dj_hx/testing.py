@@ -232,7 +232,7 @@ def _with_the_rest(findings: list[HxError]) -> HxError:
 # ------------------------------------------------------- undefined variables
 #
 # Django logs every lookup that fails to the django.template logger at DEBUG, in Variable._resolve_lookup,
-# before any filter runs, so {% if %}, {% for %} and |default are all recorded (measured on 4.2 and 6.1).
+# before any filter runs, so {% if %}, {% for %} and |default are all recorded (pinned by the suite on 5.2 to 6.1).
 # A name its own expression gives a |default is dropped here (_defaulted()): the template says what to show.
 # The record names the template the render started from (the child of an {% extends %}, the page that
 # {% include %}s an admin template, only the partial's name for a partial), so the place is read from the
@@ -242,10 +242,10 @@ def _with_the_rest(findings: list[HxError]) -> HxError:
 # What counts is what the template's author controls and could misspell: a top-level name nobody supplies,
 # and an attribute an object lacks. A lookup whose outcome depends on the request's data does not: see
 # _is_a_slip(). Django's exception carries params == (bit, current), the object the bit was looked up on
-# (the Context for a top-level name), on 4.2 to 6.1.
+# (the Context for a top-level name), on 5.2 to 6.1.
 
 _TEMPLATE_LOG = logging.getLogger("django.template")
-_FAILED_LOOKUP = "Exception while resolving variable"  # Django's message, the same on 4.2 to 6.1
+_FAILED_LOOKUP = "Exception while resolving variable"  # Django's message, the same on 5.2 to 6.1
 
 
 @dataclass(frozen=True)
@@ -449,7 +449,8 @@ class _Gate(logging.Filter):
 
 # The request a lookup belongs to. A context variable, not the thread: asgiref carries it into the thread
 # an async view runs on and through sync_to_async, while a plain thread or a ThreadPoolExecutor worker
-# starts without it, so a render there is no request's.
+# starts without it, so a render there is no request's. Where new threads inherit the starting thread's context
+# (sys.flags.thread_inherit_context, the default in 3.14's free-threaded build), one the request starts carries it.
 _COLLECTING: ContextVar[_Lookups | None] = ContextVar("dj_hx_collecting_lookups", default=None)
 _GATE = _Gate()
 _lock = threading.Lock()

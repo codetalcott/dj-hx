@@ -36,8 +36,8 @@ header, offers no way to read the others, and makes each of htmx 4's silent
 outcomes loud (see [Beside the alternatives](#beside-the-alternatives)). The
 same design for Flask is [hx-flask]; the sibling for Fixi.js is [dj-fixi].
 
-**Status:** 0.2.2 (2026-11-24), alpha, installed from its git tag; not on PyPI. Django 4.2, 5.2,
-6.0 and 6.1; Python 3.10 to 3.13.
+**Status:** 0.2.2 (2026-11-24), alpha, installed from its git tag; not on PyPI. Django 5.2, 6.0
+and 6.1; Python 3.11 to 3.14, the free-threaded 3.14 included.
 
 ## Two checks for any Django project
 
@@ -72,7 +72,7 @@ silence (`SILENCED_SYSTEM_CHECKS = ["dj_hx.W001"]`).
 3. **One template per resource.** Fragments are `{% partialdef %}` regions of
    the page template, or a file the page includes, named in the handler; either
    way page and fragment are one source and cannot drift.
-   Django 6.0 has partials built in; on 4.2 to 5.x install
+   Django 6.0 has partials built in; on 5.2 install
    `django-template-partials` and register its tags (see Install).
 
 ## Principles, stated so an agent can apply them
@@ -139,7 +139,7 @@ What was rejected, and why:
 
 ```sh
 pip install "dj-hx @ git+https://github.com/codetalcott/dj-hx@v0.2.2"
-pip install "dj-hx[partials] @ git+https://github.com/codetalcott/dj-hx@v0.2.2"   # Django 4.2 to 5.x
+pip install "dj-hx[partials] @ git+https://github.com/codetalcott/dj-hx@v0.2.2"   # Django 5.2
 ```
 
 ```python
@@ -154,7 +154,7 @@ MIDDLEWARE = [
 HX_MESSAGES_TEMPLATE = "layout.html#messages"   # optional; see the messages bridge
 ```
 
-On Django 4.2 to 5.x, `{% partialdef %}` comes from django-template-partials,
+On Django 5.2, `{% partialdef %}` comes from django-template-partials,
 which registers nothing globally. Install it, add it to `INSTALLED_APPS`, and
 name its tag library as a builtin, or every template has to `{% load partials %}`:
 
@@ -394,7 +394,9 @@ misspelt dict key stays silent, as in Django, and so does any lookup on a mappin
 (`forloop.countr`, `request.GET.urlencod`). The client reads Django's
 documented `django.template` DEBUG log in each request's own context, so an
 `async def` view is checked and a render in a thread pool or a plain thread is
-not. It lowers that logger to DEBUG for the request and passes on to the other
+not, unless new threads inherit the context that starts them (the default in
+Python 3.14's free-threaded build): then a thread the view starts is the
+request's. A live server's thread never is. It lowers that logger to DEBUG for the request and passes on to the other
 handlers only the records they received before, then puts the level back.
 Put each name in the context the view renders with, with its default, or
 give it one where it is read: a name its own expression gives a `|default`
@@ -416,7 +418,7 @@ by stages, subclass the client with `strict=False`, read each
 `(lookup.template, lookup.variable)` missing from a list you keep and shrink.
 
 The check rests on details of Django's that its documentation does not promise, which the suite
-pins on Django 4.2, 5.2, 6.0 and 6.1: the DEBUG record's message and its `VariableDoesNotExist`,
+pins on Django 5.2, 6.0 and 6.1: the DEBUG record's message and its `VariableDoesNotExist`,
 the template node being rendered on the stack (for the template:line), and that exception's
 `params`, `(bit, current)`. A Django release that changed the record or the node would make the
 check go quiet, not fail; one that dropped `params` would make it count the lookups it now skips.

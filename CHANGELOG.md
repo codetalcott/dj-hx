@@ -2,8 +2,24 @@
 
 ## Unreleased
 
+### Removed
+
+- Django 4.2 and Python 3.10. Django 4.2's extended support ended 2026-04-07
+  and Python 3.10 reached end of life on 2026-10-01. `pip` now refuses to
+  install dj-hx on either (`requires-python = ">=3.11"`, `django>=5.2`).
+
+### Added
+
+- Python 3.14, the free-threaded 3.14t included, is tested on Django 5.2, 6.0
+  and 6.1.
+
 ### Changed
 
+- On an interpreter whose new threads inherit the context that starts them
+  (Python 3.14's free-threaded build, by default), `HxTestClient` checks a
+  render on a thread the view starts as the request's. Elsewhere, as before, a
+  render on a plain thread or in a thread pool is not checked. A live server's
+  thread is never checked, since it starts outside any request.
 - `.partial()` on `removed()` or `text()` raises `HxError`, naming the handler.
   Neither carries a context to render the partial from, so it used to return
   the response unchanged and leave the region as it was, with no finding. On a
