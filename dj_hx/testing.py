@@ -175,6 +175,7 @@ def _with_the_rest(findings):
 #
 # Django logs every lookup that fails to the django.template logger at DEBUG, in Variable._resolve_lookup,
 # before any filter runs, so {% if %}, {% for %} and |default are all recorded (measured on 4.2 and 6.1).
+# A name its own expression gives a |default is dropped here (_defaulted()): the template says what to show.
 # The record names the template the render started from (the child of an {% extends %}, the page that
 # {% include %}s an admin template, only the partial's name for a partial), so the place is read from the
 # template node being rendered when the record is made: its origin is the file the tag is written in, and
@@ -218,6 +219,8 @@ class _Lookups:
         params: tuple = getattr(record.exc_info[1], "params", ())
         current = params[1] if len(params) == 2 else _UNKNOWN
         variable = str(record.args[0])
+        if _defaulted():
+            return
         nodes = _nodes_being_rendered()
         try:
             node = next(nodes, None)
@@ -304,6 +307,33 @@ def _is_a_slip(variable: str, current, node, debug_names: frozenset[str]) -> boo
     if _is_index(variable) and hasattr(current, "__getitem__") and not isinstance(current, (str, bytes)):
         return False
     return True
+
+
+def _defaulted() -> bool:
+    """
+    Whether the lookup failing now is the variable of an expression that applies ``|default``
+    (``{{ x|default:"-" }}``, ``{% if x|lower|default:y %}``), which renders the fallback. A missing argument,
+    the ``y`` of ``{{ x|default:y }}``, is not this: Django raises VariableDoesNotExist for it. Nor is
+    ``|default_if_none``: a missing name is not None, so ``{{ x|default_if_none:"-" }}`` renders '' (both
+    measured on Django 6.0.5). Read from the stack, where ``FilterExpression.resolve`` calls the ``Variable``
+    whose lookup Django is logging.
+    """
+    from django.template.base import FilterExpression, Variable
+    from django.template.defaultfilters import default
+
+    frame = inspect.currentframe()
+    variable = None
+    try:
+        while frame is not None:
+            owner = frame.f_locals.get("self")
+            if variable is None and isinstance(owner, Variable):
+                variable = owner
+            elif isinstance(owner, FilterExpression):
+                return owner.var is variable and any(func is default for func, _ in owner.filters)
+            frame = frame.f_back
+        return False
+    finally:
+        del frame
 
 
 def _tag(token) -> str:

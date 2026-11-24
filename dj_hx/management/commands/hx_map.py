@@ -16,6 +16,8 @@ from dj_hx.hxmap import print_map
 
 class Command(BaseCommand):
     help = "Map every htmx control in the templates to the view that answers it, and check the agreement."
+    # A diagnostic runs while manage.py check fails, so the map can show what the failure is about.
+    requires_system_checks: list[str] = []
 
     def add_arguments(self, parser):
         parser.add_argument("--no-check", action="store_true", help="Print the map without the checks.")

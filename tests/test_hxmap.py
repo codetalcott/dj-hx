@@ -158,7 +158,7 @@ def test_url_tag_with_as_and_unknown_names():
     sources = {"p.html": "<a hx-get=\"{% url 'nope' %}\">x</a>{% url 'm-go' as u %}<a hx-get=\"{{ u }}\">y</a>"}
     m = build_map(sources=sources)
     assert m.errors == ["p.html:1 <a> GET url:nope: {% url 'nope' %} names no URL pattern the map can see"]
-    assert m.warnings[0] == "p.html:1 <a> GET __JINJA__: computed URL; cannot resolve statically"
+    assert m.warnings[0] == "p.html:1 <a> GET {{…}}: computed URL; cannot resolve statically"  # not the __JINJA__ sentinel
 
 
 def test_the_management_command(tmp_path):

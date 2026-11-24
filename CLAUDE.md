@@ -21,9 +21,9 @@ No virtualenv is checked in: `.venv/` is gitignored, and an old local one can po
 uv venv <venv> && uv pip install -p <venv>/bin/python "django~=6.1.0" pytest pytest-django ruff mypy django-stubs "playwright==1.64.0"  # below Django 6, add django-template-partials
 <venv>/bin/python -m playwright install chromium
 
-<venv>/bin/python -m pytest -q                      # 420 tests, ~16 s
-<venv>/bin/python -m pytest -q -m "not browser"     # 384, ~3 s, skipping Chromium
-<venv>/bin/python -m pytest -q -m browser           # the 36 Playwright tests alone, ~14 s
+<venv>/bin/python -m pytest -q                      # 425 tests, ~16 s
+<venv>/bin/python -m pytest -q -m "not browser"     # 389, ~3 s, skipping Chromium
+<venv>/bin/python -m pytest -q -m browser           # the 36 Playwright tests alone, ~13 s
 <venv>/bin/python -m pytest tests/test_verbs.py::test_text_escapes
 <venv>/bin/ruff check .
 <venv>/bin/mypy dj_hx                                # typed: the Typing :: Typed classifier is a claim, and this is what backs it
@@ -84,7 +84,8 @@ thread: asgiref carries it into an async view, and a plain thread starts without
 template name is the template the render started from: the child of an `{% extends %}`, the page that
 includes an admin template, and a partial's bare name. So the place comes from the template node being
 rendered on the stack (its `origin` and `token.lineno`), and `templates.in_site_packages` judges that
-origin. What counts is `_is_a_slip()`, read from Django's exception's `params == (bit, current)`: a
+origin. A name its own expression gives a `|default` is dropped first (`_defaulted()`, read from the
+`FilterExpression` on the stack). What counts is `_is_a_slip()`, read from Django's exception's `params == (bit, current)`: a
 top-level name (`current` is the Context) or an attribute an object lacks; a lookup on None, a mapping's
 or the session's key, an index past the end, `{% firstof %}` and the debug processor's names are skipped,
 and so is a response built from an exception. Every view a test requests through `HxTestClient` must supply every
@@ -99,7 +100,8 @@ for events.
 
 **The lint has two surfaces over one rule set.** [hxlint.py](dj_hx/hxlint.py) works on rendered HTML
 strings. [templates.py](dj_hx/templates.py) strips Django template syntax (line numbers preserved,
-`{{ }}` and value tags become a sentinel the rules skip) so the same rules run over source for
+`{{ }}` and value tags become a sentinel the rules skip, branch tags hxlint's `branch_marker()`, so `duplicate-id`
+knows which elements cannot render together) so the same rules run over source for
 `hx_lint` and check `dj_hx.W005`. Template discovery never walks site-packages, which
 `templates.in_site_packages` judges for every caller (template discovery, `ready()`, `hx_map`, E014):
 sysconfig's purelib/platlib plus the `site-packages`/`dist-packages` directories `site` reports, the user
