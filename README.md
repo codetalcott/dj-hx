@@ -36,7 +36,7 @@ header, offers no way to read the others, and makes each of htmx 4's silent
 outcomes loud (see [Beside the alternatives](#beside-the-alternatives)). The
 same design for Flask is [hx-flask]; the sibling for Fixi.js is [dj-fixi].
 
-**Status:** 0.2.2 (2026-11-24), alpha, installed from its git tag; not on PyPI. Django 5.2, 6.0
+**Status:** 0.3.0 (2026-11-24), alpha, installed from its git tag; not on PyPI. Django 5.2, 6.0
 and 6.1; Python 3.11 to 3.14, the free-threaded 3.14 included.
 
 ## Two checks for any Django project
@@ -140,8 +140,8 @@ What was rejected, and why:
 ## Install
 
 ```sh
-pip install "dj-hx @ git+https://github.com/codetalcott/dj-hx@v0.2.2"
-pip install "dj-hx[partials] @ git+https://github.com/codetalcott/dj-hx@v0.2.2"   # Django 5.2
+pip install "dj-hx @ git+https://github.com/codetalcott/dj-hx@v0.3.0"
+pip install "dj-hx[partials] @ git+https://github.com/codetalcott/dj-hx@v0.3.0"   # Django 5.2
 ```
 
 ```python

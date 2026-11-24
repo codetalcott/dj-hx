@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 (2026-11-24)
+
+From an evaluation of 0.2.2 against the repository's own standard: every claim
+backed by something that runs, and the comparison with the alternatives re-run
+on their current releases. It drops two lines past their upstream support, so
+check the Removed section before upgrading. It also fixes a 500 the middleware
+could raise in production, and makes one silent no-op raise.
 
 ### Removed
 
