@@ -29,8 +29,20 @@ built beside: one on htmx 2 with 96 templates, one with no htmx.
   `{% empty %}`, once: only one renders. It was an error on the app with no
   htmx. An id built from branches now reads as computed, like one built with
   `{{ }}`.
-- `hx_map` and the lint show a value built in the template as `{{…}}`, not the
-  internal `__JINJA__`.
+- `hx_map` and the lint show a URL, an id or a target built in the template as
+  `{{…}}`, not the internal `__JINJA__`. A form whose `method` is computed still
+  prints the sentinel there, and a `{% url %}` inside a script's template
+  literal prints `URLFOR:`.
+- `hx_map` no longer reports a `{% url %}` that names a route whose view it
+  does not read (one in site-packages: `{% url 'account_login' %}`,
+  `{% url 'admin:index' %}`; or an object with no source file of its own, as a
+  syndication `Feed` instance is) as "names no URL pattern the map can see".
+  The same route written as a path was already left alone. On the package's production
+  consumer (325 templates) 67 of the map's 72 errors were that, 22 of them
+  links to `account_login`.
+- `hx_map` resolves a `{% url %}` that the attribute follows with a branch
+  (`{% url 'list' %}{% if q %}?q={{ q }}{% endif %}`); it took the branch for
+  part of the name. Three more of those 72.
 - README says `check` warns `dj_hx.W001` on a site that uses only the two
   checks for any Django project, and how to silence it.
 

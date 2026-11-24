@@ -10,9 +10,12 @@ import inspect
 import io
 import itertools
 import json
+import os
 import re
+import subprocess
 import sys
 import types
+from pathlib import Path
 
 import django
 import pytest
@@ -735,6 +738,30 @@ def test_hx_map_says_an_act_control_has_no_route_when_dj_hx_urls_is_not_included
     # tests/settings.py routes the example project's URLconf, which does not include dj_hx.urls
     m = build_map(sources=MAPPED)
     assert m.errors[0] == f"rota.html:1 <button> POST __ACT0__: {act_not_included('notify')}"
+
+
+def test_hx_map_routes_a_decorated_interaction_before_anything_has_read_the_urlconf():
+    # manage.py hx_map runs no system checks, so it can be the first to read the URLconf. Importing dj_hx.urls
+    # rebinds each route to what its module holds (approve() under @staff_only), and a map that had read the
+    # routes before that called every such {% act %} control "not included". A new process: here the URLconf
+    # was read long ago.
+    script = '''
+import json, sys
+import django
+from django.conf import settings
+django.setup()
+settings.ROOT_URLCONF = "tests.urlconfs.interactions"
+assert "dj_hx.urls" not in sys.modules and "tests.urlconfs.interactions" not in sys.modules
+from dj_hx.hxmap import build_map
+source = """{% load hx %}<div id="approval"><button hx-post="{% act 'approve' member=1 %}" hx-target="#approval" hx-swap="outerHTML">x</button></div>"""
+m = build_map(sources={"p.html": source})
+print(json.dumps({"errors": m.errors, "endpoints": [c.endpoint for c in m.controls]}))
+'''
+    root = Path(__file__).resolve().parents[1]
+    env = {**os.environ, "DJANGO_SETTINGS_MODULE": "tests.settings", "PYTHONPATH": os.pathsep.join([str(root), str(root / "example")])}
+    done = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, env=env, cwd=root, check=False)
+    assert done.returncode == 0, done.stderr
+    assert json.loads(done.stdout.splitlines()[-1]) == {"errors": [], "endpoints": ["dj_hx:approve"]}
 
 
 def test_hx_map_reads_an_interactions_one_method(scratch, rota):

@@ -436,7 +436,9 @@ against the verbs its view calls, with `if request.method == "DELETE":` branches
 attributed to that method; a control whose view returns only JSON is an error,
 since htmx swaps it in as text. A control with `hx-swap="none"` (its own or an
 ancestor's `hx-swap:inherited`) is not checked for what its view answers: the
-answer is put nowhere. An `{% act %}` control resolves through the
+answer is put nowhere. Nor is one that reaches a view in site-packages, by
+`{% url %}` or by path (allauth's `account_login`, `admin:index`): the map
+lists the control and does not read that view. An `{% act %}` control resolves through the
 interaction registry to its interaction, which answers its one method with its
 partial (`fragment()`) and announces its `triggers=`; one naming no interaction,
 or written while `dj_hx.urls` is not included, is an error. It also pairs `.trigger("x")` with
