@@ -96,20 +96,32 @@ def _as_interaction(h: Handler, it) -> None:
     h.json_returns.clear()  # the dict a handler returns is its partial's context, not a JSON reply
 
 
-def _scan_handlers(urlconf=None) -> tuple[dict[str, Handler], dict[int, Handler], dict[str, Handler | None]]:
-    """The handlers, the same by callback, and each routed interaction's handler (None: in site-packages)."""
+def _scan_handlers(
+    urlconf=None,
+) -> tuple[dict[str, Handler], dict[int, Handler], dict[str, Handler | None], set[str]]:
+    """
+    The handlers, the same by callback, each routed interaction's handler (None: in site-packages), and the
+    names of the routes whose view is outside the project, which ``{% url %}`` can name but the map does not scan.
+    """
     handlers: dict[str, Handler] = {}
     by_callback: dict[int, Handler] = {}
+    # Walked first: reading the URLconf imports dj_hx.urls, whose bind_routes() gives each interaction the callback
+    # the resolver routes (a decorator above @interaction wraps it). manage.py hx_map runs no system checks, so
+    # this can be the first read.
+    routed_views = list(iter_routed_views(urlconf))
     interactions = _interactions_by_callback()
     routed_interactions: dict[str, Handler | None] = {}
     module_verbs: dict = {}  # each module's verb names, parsed once per map though many of its views are routed
-    for routed in iter_routed_views(urlconf):
+    outside: set[str] = set()
+    for routed in routed_views:
         it = interactions.get(id(routed.callback))
         if it is not None:
             routed_interactions.setdefault(it.name, None)
         # an interaction's handler, which a decorator above @interaction without functools.wraps would hide
         target = it.func if it is not None else routed.view_class or inspect.unwrap(routed.callback)
         if _in_site_packages(target):
+            if routed.full_name:
+                outside |= {routed.full_name, routed.full_name.rsplit(":", 1)[-1]}  # as `short` below reads a name
             continue
         endpoint = _endpoint(routed)
         h = handlers.get(endpoint)
@@ -139,7 +151,7 @@ def _scan_handlers(urlconf=None) -> tuple[dict[str, Handler], dict[int, Handler]
         by_callback[id(routed.callback)] = h
         if it is not None and routed_interactions[it.name] is None:
             routed_interactions[it.name] = h
-    return handlers, by_callback, routed_interactions
+    return handlers, by_callback, routed_interactions, outside
 
 
 def _act_endpoint(act, routed: dict[str, Handler | None]) -> tuple[str | None, str | None]:
@@ -165,7 +177,7 @@ def map_with_interactions(urlconf=None, sources: dict[str, str] | None = None) -
     The map, and the handler it holds for each interaction the URLconf routes, by name: None for one in
     site-packages, which the map does not scan. An interaction missing from the second is not routed.
     """
-    handlers, by_callback, interactions = _scan_handlers(urlconf)
+    handlers, by_callback, interactions, outside = _scan_handlers(urlconf)
     short: dict[str, Any] = {}
     for ep, h in handlers.items():
         short.setdefault(ep.rsplit(":", 1)[-1], h)
@@ -176,11 +188,17 @@ def map_with_interactions(urlconf=None, sources: dict[str, str] | None = None) -
         if act:
             return _act_endpoint(acts[int(act.group(1))], interactions)
         if url.startswith(URLFOR):
-            name = url[len(URLFOR):].split("?", 1)[0].split("#", 1)[0]
-            h = handlers.get(name) or short.get(name)
-            if h is None:
-                return None, f"{{% url '{name}' %}} names no URL pattern the map can see"
-            return h.endpoint, None
+            written = url[len(URLFOR):].split("?", 1)[0].split("#", 1)[0]
+            # The name ends where the tag did: what the attribute writes after it, as in
+            # {% url 'x' %}{% if q %}?q={{ q }}{% endif %}, reaches here as a space-padded branch marker.
+            first = written.split(None, 1)[0] if written.strip() else written
+            for name in dict.fromkeys((written, first)):
+                h = handlers.get(name) or short.get(name)
+                if h is not None:
+                    return h.endpoint, None
+                if name in outside:
+                    return None, None  # a view outside the project (allauth's account_login, admin:index), as below
+            return None, f"{{% url '{first}' %}} names no URL pattern the map can see"
         path = mapcore.resolve_path(url)
         if path is None:
             return None, "computed URL; cannot resolve statically"

@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 from django.test import override_settings
-from django.urls import path
+from django.urls import include, path
 from django.utils.safestring import SafeString
 
 from dj_hx.hxmap import build_map, print_map
@@ -178,6 +178,18 @@ def test_url_tag_with_as_and_unknown_names():
     assert m.warnings[0] == "p.html:1 <a> GET {{…}}: computed URL; cannot resolve statically"  # not the __JINJA__ sentinel
 
 
+@override_settings(ROOT_URLCONF="tests.urlconfs.mapping")
+def test_a_url_tag_followed_by_a_branch_keeps_its_name():
+    # the query is written only sometimes; the view it reaches is the same either way
+    sources = {
+        "p.html": "<a hx-get=\"{% url 'm-detail' %}{% if q %}?q={{ q }}{% endif %}\" hx-target=\"body\">x</a>\n"
+        "<a hx-get=\"{% url 'nope' %}{% if q %}?q={{ q }}{% endif %}\">y</a>"
+    }
+    m = build_map(sources=sources)
+    assert [c.endpoint for c in m.controls] == ["m-detail", None]
+    assert [e.split(": ", 1)[1] for e in m.errors] == ["{% url 'nope' %} names no URL pattern the map can see"]
+
+
 def test_the_management_command(tmp_path):
     from django.core.management import CommandError, call_command
 
@@ -255,6 +267,35 @@ def test_the_map_skips_a_view_installed_in_user_site_packages(user_site):
         path("m/detail/", mapping.detail, name="m-detail"),
     ]
     assert sorted(build_map(urlconf, sources={}).handlers) == ["m-detail"]
+
+
+def test_a_url_tag_naming_a_view_in_site_packages_is_not_an_error(user_site):
+    # allauth's account_login, admin:index: the route is there, its view is not the project's to scan. A path that
+    # resolves to one was already left alone; the same route by name was "names no URL pattern the map can see".
+    source = user_site / "shelf_views.py"
+    source.write_text("def shelf(request):\n    return None\n\n\ndef index(request):\n    return None\n")
+    spec = importlib.util.spec_from_file_location("shelf_views", source)
+    installed = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(installed)
+    urlconf = types.ModuleType("outside_urls")
+    urlconf.urlpatterns = [
+        path("shelf/", installed.shelf, name="shelf"),
+        path("lib/", include(([path("", installed.index, name="index")], "lib"))),
+        path("m/detail/", mapping.detail, name="m-detail"),
+    ]
+    sources = {
+        "p.html": "<a hx-get=\"{% url 'shelf' %}\" hx-target=\"body\">a</a>\n"
+        "<a hx-get=\"{% url 'lib:index' %}\" hx-target=\"body\">b</a>\n"
+        '<a hx-get="/shelf/" hx-target="body">c</a>\n'
+        "<a hx-get=\"{% url 'nope' %}\">d</a>\n<a hx-get=\"{% url 'lib:nope' %}\">e</a>"
+    }
+    m = build_map(urlconf, sources=sources)
+    assert m.errors == [
+        "p.html:4 <a> GET url:nope: {% url 'nope' %} names no URL pattern the map can see",
+        "p.html:5 <a> GET url:lib:nope: {% url 'lib:nope' %} names no URL pattern the map can see",
+    ]
+    assert m.warnings == [] and sorted(m.handlers) == ["m-detail"]
+    assert [c.endpoint for c in m.controls] == [None] * 5
 
 
 def test_the_map_reads_each_views_module_for_its_own_verb_names(tmp_path, monkeypatch):
