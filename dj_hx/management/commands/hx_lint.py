@@ -1,17 +1,23 @@
 """
-manage.py hx_lint [paths...] [--warnings-as-errors]
+manage.py hx_lint [paths...] [--warnings-as-errors] [--json]
 
 The htmx 4 lint over template source, without rendering: htmx 2 attributes
 and event names, implicit inheritance, unknown swap styles and trigger
 modifiers. Every project template directory by default, never site-packages.
+
+``--json`` prints one JSON object instead of lines (``templates``, ``errors``,
+``warnings``, ``findings``, ``unreadable``); the exit status is the same.
+``dj_hx.templates.lint_templates()`` is the same run, for a test.
 """
 
-from pathlib import Path
+from __future__ import annotations
 
-from django.conf import settings
-from django.core.management.base import BaseCommand, CommandError
+import json
+from typing import Any
 
-from dj_hx.templates import iter_template_files, lint_template_source, template_directories
+from django.core.management.base import BaseCommand, CommandError, CommandParser
+
+from dj_hx.templates import lint_templates
 
 
 class Command(BaseCommand):
@@ -19,32 +25,36 @@ class Command(BaseCommand):
     # A diagnostic runs while manage.py check fails: check's W005 hint sends you here to read the whole list.
     requires_system_checks: list[str] = []
 
-    def add_arguments(self, parser):
+    def add_arguments(self, parser: CommandParser) -> None:
         parser.add_argument("paths", nargs="*", help="Template files or directories. Default: every project template directory.")
         parser.add_argument("--warnings-as-errors", action="store_true", help="Exit non-zero on warnings too.")
+        parser.add_argument(
+            "--json", action="store_true", dest="as_json", help="Print one JSON object instead of lines; the exit status is the same."
+        )
 
-    def handle(self, *args, paths, warnings_as_errors, **options):
-        roots = [Path(p) for p in paths] or template_directories()
-        files = []
-        for root in roots:
-            files += [root] if root.is_file() else list(iter_template_files([root]))
-        ignore = set(getattr(settings, "HX_LINT_IGNORE", ()))
-        errors = warnings = 0
-        for path in files:
-            try:
-                source = path.read_text(encoding="utf-8", errors="replace")
-            except OSError as exc:
-                self.stderr.write(f"{path}: {exc}")
-                continue
-            for f in lint_template_source(source, file=str(path), extensions=getattr(settings, "HX_EXTENSIONS", ())):
-                if f.rule in ignore or f.severity == "info":
-                    continue
-                if f.severity == "error" or warnings_as_errors:
-                    errors += 1
-                    self.stdout.write(self.style.ERROR(str(f)))
-                else:
-                    warnings += 1
-                    self.stdout.write(self.style.WARNING(str(f)))
-        self.stdout.write(f"hx_lint: {len(files)} template(s), {errors} error(s), {warnings} warning(s)")
+    def handle(self, *args: Any, paths: list[str], warnings_as_errors: bool, as_json: bool, **options: Any) -> None:
+        run = lint_templates(paths)
+        errors = sum(f.severity == "error" or warnings_as_errors for f in run.findings)
+        warnings = len(run.findings) - errors
+        if as_json:
+            # Counted as the exit status counts them; each finding keeps its own severity.
+            report = {
+                "templates": len(run.files),
+                "errors": errors,
+                "warnings": warnings,
+                "findings": [
+                    {"file": f.file, "line": f.line, "rule": f.rule, "severity": f.severity, "element": f.element, "message": f.message}
+                    for f in run.findings
+                ],
+                "unreadable": [{"file": str(path), "error": problem} for path, problem in run.unreadable],
+            }
+            self.stdout.write(json.dumps(report, indent=2))
+        else:
+            for path, problem in run.unreadable:
+                self.stderr.write(f"{path}: {problem}")
+            for f in run.findings:
+                style = self.style.ERROR if f.severity == "error" or warnings_as_errors else self.style.WARNING
+                self.stdout.write(style(str(f)))
+            self.stdout.write(f"hx_lint: {len(run.files)} template(s), {errors} error(s), {warnings} warning(s)")
         if errors:
             raise CommandError(f"{errors} error(s)")

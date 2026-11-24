@@ -84,3 +84,48 @@ def test_every_readme_row_has_its_failures_entry_in_the_same_order():
     assert [title for title, _ in rows] == headings
     for title, anchor in rows:
         assert anchor == re.sub(r"[^a-z0-9 -]", "", title.lower()).replace(" ", "-"), title
+
+
+# ------------------------------------------------------------- the client swap
+
+SWAP = re.compile(r"```python\n(import django\.test\n.*?)```", re.S)
+
+SUITE = """
+from django.test import Client, SimpleTestCase, TestCase
+
+from dj_hx.testing import HxTestClient
+
+
+def test_pytest_djangos_fixture(client):
+    assert type(client) is HxTestClient
+
+
+def test_a_client_a_test_builds():
+    assert type(Client()) is HxTestClient
+
+
+class ASimpleTestCase(SimpleTestCase):
+    def test_its_client(self):
+        assert type(self.client) is HxTestClient
+
+
+class ATestCase(TestCase):
+    def test_its_client(self):
+        assert type(self.client) is HxTestClient
+"""
+
+
+def test_readmes_client_swap_reaches_every_client_a_suite_builds(tmp_path):
+    """README's conftest.py, run as written in a new suite: pytest-django's client, Client() and TestCase's."""
+    import os
+    import subprocess
+    import sys
+
+    (tmp_path / "conftest.py").write_text(SWAP.search((ROOT / "README.md").read_text()).group(1))
+    (tmp_path / "test_swap.py").write_text(SUITE)
+    env = {**os.environ, "PYTHONPATH": os.pathsep.join([str(ROOT), str(ROOT / "example")])}
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "--ds=tests.settings", "--rootdir", str(tmp_path), str(tmp_path)],
+        cwd=tmp_path, env=env, capture_output=True, text=True, timeout=120,
+    )
+    assert "4 passed" in result.stdout, result.stdout + result.stderr

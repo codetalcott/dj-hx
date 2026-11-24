@@ -377,6 +377,26 @@ control the checks could not tie to its interaction; `dj_hx.I023`, a `{% url %}`
 reverse with a placeholder); `include_warnings=False` keeps Errors only, and `SILENCED_SYSTEM_CHECKS`
 silences one id.
 
+On an existing project, a test can hold the count where it is and let it only
+shrink: a list of known findings that fails on a new one, and on a listed one
+that has gone. `hx_check_messages()` returns the check messages
+`assert_no_hx_check_issues()` fails on. `dj_hx.templates.lint_templates()`
+returns what `manage.py hx_lint` reports: `.files`, and `.findings`, each with
+`.file`, `.line`, `.rule` and `.severity`. To make every client a suite builds
+an `HxTestClient` (a `Client()`, pytest-django's `client`, each
+`TestCase.client`), assign it in the suite's root `conftest.py`, which pytest
+loads before any test module imports `Client`:
+
+```python
+import django.test
+import django.test.client
+
+from dj_hx.testing import HxTestClient
+
+django.test.Client = django.test.client.Client = HxTestClient
+django.test.SimpleTestCase.client_class = HxTestClient
+```
+
 Every `text/html` response is linted (`HxLintError` on an error-level
 finding, a warning otherwise; `lint_ignore=(...)` or `HX_LINT_IGNORE`
 silence a rule). Recorded findings raise: the first, with every other finding

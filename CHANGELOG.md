@@ -16,6 +16,17 @@
   `id="<name>"`, read from the source as `E016` reads an interaction's reply.
   Since the bridge records that instead of raising, a log line was the only
   other place it showed outside tests.
+- `dj_hx.templates.lint_templates(paths=())`: what `manage.py hx_lint` reports
+  (`.files`, `.findings`, `.unreadable`), for a project's test that keeps a list
+  of known findings that may only shrink. `hx_lint` and check `dj_hx.W005` now
+  run through it; the production consumer had rebuilt the same loop from
+  `dj_hx.templates`' parts. README and llms.txt also document
+  `hx_check_messages()`, which was public but unlisted, and the two lines of
+  `conftest.py` that make every client a suite builds an `HxTestClient`, which
+  both consumers had written for themselves. A test runs README's lines as
+  written.
+- `manage.py hx_lint --json`: one JSON object on stdout, with the same exit
+  status.
 
 ### Changed
 

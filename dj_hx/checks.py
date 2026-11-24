@@ -251,23 +251,14 @@ def check_template_lint(app_configs=None, **kwargs):
     """The htmx 4 lint over the project's own template source (never site-packages)."""
     if not _should_run(app_configs):
         return []
-    from django.conf import settings
+    from .templates import lint_templates
 
-    from .templates import iter_template_files, lint_template_source, template_directories
-
-    ignore = set(getattr(settings, "HX_LINT_IGNORE", ()))
+    errors: dict[str, list] = {}
+    for f in lint_templates().findings:
+        if f.severity == "error":
+            errors.setdefault(str(f.file), []).append(f)
     messages = []
-    for path in iter_template_files(template_directories()):
-        try:
-            source = path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
-        findings = [
-            f for f in lint_template_source(source, file=str(path), extensions=getattr(settings, "HX_EXTENSIONS", ()))
-            if f.severity == "error" and f.rule not in ignore
-        ]
-        if not findings:
-            continue
+    for path, findings in errors.items():
         shown = findings[:4]
         more = f" (+{len(findings) - 4} more)" if len(findings) > 4 else ""
         messages.append(

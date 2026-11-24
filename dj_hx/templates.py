@@ -2,8 +2,9 @@
 Project template source, for the static lint and the map.
 
 The rendered-response lint is the surface that matters (``HxTestClient``);
-this is the same rule set over template files, for ``manage.py hx_lint`` and
-the ``dj_hx.W005`` check. Django template syntax is stripped first: ``{{ }}``
+this is the same rule set over template files, for ``manage.py hx_lint``, the
+``dj_hx.W005`` check and a project's own ratchet test, all through
+``lint_templates()``. Django template syntax is stripped first: ``{{ }}``
 and value-producing tags (``{% url %}``, ``{% static %}``, custom tags)
 become a computed value the rules do not judge; block tags become
 whitespace; comments go. Line numbers survive.
@@ -13,7 +14,8 @@ from __future__ import annotations
 
 import functools
 import re
-from dataclasses import dataclass
+from collections.abc import Iterable
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import hxlint
@@ -32,6 +34,8 @@ __all__ = [
     "strip_template_syntax",
     "partial_sources",
     "lint_template_source",
+    "TemplateLint",
+    "lint_templates",
 ]
 
 URLFOR = "URLFOR:"
@@ -259,6 +263,44 @@ def iter_template_files(directories, suffixes=(".html", ".htm")):
         for path in sorted(directory.rglob("*")):
             if path.suffix in suffixes and path.is_file():
                 yield path
+
+
+@dataclass
+class TemplateLint:
+    """One run of the template lint: the files read, what they report, and the files that could not be read."""
+
+    files: list[Path] = field(default_factory=list)
+    findings: list[Finding] = field(default_factory=list)  # each with .file, .line, .rule, .severity, .message
+    unreadable: list[tuple[Path, str]] = field(default_factory=list)  # (file, the OSError's message)
+
+
+def lint_templates(paths: Iterable[str | Path] = ()) -> TemplateLint:
+    """
+    The htmx 4 lint over template source, as ``manage.py hx_lint`` runs it and check ``dj_hx.W005`` reads
+    it: ``paths`` (files or directories), else every project template directory, never site-packages.
+    ``HX_EXTENSIONS`` is applied; a rule in ``HX_LINT_IGNORE`` and an info-level finding are dropped.
+    A project that keeps a list of known findings that may only shrink calls this from a test.
+    """
+    from django.conf import settings
+
+    roots = [Path(p) for p in paths] or template_directories()
+    run = TemplateLint()
+    for root in roots:
+        run.files += [root] if root.is_file() else list(iter_template_files([root]))
+    ignore = set(getattr(settings, "HX_LINT_IGNORE", ()))
+    extensions = getattr(settings, "HX_EXTENSIONS", ())
+    for path in run.files:
+        try:
+            source = path.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            run.unreadable.append((path, str(exc)))
+            continue
+        run.findings += [
+            f
+            for f in lint_template_source(source, file=str(path), extensions=extensions)
+            if f.rule not in ignore and f.severity != "info"
+        ]
+    return run
 
 
 def template_sources(directories=None) -> dict[str, str]:
