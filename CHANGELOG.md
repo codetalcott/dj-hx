@@ -1,5 +1,38 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- `.partial()` on `removed()` or `text()` raises `HxError`, naming the handler.
+  Neither carries a context to render the partial from, so it used to return
+  the response unchanged and leave the region as it was, with no finding. On a
+  page, a redirect or `navigate()` it still does nothing: each ends in a full
+  page that already contains the region. To update a region after a delete,
+  announce the fact with `.trigger()`.
+
+### Fixed
+
+- `HxMiddleware` could turn every fragment response that carried a message
+  into a 500 in production. When the messages partial was missing, or its root
+  was not `id="<name>"`, the bridge raised `HxUnknownPartial` or
+  `HxPartialRootId` from inside the middleware, though the middleware's own
+  docstring said nothing there raises. Now the bridge records the finding,
+  `HxMiddleware` logs it, the fragment goes out without the messages, and they
+  wait for the next page. `HxTestClient` still raises it, and check
+  `dj_hx.W004`'s hint says so.
+- `Typing :: Typed` now holds for a project's own code. Under a project's
+  `mypy --strict`, `render(...).trigger(...)` returned `Any`, `HxTestClient.hx_get`
+  was an untyped call, and `request` was unannotated in every verb, because
+  `mypy dj_hx` ran at its defaults, which skip unannotated functions. Now every
+  function in the eight modules a project reaches is annotated (enforced by a
+  mypy override in `pyproject.toml`), the chained response methods return
+  `Self`, and CI type-checks README's idioms as a project would
+  (`tests/typed_consumer.py`, `--strict`).
+- The test that `request_type()` raises `HxProtocolError` under `DEBUG` could
+  not fail: `HxTestClient` raised the guard's recorded copy of the same message
+  whether the verb raised or not. It now uses a plain client.
+
 ## 0.2.2 (2026-11-24)
 
 Found by installing 0.2.1, as the README says, into two Django apps it was not

@@ -77,6 +77,14 @@ def bad_partial(request):
     return render(request, "index.html", "rows", PAGE).partial("badcount")
 
 
+def removed_partial(request):
+    return removed(request).partial("count", "index.html")  # no context to render #count from
+
+
+def text_partial(request):
+    return text(request, "3 items").partial("count", "index.html")
+
+
 def unknown_partial(request):
     return render(request, "index.html", "rowz", PAGE)
 
@@ -167,6 +175,8 @@ urlpatterns = [
     path("lib/x/", x),
     path("lib/with-partial/", with_partial),
     path("lib/bad-partial/", bad_partial),
+    path("lib/removed-partial/", removed_partial),
+    path("lib/text-partial/", text_partial),
     path("lib/unknown-partial/", unknown_partial),
     path("lib/extra/", extra),
     path("lib/flash-removed/", flash_removed),

@@ -34,7 +34,7 @@ import re
 from typing import TYPE_CHECKING, Any
 
 from django.conf import settings
-from django.http import HttpResponse
+from django.http import HttpRequest, HttpResponse
 from django.http.response import HttpResponseRedirectBase
 from django.shortcuts import resolve_url
 from django.template import TemplateDoesNotExist
@@ -71,6 +71,8 @@ logger = logging.getLogger("dj_hx")
 
 if TYPE_CHECKING:  # the mixin uses HttpResponse's get, __setitem__ and write; at run time its base stays object
     from django.http.response import HttpResponseBase as _ResponseBase
+    from django.template.backends.base import _EngineTemplate
+    from typing_extensions import Self  # typing.Self is 3.11+; only mypy reads it, under the __future__ import
 else:
     _ResponseBase = object
 
@@ -85,10 +87,10 @@ class _HxResponseMethods(_ResponseBase):
     hx_template: str | None = None  # where the body came from: "index.html" or "index.html#rows"
     hx_page_template: str | None = None  # the page template, for .partial()
     hx_context: dict[str, Any] | None = None
-    hx_request: Any = None
+    hx_request: HttpRequest | None = None
     hx_findings: list[HxError]  # set by every verb; the guard reads it
 
-    def trigger(self, name: str, *, target: str = "body", **detail: Any):
+    def trigger(self, name: str, *, target: str = "body", **detail: Any) -> Self:
         """
         Announce ``name`` to the page after the swap.
 
@@ -104,13 +106,24 @@ class _HxResponseMethods(_ResponseBase):
         self["HX-Trigger"] = json.dumps(data)
         return self
 
-    def partial(self, name: str, template: str | None = None):
+    def partial(self, name: str, template: str | None = None) -> Self:
         """
         Also update the region ``#<name>`` with the partial of the same name.
 
-        Attached only to fragment responses; a page already contains the
-        region. The partial's root element must carry ``id="<name>"``.
+        Attached only to fragment responses. On a page, a redirect or
+        ``navigate()`` it does nothing: each ends in a full page, which already
+        contains the region. ``removed()`` and ``text()`` carry no context to
+        render the partial from, so it raises there rather than leave the region
+        as it was. The partial's root element must carry ``id="<name>"``.
         """
+        if self.hx_kind in ("removed", "text"):
+            handler = who(self.hx_request) if self.hx_request is not None else "A handler"
+            raise HxError(
+                f"{handler} calls .partial({name!r}) on {self.hx_kind}(), which has no context to render #{name} "
+                "from, so the region would stay as it was. Announce the change instead, "
+                f'.trigger("{name}-changed") with hx-trigger="{name}-changed from:body" on #{name}, or answer with '
+                f"fragment(request, template, partial, context).partial({name!r})."
+            )
         if self.hx_kind != "fragment":
             return self
         tpl = template or self.hx_page_template
@@ -121,25 +134,25 @@ class _HxResponseMethods(_ResponseBase):
         self.write(wrap_partial(name, html))
         return self
 
-    def push_url(self, url: str):
+    def push_url(self, url: str) -> Self:
         self["HX-Push-Url"] = url
         return self
 
-    def replace_url(self, url: str):
+    def replace_url(self, url: str) -> Self:
         self["HX-Replace-Url"] = url
         return self
 
-    def with_status(self, code: int):
+    def with_status(self, code: int) -> Self:
         self.status_code = code
         return self
 
     # Escape hatches. Both change the DOM effect of a control from the server,
     # which the template can then no longer predict. Use with a comment.
-    def retarget(self, selector: str):
+    def retarget(self, selector: str) -> Self:
         self["HX-Retarget"] = selector
         return self
 
-    def reswap(self, spec: str):
+    def reswap(self, spec: str) -> Self:
         self["HX-Reswap"] = spec
         return self
 
@@ -197,7 +210,7 @@ def _partial_names(template_name: str) -> list[str]:
     return sorted(partials)
 
 
-def _get_partial(template_name: str, name: str):
+def _get_partial(template_name: str, name: str) -> _EngineTemplate:
     reference = f"{template_name}#{name}"
     try:
         return get_template(reference)
@@ -224,7 +237,7 @@ def _get_partial(template_name: str, name: str):
     ) from None
 
 
-def render_partial(template_name: str, partial: str, context: dict[str, Any], request) -> str:
+def render_partial(template_name: str, partial: str, context: dict[str, Any], request: HttpRequest | None) -> str:
     """The partial ``partial`` of ``template_name``, or the file ``partial`` when it has a dot."""
     if "." in partial:
         return get_template(partial).render(context, request)
@@ -234,7 +247,9 @@ def render_partial(template_name: str, partial: str, context: dict[str, Any], re
 # ------------------------------------------------------------------- the verbs
 
 
-def _response(request, body: str, *, kind: str, template: str | None, context, status: int = 200) -> HxResponse:
+def _response(
+    request: HttpRequest, body: str, *, kind: str, template: str | None, context: dict[str, Any] | None, status: int = 200
+) -> HxResponse:
     response = HxResponse(body, status=status, content_type="text/html; charset=utf-8")
     response.hx_kind = kind
     response.hx_template = template
@@ -246,12 +261,12 @@ def _response(request, body: str, *, kind: str, template: str | None, context, s
     return vary_on_hx(response)
 
 
-def _page(request, template: str, context) -> HxResponse:
+def _page(request: HttpRequest, template: str, context: dict[str, Any]) -> HxResponse:
     body = get_template(template).render(context, request)
     return _response(request, body, kind="page", template=template, context=context)
 
 
-def _fragment(request, template: str, partial: str, context) -> HxResponse:
+def _fragment(request: HttpRequest, template: str, partial: str, context: dict[str, Any]) -> HxResponse:
     body = render_partial(template, partial, context, request)
     where = partial if "." in partial else f"{template}#{partial}"
     response = _response(request, body, kind="fragment", template=where, context=context)
@@ -259,13 +274,13 @@ def _fragment(request, template: str, partial: str, context) -> HxResponse:
     return response
 
 
-def _record(request, response, exc: HxError) -> None:
+def _record(request: HttpRequest, response: HxResponse, exc: HxError) -> None:
     """A finding the test client raises and the middleware logs."""
     response.hx_findings.append(exc)
     logger.warning("hx: %s", exc)
 
 
-def _guard_fragment(request, response, what: str) -> None:
+def _guard_fragment(request: HttpRequest, response: HxResponse, what: str) -> None:
     if is_htmx(request) and wants_page(request):
         _record(
             request,
@@ -277,7 +292,7 @@ def _guard_fragment(request, response, what: str) -> None:
         )
 
 
-def render(request, template: str, partial: str, context: dict[str, Any] | None = None, *, status: int = 200) -> HxResponse:
+def render(request: HttpRequest, template: str, partial: str, context: dict[str, Any] | None = None, *, status: int = 200) -> HxResponse:
     """The page for ``wants_page``, otherwise ``partial``: a partial of ``template`` or a file."""
     context = dict(context or {})
     if wants_page(request):
@@ -287,7 +302,7 @@ def render(request, template: str, partial: str, context: dict[str, Any] | None 
     return response.with_status(status)
 
 
-def page(request, template: str, context: dict[str, Any] | None = None) -> HxResponse:
+def page(request: HttpRequest, template: str, context: dict[str, Any] | None = None) -> HxResponse:
     """Always the page. Raises if the request wanted a fragment."""
     if wants_fragment(request):
         raise HxPageIntoFragment(
@@ -297,19 +312,19 @@ def page(request, template: str, context: dict[str, Any] | None = None) -> HxRes
     return _page(request, template, dict(context or {}))
 
 
-def fragment(request, template: str, partial: str | None = None, context: dict[str, Any] | None = None) -> HxResponse:
+def fragment(request: HttpRequest, template: str, partial: str | None = None, context: dict[str, Any] | None = None) -> HxResponse:
     """Always a fragment: the file, or ``partial`` of it. Loud if htmx asked for a page."""
     response = _fragment(request, template, partial or template, dict(context or {}))
     _guard_fragment(request, response, f"fragment {response.hx_template}")
     return response
 
 
-def invalid(request, template: str, partial: str, context: dict[str, Any] | None = None) -> HxResponse:
+def invalid(request: HttpRequest, template: str, partial: str, context: dict[str, Any] | None = None) -> HxResponse:
     """``render`` with status 422. htmx 4 swaps it; a browser shows it."""
     return render(request, template, partial, context, status=422)
 
 
-def redirect(request, to, *args, code: int = 303, **kwargs) -> HxRedirectResponse:
+def redirect(request: HttpRequest, to: Any, *args: Any, code: int = 303, **kwargs: Any) -> HxRedirectResponse:
     """
     A plain redirect; ``to`` resolves like ``django.shortcuts.redirect`` (a URL
     name, a model, or a URL). Raises if the request wanted a fragment, because
@@ -329,7 +344,7 @@ def redirect(request, to, *args, code: int = 303, **kwargs) -> HxRedirectRespons
     return vary_on_hx(response)
 
 
-def navigate(request, to, *args, **kwargs) -> HxResponse | HxRedirectResponse:
+def navigate(request: HttpRequest, to: Any, *args: Any, **kwargs: Any) -> HxResponse | HxRedirectResponse:
     """
     Leave this page for ``to``, whatever the control targets: a login check, an
     expired session. ``to`` resolves like ``redirect``. A plain 303 when the
@@ -350,12 +365,12 @@ def navigate(request, to, *args, **kwargs) -> HxResponse | HxRedirectResponse:
     return response
 
 
-def removed(request) -> HxResponse:
+def removed(request: HttpRequest) -> HxResponse:
     """The resource is gone. The control's ``hx-swap="delete"`` removes its representation."""
     return _response(request, "", kind="removed", template=None, context=None)
 
 
-def text(request, value: Any) -> HxResponse:
+def text(request: HttpRequest, value: Any) -> HxResponse:
     """An escaped text fragment, for a span or an error slot."""
     response = _response(request, escape(str(value)), kind="text", template=None, context=None)
     _guard_fragment(request, response, "text")

@@ -174,7 +174,9 @@ Every verb sets `Vary`. Under `DEBUG` the response carries `X-HX-Template: index
 .trigger(name, *, target="body", **detail)   # HX-Trigger, always JSON, always with a target
 .partial(name, template=None)                # append <hx-partial hx-target="#name" hx-swap="outerHTML">
                                              # rendered from the page template with the same context;
-                                             # only on fragment responses (no-op on a page); root id checked
+                                             # only on fragment responses: no-op on a page, a redirect or
+                                             # navigate(); raises HxError on removed() and text(), which
+                                             # carry no context to render it from; root id checked
 .push_url(url) / .replace_url(url)           # HX-Push-Url / HX-Replace-Url
 .with_status(code)
 .retarget(selector) / .reswap(spec)          # escape hatches: the template can no longer predict the
@@ -329,9 +331,9 @@ All subclass `HxError` except `HxRedirectError` (an `AssertionError` from the te
 | `HxBareResponse` | recorded by the guard | a `text/html` 2xx no verb built answers an element-targeted request (`django.shortcuts.render`, `HttpResponse`, `TemplateResponse`) | use a verb |
 | `HxMessagesUnconfigured` | recorded by the middleware | messages added on a fragment response, `HX_MESSAGES_TEMPLATE` unset | set it |
 | `HxProtocolError` | raised by `request_type()` under `DEBUG`; recorded by the guard (production answers `full`) | `HX-Request` without `HX-Request-Type` | use htmx 4 |
-| `HxUnknownPartial` | raised at render | `partial=` names no partial of the template; message lists the ones it defines | write `{% partialdef name inline %}` around the region |
+| `HxUnknownPartial` | raised at render; recorded by the messages bridge | `partial=` names no partial of the template; message lists the ones it defines | write `{% partialdef name inline %}` around the region |
 | `HxEmptyRefusal` | recorded by an interaction's reply | a declared refusal with an empty or blank message: the 422 reply's `{% if error %}` shows nothing | raise it with a message: `raise NotOnRota("Member 9 is not on the rota.")` |
-| `HxPartialRootId` | raised at render | a partial used as `<hx-partial>`, or an interaction's reply, does not start with one element carrying `id="<name>"` | wrap the region in `<div id="name">` |
+| `HxPartialRootId` | raised at render; recorded by the messages bridge, whose messages then wait for the next page | a partial used as `<hx-partial>`, or an interaction's reply, does not start with one element carrying `id="<name>"` | wrap the region in `<div id="name">` |
 | `HxLintError` | raised by `HxTestClient` | an error-level lint finding in a `text/html` response | fix the HTML; `lint_ignore=` / `HX_LINT_IGNORE` to silence a rule |
 | `HxRedirectError` | raised by `HxTestClient` | 3xx to a `full=True` request without `follow=` | pass `follow=True` (what the browser shows) or `follow=False` (assert on the 3xx) |
 | `HxUndefinedVariable` | raised by `HxTestClient`; recorded under `strict=False` | a project template reads a name nobody supplies or an attribute an object lacks, in `{{ }}`, `{% if %}`, `{% for %}` or any tag (lookups that depend on the data are skipped: see Testing); `.lookups` names each with its template:line | put the name in the view's context with its default (an interaction's: `context=`), or correct it; `undefined=False` turns the check off |
@@ -568,7 +570,9 @@ System checks (tag `dj_hx`):
 
 `HxMiddleware` also: adds `Vary` to every response, runs the guard, bridges pending messages onto partial
 2xx HTML responses (peeking before consuming), logs findings as warnings on the `dj_hx` logger, and under
-`DEBUG` lints every htmx response (`X-HX-Template` is set by the verb that rendered the response).
+`DEBUG` lints every htmx response (`X-HX-Template` is set by the verb that rendered the response). It never
+raises a finding: a messages partial that is missing or whose root is not its name is recorded, the fragment
+goes out without the messages, and they wait for the next page.
 
 ## A resource end to end
 

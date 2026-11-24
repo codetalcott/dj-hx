@@ -55,10 +55,19 @@ build-backend = "hatchling.build"
 packages = ["dj_hx"]
 
 [tool.mypy]
-# The Typing :: Typed classifier is a claim; CI's lint job runs `mypy dj_hx` to keep it true.
+# The Typing :: Typed classifier is a claim; CI's lint job runs `mypy dj_hx` and, as a project would,
+# `mypy --strict --follow-imports=silent tests/typed_consumer.py` (README's idioms) to keep it true.
 files = ["dj_hx"]
 python_version = "3.10"
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# What a project's code calls, and what that calls: every function annotated, so none hands a project Any.
+module = [
+    "dj_hx.errors", "dj_hx.guard", "dj_hx.interactions", "dj_hx.messages",
+    "dj_hx.middleware", "dj_hx.request", "dj_hx.testing", "dj_hx.verbs",
+]
+disallow_untyped_defs = true
 
 [tool.ruff]
 line-length = 120

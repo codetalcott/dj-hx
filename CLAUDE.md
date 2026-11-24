@@ -21,15 +21,18 @@ No virtualenv is checked in: `.venv/` is gitignored, and an old local one can po
 uv venv <venv> && uv pip install -p <venv>/bin/python "django~=6.1.0" pytest pytest-django ruff mypy django-stubs "playwright==1.64.0"  # below Django 6, add django-template-partials
 <venv>/bin/python -m playwright install chromium
 
-<venv>/bin/python -m pytest -q                      # 438 tests, ~18 s
-<venv>/bin/python -m pytest -q -m "not browser"     # 397, ~3 s, skipping Chromium
-<venv>/bin/python -m pytest -q -m browser           # the 41 Playwright tests alone, ~15 s
+<venv>/bin/python -m pytest -q                      # 442 tests, ~17 s
+<venv>/bin/python -m pytest -q -m "not browser"     # 401, ~3 s, skipping Chromium
+<venv>/bin/python -m pytest -q -m browser           # the 41 Playwright tests alone, ~13 s
 <venv>/bin/python -m pytest tests/test_verbs.py::test_text_escapes
 <venv>/bin/ruff check .
-<venv>/bin/mypy dj_hx                                # typed: the Typing :: Typed classifier is a claim, and this is what backs it
+<venv>/bin/mypy dj_hx                                # typed: the Typing :: Typed classifier is a claim, and these two back it
+<venv>/bin/mypy --strict --follow-imports=silent tests/typed_consumer.py   # README's idioms, as a project's mypy sees them
 ```
 
-Counts and times measured 2026-11-24 on an Apple M4: Python 3.13.7, Django 6.0.5, Playwright 1.62.0.
+Counts and times measured 2026-11-24 on an Apple M4: Python 3.13.7, Django 6.1.3, Playwright 1.64.0.
+The eight modules a project's code reaches (`pyproject.toml`'s mypy override) must annotate every function: an
+unannotated or `-> Any` method there hands every project `Any`, which only the consumer file catches for `Any`.
 `pytest.ini` puts the repo and `example/` on the path, so no `PYTHONPATH` is needed. On macOS 27.2 here,
 Playwright 1.65.2's headless shell crash-loops ("icudtl.dat not found in bundle"); pin `playwright==1.64.0`
 locally. CI installs its own and is unaffected.
@@ -48,7 +51,7 @@ python manage.py hx_lint [paths...] [--warnings-as-errors]
 python manage.py hx_map [--no-check]
 ```
 
-CI runs `ruff check .` on 3.13 and the suite on nine Python/Django pairs, covering Django 4.2, 5.2, 6.0 and 6.1
+CI runs `ruff check .` and both mypy commands on 3.13, and the suite on nine Python/Django pairs, covering Django 4.2, 5.2, 6.0 and 6.1
 and Python 3.10 to 3.13: the support README, llms.txt and the `pyproject.toml` classifiers state. Change the
 matrix and those three together. A tenth job, `canary`, runs the suite on Django `main` with
 `continue-on-error`; it is not part of the required `ci` check, and a red canary means a Django internal the
@@ -72,9 +75,11 @@ set them.
 **Raise vs. record.** A verb raises only when the outcome is certain at call time (`page()` into a partial
 request, `redirect()` into a partial request). Everything else is appended to `response.hx_findings` and
 logged to the `dj_hx` logger. [guard.py](dj_hx/guard.py) records the post-hoc ones (3xx, 204, a missing
-`HX-Request-Type`, `APPEND_SLASH`). [middleware.py](dj_hx/middleware.py) never raises;
-[testing.py](dj_hx/testing.py) is where findings become exceptions. Keep that split: a false positive
-must not be able to 500 in production.
+`HX-Request-Type`, `APPEND_SLASH`). [middleware.py](dj_hx/middleware.py) never raises a finding: the
+messages bridge records a messages partial that is missing or has the wrong root, and keeps the messages
+for the next page; [testing.py](dj_hx/testing.py) is where findings become exceptions. Keep that split: a
+false positive must not be able to 500 in production. A test that a verb raises uses a plain `Client`:
+`HxTestClient` would raise the guard's recorded copy of the same finding and pass either way.
 
 **The undefined-variable check is test-time only.** `HxTestClient` reads Django's `django.template`
 DEBUG record for a failed lookup through one filter on that logger (`_Gate`), attached while any of its

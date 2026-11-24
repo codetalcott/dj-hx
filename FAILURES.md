@@ -44,13 +44,26 @@ silently, what dj-hx does instead, what it reads to decide, and what it cannot s
 
 **Failure.** A partial used as `<hx-partial>`, or an interaction's reply, whose root is not `id="<name>"`
 
-**What happens.** `HxPartialRootId` at the render
+**What happens.** `HxPartialRootId` at the render. From the messages bridge it is recorded instead, because the bridge
+runs in `HxMiddleware`, which never raises a finding: raising there would turn every fragment response that carries a
+message into a 500. The fragment goes out without the messages, the middleware logs the finding, the messages wait for
+the next page, and `HxTestClient` raises it
 
 ## partial names a partial the template does not define
 
 **Failure.** `partial=` names a partial the template does not define
 
-**What happens.** `HxUnknownPartial`, listing the partials it does
+**What happens.** `HxUnknownPartial`, listing the partials it does. When `HX_MESSAGES_TEMPLATE` names the missing
+partial, the messages bridge records it as it records `HxPartialRootId`, and check `dj_hx.W004` warns at start-up
+
+## .partial() on removed() or text()
+
+**Failure.** `removed(request).partial("count", "index.html")`: neither `removed()` nor `text()` carries a context, so
+there is nothing to render `#count` from, and the region would stay as it was
+
+**What happens.** `HxError` at the call, naming the handler. On a page, a redirect or `navigate()`, `.partial()` still does
+nothing, because each ends in a full page that already contains the region. To update a region after a delete, announce
+the fact: `removed(request).trigger("count-changed")`, with `hx-trigger="count-changed from:body"` on `#count`
 
 ## An htmx request without HX-Request-Type
 

@@ -210,7 +210,8 @@ def check_messages_template(app_configs=None, **kwargs):
                 f"HX_MESSAGES_TEMPLATE = {value!r} does not resolve to a template partial.",
                 hint=(
                     f"Write {{% partialdef {name or 'messages'} inline %}}<div id=\"{name or 'messages'}\">...{{% endpartialdef %}} "
-                    f"in {template!r}. Until then every message on a fragment response raises HxUnknownPartial."
+                    f"in {template!r}. Until then every message on a fragment response records HxUnknownPartial "
+                    "and waits for the next page."
                 ),
                 id="dj_hx.W004",
             )
