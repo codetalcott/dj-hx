@@ -8,6 +8,7 @@ request runs, which records the lookups {% if %} and {% for %} swallow too. A na
 """
 
 import logging
+import sys
 from pathlib import Path
 
 import django
@@ -253,8 +254,18 @@ def test_after_a_nested_client_the_outer_request_collects_its_own_lookups_again(
     assert found(info) == ["after_inner.html:1: 'own_miss' in {{ own_miss }}"]
 
 
-def test_a_render_on_another_thread_is_not_this_requests(client):
-    assert client.get("/u/elsewhere/").content == b"<p>3 items</p>"
+def test_a_render_on_a_thread_the_request_starts_is_its_own_only_where_threads_inherit_context(client):
+    """
+    A lookup belongs to the request whose context it is made in. A new thread starts with an empty context,
+    unless the interpreter copies the starting thread's into it (``sys.flags.thread_inherit_context``, on by
+    default in Python 3.14's free-threaded build): then the thread the view starts carries the request's, and
+    what it renders is checked as the request's. A live server's thread is started outside any request.
+    """
+    if getattr(sys.flags, "thread_inherit_context", 0):
+        with pytest.raises(HxUndefinedVariable, match="loose.html:1: 'nope' in"):
+            client.get("/u/elsewhere/")
+    else:
+        assert client.get("/u/elsewhere/").content == b"<p>3 items</p>"
 
 
 def test_no_other_handler_sees_a_record_it_would_not_have(client, caplog):

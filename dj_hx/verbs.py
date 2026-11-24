@@ -11,7 +11,7 @@ The response verbs. A handler names the outcome; the verb speaks htmx 4.
 ``render`` sends the page to a browser or a boosted link and the partial
 ``rows`` of the same template to a control that targets an element. On
 Django 6 a partial is ``{% partialdef rows inline %}`` inside the page
-template; on 4.2 to 5.x install django-template-partials. A name containing a
+template; on 5.2 install django-template-partials. A name containing a
 dot (``rows.html``) is a separate template file instead.
 
 Nothing here changes a target or a swap from a header, and nothing here reads
@@ -31,7 +31,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Self
 
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse
@@ -72,7 +72,6 @@ logger = logging.getLogger("dj_hx")
 if TYPE_CHECKING:  # the mixin uses HttpResponse's get, __setitem__ and write; at run time its base stays object
     from django.http.response import HttpResponseBase as _ResponseBase
     from django.template.backends.base import _EngineTemplate
-    from typing_extensions import Self  # typing.Self is 3.11+; only mypy reads it, under the __future__ import
 else:
     _ResponseBase = object
 
@@ -204,9 +203,8 @@ def _partial_names(template_name: str) -> list[str]:
         return []
     if inner is None:
         return []
-    # Django 5.1+ keeps them on the template; django-template-partials on 4.2
-    # and 5.0 keeps them on its origin.
-    partials = getattr(inner, "extra_data", {}).get("partials") or getattr(inner.origin, "partial_contents", {})
+    # Django 5.1+ keeps them on the template, django-template-partials' included.
+    partials = getattr(inner, "extra_data", {}).get("partials") or {}
     return sorted(partials)
 
 

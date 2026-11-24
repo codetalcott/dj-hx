@@ -21,9 +21,9 @@ No virtualenv is checked in: `.venv/` is gitignored, and an old local one can po
 uv venv <venv> && uv pip install -p <venv>/bin/python "django~=6.1.0" pytest pytest-django ruff mypy django-stubs "playwright==1.64.0"  # below Django 6, add django-template-partials
 <venv>/bin/python -m playwright install chromium
 
-<venv>/bin/python -m pytest -q                      # 442 tests, ~17 s
-<venv>/bin/python -m pytest -q -m "not browser"     # 401, ~3 s, skipping Chromium
-<venv>/bin/python -m pytest -q -m browser           # the 41 Playwright tests alone, ~13 s
+<venv>/bin/python -m pytest -q                      # 447 tests, ~18 s
+<venv>/bin/python -m pytest -q -m "not browser"     # 406, ~3 s, skipping Chromium
+<venv>/bin/python -m pytest -q -m browser           # the 41 Playwright tests alone, ~14 s
 <venv>/bin/python -m pytest tests/test_verbs.py::test_text_escapes
 <venv>/bin/ruff check .
 <venv>/bin/mypy dj_hx                                # typed: the Typing :: Typed classifier is a claim, and these two back it
@@ -47,18 +47,20 @@ The example app, from `example/`:
 
 ```
 python manage.py migrate && python manage.py seed_contacts && python manage.py runserver
-python manage.py hx_lint [paths...] [--warnings-as-errors]
-python manage.py hx_map [--no-check]
+python manage.py hx_lint [paths...] [--warnings-as-errors] [--json]
+python manage.py hx_map [--no-check] [--by-template | --json]
 ```
 
-CI runs `ruff check .` and both mypy commands on 3.13, and the suite on nine Python/Django pairs, covering Django 4.2, 5.2, 6.0 and 6.1
-and Python 3.10 to 3.13: the support README, llms.txt and the `pyproject.toml` classifiers state. Change the
-matrix and those three together. A tenth job, `canary`, runs the suite on Django `main` with
+CI runs `ruff check .` and both mypy commands on 3.13, and the suite on eight Python/Django pairs, covering Django 5.2, 6.0 and 6.1
+and Python 3.11 to 3.14, plus the free-threaded 3.14t: the support README, llms.txt and the `pyproject.toml` classifiers
+state. Change the matrix and those three together. A ninth job, `canary`, runs the suite on Django `main` with
 `continue-on-error`; it is not part of the required `ci` check, and a red canary means a Django internal the
-undefined-variable check rests on has moved, not that a pull request is blocked. A local run on 3.12 or 3.13 cannot show what the older pathlib of 3.10 and
-3.11 does: it refuses to intern a `SafeString`, which a Django template name often is.
+undefined-variable check rests on has moved, not that a pull request is blocked. A local run on 3.12 or later cannot show what the older pathlib of
+3.11 does: it refuses to intern a `SafeString`, which a Django template name often is. On this laptop `uv venv -p 3.14`
+gives the free-threaded build, whose new threads inherit the starting thread's context (one test branches on
+`sys.flags.thread_inherit_context`); for the GIL build, `uv python install cpython-3.14.7-macos-aarch64-none` first.
 Any change touching template partials, `{% url %}` handling or middleware ordering has to work on all
-four Django lines; `django.VERSION < (6, 0)` branches already exist in `verbs.py`, `checks.py`,
+three Django lines; `django.VERSION < (6, 0)` branches already exist in `verbs.py`, `checks.py`,
 `tests/conftest.py` and the example settings.
 
 ## Architecture
@@ -85,7 +87,8 @@ false positive must not be able to 500 in production. A test that a verb raises 
 DEBUG record for a failed lookup through one filter on that logger (`_Gate`), attached while any of its
 requests runs. It drops what the logger's old level would not have delivered, so other handlers see
 no change. A record belongs to the request whose `ContextVar` (`_COLLECTING`) it is made under, not to a
-thread: asgiref carries it into an async view, and a plain thread starts without it. The record's own
+thread: asgiref carries it into an async view, and a plain thread starts without it, except where new threads
+inherit context (3.14's free-threaded build). The record's own
 template name is the template the render started from: the child of an `{% extends %}`, the page that
 includes an admin template, and a partial's bare name. So the place comes from the template node being
 rendered on the stack (its `origin` and `token.lineno`), and `templates.in_site_packages` judges that

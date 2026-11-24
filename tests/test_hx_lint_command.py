@@ -1,11 +1,13 @@
 """manage.py hx_lint and the Django template stripper."""
 
 import io
+import json
+from pathlib import Path
 
 import pytest
 from django.core.management import CommandError, call_command
 
-from dj_hx.templates import URLFOR, lint_template_source, strip_template_syntax
+from dj_hx.templates import URLFOR, lint_template_source, lint_templates, strip_template_syntax
 
 
 def rules(findings):
@@ -75,6 +77,45 @@ def test_command_is_quiet_on_clean_templates_and_strict_on_request(tmp_path):
     call_command("hx_lint", str(tmp_path / "warn.html"), stdout=io.StringIO())
     with pytest.raises(CommandError):
         call_command("hx_lint", str(tmp_path / "warn.html"), warnings_as_errors=True, stdout=io.StringIO())
+
+
+def test_command_json_is_one_object_for_a_script_and_the_same_exit_status(tmp_path):
+    (tmp_path / "bad.html").write_text('<button hx-post="/x/" hx-vars="a:1">x</button>\n<a hx-get="/y/" hx-swap="outerhtml">y</a>')
+    (tmp_path / "warn.html").write_text('<div hx-target="#t"><button hx-post="/a/">a</button></div>')
+    out = io.StringIO()
+    with pytest.raises(CommandError, match="2 error"):
+        call_command("hx_lint", str(tmp_path), "--json", stdout=out)
+    report = json.loads(out.getvalue())  # nothing else on stdout
+    assert {k: report[k] for k in ("templates", "errors", "warnings", "unreadable")} == {
+        "templates": 2, "errors": 2, "warnings": 1, "unreadable": []
+    }
+    assert [(Path(f["file"]).name, f["line"], f["rule"], f["severity"], f["element"]) for f in report["findings"]] == [
+        ("bad.html", 1, "htmx2-attribute", "error", "button"),
+        ("bad.html", 2, "swap-style-case", "error", "a"),
+        ("warn.html", 1, "implicit-inheritance", "warning", "div"),
+    ]
+    assert all(f["message"] for f in report["findings"])
+    out = io.StringIO()
+    with pytest.raises(CommandError, match="1 error"):  # counted as the exit status counts; severities kept
+        call_command("hx_lint", str(tmp_path / "warn.html"), "--json", "--warnings-as-errors", stdout=out)
+    report = json.loads(out.getvalue())
+    assert (report["errors"], report["warnings"], report["findings"][0]["severity"]) == (1, 0, "warning")
+    out = io.StringIO()
+    call_command("hx_lint", str(tmp_path / "warn.html"), "--json", stdout=out)
+    assert json.loads(out.getvalue())["errors"] == 0
+
+
+def test_lint_templates_is_the_commands_run_for_a_projects_own_test(tmp_path):
+    """A project's ratchet reads this rather than dj_hx.templates' pieces, so it cannot drift from hx_lint."""
+    from django.test import override_settings
+
+    (tmp_path / "bad.html").write_text('<a hx-get="/y/" hx-swap="outerhtml">y</a>\n<div hx-target="#t"><button hx-post="/a/">a</button></div>')
+    run = lint_templates([tmp_path])
+    assert run.files == [tmp_path / "bad.html"] and run.unreadable == []
+    assert [(f.rule, f.line) for f in run.findings] == [("swap-style-case", 1), ("implicit-inheritance", 2)]
+    with override_settings(HX_LINT_IGNORE=["implicit-inheritance"]):
+        assert [f.rule for f in lint_templates([tmp_path]).findings] == ["swap-style-case"]
+    assert len(lint_templates().files) == 6  # by default, the project's template directories
 
 
 def test_command_defaults_to_the_projects_template_directories():

@@ -11,7 +11,7 @@
 Facts to hold while writing code against this package:
 
 - Requires htmx **4** (`HX-Request-Type` header). htmx 1/2 idioms are rejected by a lint that runs on every
-  test-client response. Django 4.2, 5.2, 6.0 and 6.1; Python 3.10 to 3.13.
+  test-client response. Django 5.2, 6.0 and 6.1; Python 3.11 to 3.14, the free-threaded 3.14 included.
 - The only client fact a handler reads is `HX-Request-Type`: `full` (browser, boosted link, or a control
   whose target is `body` or that an `hx-select` reaches, its own or an ancestor's `hx-select:inherited`) or
   `partial` (a control targeting an element). Never
@@ -30,7 +30,7 @@ Not on PyPI; install from the release tag:
 
 ```sh
 pip install "dj-hx @ git+https://github.com/codetalcott/dj-hx@v0.2.2"
-pip install "dj-hx[partials] @ git+https://github.com/codetalcott/dj-hx@v0.2.2"   # Django 4.2 to 5.x
+pip install "dj-hx[partials] @ git+https://github.com/codetalcott/dj-hx@v0.2.2"   # Django 5.2
 ```
 
 ```python
@@ -46,7 +46,7 @@ MIDDLEWARE = [
 HX_MESSAGES_TEMPLATE = "layout.html#messages"  # flash messages bridged into fragment responses
 ```
 
-Django 4.2 to 5.x has no `{% partialdef %}`; install `django-template-partials` and register its tags
+Django 5.2 has no `{% partialdef %}`; install `django-template-partials` and register its tags
 as a builtin (or every template must `{% load partials %}`). Django 6.0 needs none of this:
 
 ```python
@@ -447,6 +447,21 @@ def test_dj_hx_is_configured():
 `assert_no_hx_check_issues()` fails on any dj-hx check message, Infos (I021, I023) included;
 `include_warnings=False` keeps Errors only.
 
+For a list of known findings that may only shrink (adopting on an existing project):
+
+```python
+from dj_hx.testing import hx_check_messages     # list[CheckMessage]: what assert_no_hx_check_issues() fails on
+from dj_hx.templates import lint_templates      # what manage.py hx_lint reports
+run = lint_templates()                          # or lint_templates([path, ...]); HX_LINT_IGNORE and infos dropped
+run.files, run.unreadable                       # list[Path], list[(Path, str)]
+[(f.file, f.line, f.rule, f.severity, f.message) for f in run.findings]
+```
+
+Every client a suite builds becomes an `HxTestClient` when the root `conftest.py` assigns it, before any test
+module imports `Client`: `django.test.Client = django.test.client.Client = HxTestClient` and
+`django.test.SimpleTestCase.client_class = HxTestClient`. Subclass it with `strict=False` to raise only for
+findings missing from the project's list (`response.hx_findings`, `HxUndefinedVariable.lookups`).
+
 What the client enforces on every request, including plain `client.get`:
 
 - Recorded findings (the verbs' and the guard's) raise the first one, with every other finding on that response listed in its message. `HxTestClient(strict=False)` records
@@ -473,8 +488,10 @@ What the client enforces on every request, including plain `client.get`:
     (`{{ x|default:"" }}`, `{% if x|default:y %}`, `{% for i in x|default:list %}`).
   - Not seen: templates in site-packages or built from a string, a lookup that raised an exception Django
     silences (`DoesNotExist`), a render outside the request's context (a `ThreadPoolExecutor`, a plain thread,
-    a streaming body consumed after the request). An `async def` view is checked.
-  - It rests on Django details the suite pins on 4.2 to 6.1: the DEBUG record's message and its
+    a streaming body consumed after the request). An `async def` view is checked. Where new threads inherit
+    the starting thread's context (the default in Python 3.14's free-threaded build), a thread the view
+    starts is in the request's context, and is checked.
+  - It rests on Django details the suite pins on 5.2 to 6.1: the DEBUG record's message and its
     `VariableDoesNotExist`, the template node on the stack, and the exception's `params == (bit, current)`. A
     Django that changed the record or the node would make it go quiet; one that dropped `params` would make it
     count the lookups it now skips.
@@ -501,11 +518,24 @@ with pytest.raises(HxPageIntoFragment, match=r"contacts_view\(\) renders the pag
 ## Tools and checks
 
 ```
-manage.py hx_lint [paths...] [--warnings-as-errors]   # htmx 4 lint over template source, never site-packages
-manage.py hx_map [--no-check] [--by-template]          # controls <-> views <-> events, checked
+manage.py hx_lint [paths...] [--warnings-as-errors] [--json]   # htmx 4 lint over template source, never site-packages
+manage.py hx_map [--no-check] [--by-template | --json]  # controls <-> views <-> events, checked
 ```
 
 Neither runs Django's system checks first, so both work while `check` fails (and neither takes `--skip-checks`).
+
+`hx_lint --json` prints one object, `{"templates", "errors", "warnings", "findings": [{"file", "line", "rule",
+"severity", "element", "message"}], "unreadable": [{"file", "error"}]}`, and nothing else on stdout; `errors`
+and `warnings` are counted as the exit status counts them (`--warnings-as-errors` included), and each finding
+keeps its own severity. It exits 1 on an error, as without `--json`.
+
+`hx_map --json` prints `mapcore.map_json()`, hx-flask's own: `{"handlers": [{"endpoint", "name", "rules",
+"verbs", "templates", "announces", "escapes"}], "controls": [{"file", "line", "element", "method", "url",
+"endpoint", "scope", "why", "via"}], "listeners": [{"file", "line", "element", "event"}], "summary":
+{"controls", "fetch_calls", "handlers", "errors", "warnings"}, "errors": [...], "warnings": [...]}`; with
+`--no-check`, no errors or warnings. A control's `endpoint` is the URL name of the view that answers it, or
+null; `url` is what the template writes (`url:<name>` for a `{% url %}`). Every list is sorted. It exits 1 on
+an error, and cannot be combined with `--by-template`.
 
 `--by-template` inverts the map: every template and partial a view names, who renders it, and the
 controls that reach them.
@@ -545,7 +575,7 @@ System checks (tag `dj_hx`):
 | W001 | `HxMiddleware` not installed |
 | E002 | `HxMiddleware` listed before `MessageMiddleware` |
 | W003 | `django.contrib.messages` installed but `HX_MESSAGES_TEMPLATE` unset |
-| W004 | `HX_MESSAGES_TEMPLATE` does not resolve to a template partial |
+| W004 | `HX_MESSAGES_TEMPLATE` does not resolve to a template partial, or the partial's root is not `id="<name>"` (read from the source, as E016 reads an interaction's) |
 | W005 | a project template fails the lint |
 | W006 | Django < 6 without django-template-partials |
 | W008 | `HX_EXTENSIONS` is a string, or names an extension htmx 4 does not ship |
@@ -653,7 +683,8 @@ as `HxRedirectIntoFragment`. Always build URLs with `{% url %}`, or `{% act %}` 
 - [dj_hx/interactions.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/interactions.py): `@interaction`, its registry and the wrapper view
 - [dj_hx/urls.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/urls.py): the URLconf that serves every interaction
 - [dj_hx/templatetags/hx.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/templatetags/hx.py): `{% act %}`
-- [dj_hx/testing.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/testing.py): `HxTestClient`, `assert_no_hx_check_issues`
+- [dj_hx/testing.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/testing.py): `HxTestClient`, `assert_no_hx_check_issues`, `hx_check_messages`
+- [dj_hx/templates.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/templates.py): `lint_templates`, the template-syntax stripper the lint and the checks read
 - [dj_hx/checks.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/checks.py): W001 to E026
 - [dj_hx/errors.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/errors.py): every exception
 - [dj_hx/hxlint.py](https://github.com/codetalcott/dj-hx/blob/main/dj_hx/hxlint.py): the htmx 4 lint (vendored from hx-flask)

@@ -1,32 +1,31 @@
 [project]
 name = "dj-hx"
 version = "0.2.2"
-description = "Handler-first htmx 4 for Django: the view names the outcome, the template keeps the controls. Also checks every {% url %} and every template variable, for any Django project"
+description = "Handler-first htmx 4 for Django: the view names the outcome, the template keeps the controls. Also, for any Django project: {% url %} tags checked at manage.py check, undefined template names caught in tests"
 authors = [{name = "William Talcott"}]
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = {text = "MIT"}
 keywords = ["django", "htmx", "hypermedia", "partials", "htmx4", "templates", "checks"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Web Environment",
     "Framework :: Django",
-    "Framework :: Django :: 4.2",
     "Framework :: Django :: 5.2",
     "Framework :: Django :: 6.0",
     "Framework :: Django :: 6.1",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Internet :: WWW/HTTP",
     "Typing :: Typed",
 ]
 dependencies = [
-    "django>=4.2",
+    "django>=5.2",
 ]
 
 [project.urls]
@@ -36,7 +35,7 @@ Changelog = "https://github.com/codetalcott/dj-hx/blob/main/CHANGELOG.md"
 Issues = "https://github.com/codetalcott/dj-hx/issues"
 
 [project.optional-dependencies]
-# Template partials on Django 4.2 to 5.x; Django 6.0 has them built in.
+# Template partials on Django 5.2; Django 6.0 has them built in.
 partials = ["django-template-partials"]
 browser = ["playwright"]
 dev = [
@@ -58,7 +57,7 @@ packages = ["dj_hx"]
 # The Typing :: Typed classifier is a claim; CI's lint job runs `mypy dj_hx` and, as a project would,
 # `mypy --strict --follow-imports=silent tests/typed_consumer.py` (README's idioms) to keep it true.
 files = ["dj_hx"]
-python_version = "3.10"
+python_version = "3.11"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
@@ -71,7 +70,7 @@ disallow_untyped_defs = true
 
 [tool.ruff]
 line-length = 120
-target-version = "py310"
+target-version = "py311"
 # Vendored from hx-flask verbatim; formatted there.
 exclude = ["dj_hx/hxlint.py", "dj_hx/hx_vocab.py", "dj_hx/mapcore.py"]
 

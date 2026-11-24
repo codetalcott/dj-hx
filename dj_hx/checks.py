@@ -12,7 +12,7 @@ ID       Level    Fires when
 W001     Warning  HxMiddleware is not installed (no bridge, no guard outside tests)
 E002     Error    HxMiddleware is listed before MessageMiddleware
 W003     Warning  django.contrib.messages installed but HX_MESSAGES_TEMPLATE unset
-W004     Warning  HX_MESSAGES_TEMPLATE does not resolve to a template partial
+W004     Warning  HX_MESSAGES_TEMPLATE does not resolve to a template partial, or its root is not id=<name>
 W005     Warning  A project template fails the htmx 4 lint (htmx 2 idioms, typos)
 W006     Warning  Django < 6 without django-template-partials installed
 E007     retired  HxMixin and its order check were removed in 0.2.1; the id is not reused
@@ -218,7 +218,32 @@ def check_messages_template(app_configs=None, **kwargs):
         ]
     except Exception:
         return []
-    return []
+    return _messages_root(template, name or "messages")
+
+
+def _messages_root(template: str, name: str) -> list:
+    """W004's second half: the messages partial's root carries its name, as the bridge checks at each render."""
+    from django.template.loader import get_template
+
+    from .templates import partial_sources
+
+    source = getattr(getattr(get_template(template), "template", None), "source", None)
+    region = partial_sources(source).get(name) if isinstance(source, str) else None
+    found = _root_complaint(template, name, "the messages partial (HX_MESSAGES_TEMPLATE)", *region) if region else None
+    if found is None:
+        return []
+    at, message = found
+    return [
+        Warning(
+            message,
+            hint=(
+                f'Give the partial\'s root id="{name}": the bridge swaps it with hx-target="#{name}". Until then '
+                "every message on a fragment response records HxPartialRootId and waits for the next page."
+            ),
+            obj=f"{template}:{at}",
+            id="dj_hx.W004",
+        )
+    ]
 
 
 @register("dj_hx", Tags.templates)
@@ -226,23 +251,14 @@ def check_template_lint(app_configs=None, **kwargs):
     """The htmx 4 lint over the project's own template source (never site-packages)."""
     if not _should_run(app_configs):
         return []
-    from django.conf import settings
+    from .templates import lint_templates
 
-    from .templates import iter_template_files, lint_template_source, template_directories
-
-    ignore = set(getattr(settings, "HX_LINT_IGNORE", ()))
+    errors: dict[str, list] = {}
+    for f in lint_templates().findings:
+        if f.severity == "error":
+            errors.setdefault(str(f.file), []).append(f)
     messages = []
-    for path in iter_template_files(template_directories()):
-        try:
-            source = path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
-        findings = [
-            f for f in lint_template_source(source, file=str(path), extensions=getattr(settings, "HX_EXTENSIONS", ()))
-            if f.severity == "error" and f.rule not in ignore
-        ]
-        if not findings:
-            continue
+    for path, findings in errors.items():
         shown = findings[:4]
         more = f" (+{len(findings) - 4} more)" if len(findings) > 4 else ""
         messages.append(
@@ -701,7 +717,23 @@ def _installed(it) -> bool:
 
 
 def _root_messages(it, line: int, body: str) -> list:
-    """E016, the start-up twin of HxPartialRootId: judged only where the source shows the root."""
+    """E016, the start-up twin of HxPartialRootId for an interaction's reply."""
+    found = _root_complaint(
+        it.template, it.partial, f"the reply of {it.name}(), which replaces #{it.partial}", line, body
+    )
+    if found is None:
+        return []
+    at, message = found
+    return [Error(message, obj=f"{it.template}:{at}", id="dj_hx.E016")]
+
+
+def _root_complaint(template: str, partial: str, role: str, line: int, body: str) -> tuple[int, str] | None:
+    """
+    What check_root_id would say of the partial ``partial`` of ``template`` at render, and the line, read
+    from its source (``line`` is where ``body`` starts); None when it would say nothing. Judged only where
+    the source shows the root: not when computed output or another template or partial comes first, nor
+    for a templated id that could be the name. E016 and W004 both ask this.
+    """
     from .errors import HxPartialRootId
     from .hxlint import JINJA, parse
     from .templates import strip_template_syntax
@@ -711,20 +743,18 @@ def _root_messages(it, line: int, body: str) -> list:
     content = html.lstrip()
     first_element = _ELEMENT.search(body)
     if content.startswith(JINJA) or _ELSEWHERE.search(body[: first_element.start()] if first_element else body):
-        return []  # computed output, or another template or partial, comes first
+        return None  # computed output, or another template or partial, comes first
     root = next(iter(parse(html)[0].children), None)
     root_id = (root.attrs.get("id") or "") if root is not None else ""
-    if content.startswith("<") and _could_equal(root_id, it.partial):
-        return []  # the partial's id, or a templated one that could be it
+    if content.startswith("<") and _could_equal(root_id, partial):
+        return None  # the partial's id, or a templated one that could be it
     try:
-        check_root_id(
-            html, it.partial, f"{it.template}#{it.partial}", role=f"the reply of {it.name}(), which replaces #{it.partial}"
-        )
+        check_root_id(html, partial, f"{template}#{partial}", role=role)
     except HxPartialRootId as exc:
         at = line + html.count("\n", 0, len(html) - len(content))
         message = str(exc).replace(f'id="{root_id}"', f'id="{_shown_id(root_id)}"') if root_id else str(exc)
-        return [Error(_shown(message), obj=f"{it.template}:{at}", id="dj_hx.E016")]
-    return []
+        return at, _shown(message)
+    return None
 
 
 @register("dj_hx", Tags.templates, Tags.urls)

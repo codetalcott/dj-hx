@@ -25,18 +25,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The oldest and newest Python each Django line supports, within README's 3.10 to 3.13,
-        # plus 3.11 on 5.2, so every Python README names runs.
+        # The oldest and newest Python each Django line supports, within README's 3.11 to 3.14,
+        # plus 3.13 on 6.1, so every Python README names runs, and the free-threaded 3.14t, whose
+        # new threads inherit the starting thread's context (tests/test_undefined_variables.py).
         include:
-          - { python: "3.10", django: "~=4.2.0" }
-          - { python: "3.12", django: "~=4.2.0" }
-          - { python: "3.10", django: "~=5.2.0" }
           - { python: "3.11", django: "~=5.2.0" }
-          - { python: "3.13", django: "~=5.2.0" }
+          - { python: "3.14", django: "~=5.2.0" }
           - { python: "3.12", django: "~=6.0.0" }
-          - { python: "3.13", django: "~=6.0.0" }
+          - { python: "3.14", django: "~=6.0.0" }
           - { python: "3.12", django: "~=6.1.0" }
           - { python: "3.13", django: "~=6.1.0" }
+          - { python: "3.14", django: "~=6.1.0" }
+          - { python: "3.14t", django: "~=6.1.0" }
     name: test (py${{ matrix.python }}, django${{ matrix.django }})
     steps:
       - uses: actions/checkout@v5

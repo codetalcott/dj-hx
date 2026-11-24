@@ -207,6 +207,33 @@ def test_the_management_command(tmp_path):
     assert "detail() only calls page" in out.getvalue()
 
 
+def test_json_is_the_whole_map_for_a_script_with_the_same_exit_status(tmp_path):
+    import json
+
+    from django.core.management import CommandError, call_command
+
+    out = io.StringIO()
+    call_command("hx_map", "--json", stdout=out)
+    doc = json.loads(out.getvalue())  # nothing else on stdout
+    assert doc["summary"] == {"controls": 20, "fetch_calls": 0, "handlers": 9, "errors": 0, "warnings": 0}
+    assert {
+        "file": "index.html", "line": 10, "element": "input#search", "method": "GET", "url": "url:contacts",
+        "endpoint": "contacts", "scope": "partial", "why": "hx-target=tbody", "via": None,
+    } in doc["controls"]
+    contacts = next(h for h in doc["handlers"] if h["endpoint"] == "contacts")
+    assert (contacts["verbs"], contacts["templates"], contacts["announces"]) == (["render"], ["index.html#rows"], ["contacts-changed"])
+    (tmp_path / "p.html").write_text('<button hx-get="{% url \'m-detail\' %}" hx-target="#x">x</button>')
+    templates = [{"BACKEND": "django.template.backends.django.DjangoTemplates", "DIRS": [tmp_path], "APP_DIRS": False}]
+    out = io.StringIO()
+    with override_settings(ROOT_URLCONF="tests.urlconfs.mapping", TEMPLATES=templates):
+        with pytest.raises(CommandError, match="hx_map found errors"):
+            call_command("hx_map", "--json", stdout=out)
+    errors = json.loads(out.getvalue())["errors"]
+    assert len(errors) == 1 and "detail() only calls page" in errors[0]
+    with pytest.raises(CommandError, match="not allowed with argument"):
+        call_command("hx_map", "--json", "--by-template", stdout=io.StringIO())
+
+
 def test_by_template_says_who_renders_each_partial():
     from django.core.management import call_command
 

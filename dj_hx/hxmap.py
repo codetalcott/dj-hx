@@ -226,5 +226,7 @@ def map_with_interactions(urlconf=None, sources: dict[str, str] | None = None) -
     return mapcore.check(handlers, controls, listeners, script_names), interactions
 
 
-def print_map(check: bool = True, out=None, urlconf=None, sources=None, by_template: bool = False) -> int:
-    return mapcore.print_map(build_map(urlconf, sources), check, out, by_template)
+def print_map(
+    check: bool = True, out=None, urlconf=None, sources=None, by_template: bool = False, as_json: bool = False
+) -> int:
+    return mapcore.print_map(build_map(urlconf, sources), check, out, by_template, as_json)

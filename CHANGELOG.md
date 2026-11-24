@@ -2,8 +2,41 @@
 
 ## Unreleased
 
+### Removed
+
+- Django 4.2 and Python 3.10. Django 4.2's extended support ended 2026-04-07
+  and Python 3.10 reached end of life on 2026-10-01. `pip` now refuses to
+  install dj-hx on either (`requires-python = ">=3.11"`, `django>=5.2`).
+
+### Added
+
+- Python 3.14, the free-threaded 3.14t included, is tested on Django 5.2, 6.0
+  and 6.1.
+- Check `dj_hx.W004` also reports a messages partial whose root is not
+  `id="<name>"`, read from the source as `E016` reads an interaction's reply.
+  Since the bridge records that instead of raising, a log line was the only
+  other place it showed outside tests.
+- `dj_hx.templates.lint_templates(paths=())`: what `manage.py hx_lint` reports
+  (`.files`, `.findings`, `.unreadable`), for a project's test that keeps a list
+  of known findings that may only shrink. `hx_lint` and check `dj_hx.W005` now
+  run through it; the production consumer had rebuilt the same loop from
+  `dj_hx.templates`' parts. README and llms.txt also document
+  `hx_check_messages()`, which was public but unlisted, and the two lines of
+  `conftest.py` that make every client a suite builds an `HxTestClient`, which
+  both consumers had written for themselves. A test runs README's lines as
+  written.
+- `manage.py hx_lint --json` and `manage.py hx_map --json`: one JSON object on
+  stdout each, with the same exit status. The map's is hx-flask's
+  `mapcore.map_json()` (vendored core from hx-flask 040eefb), with sorted
+  lists, so it does not change between runs as the text map's order does.
+
 ### Changed
 
+- On an interpreter whose new threads inherit the context that starts them
+  (Python 3.14's free-threaded build, by default), `HxTestClient` checks a
+  render on a thread the view starts as the request's. Elsewhere, as before, a
+  render on a plain thread or in a thread pool is not checked. A live server's
+  thread is never checked, since it starts outside any request.
 - `.partial()` on `removed()` or `text()` raises `HxError`, naming the handler.
   Neither carries a context to render the partial from, so it used to return
   the response unchanged and leave the region as it was, with no finding. On a
@@ -32,6 +65,10 @@
 - The test that `request_type()` raises `HxProtocolError` under `DEBUG` could
   not fail: `HxTestClient` raised the guard's recorded copy of the same message
   whether the verb raised or not. It now uses a plain client.
+- The package description, and README's two headings for the checks any Django
+  project can use, promised "every template variable". `HxTestClient` skips
+  the lookups the request's data decides, as Testing lists, so a misspelt dict
+  key stays silent. They now say what is checked.
 
 ## 0.2.2 (2026-11-24)
 
