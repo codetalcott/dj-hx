@@ -46,18 +46,20 @@ were needed first. Both need only `"dj_hx"` in `INSTALLED_APPS`; `check` then
 warns `dj_hx.W001` until `HxMiddleware` is listed, which a site with no htmx can
 silence (`SILENCED_SYSTEM_CHECKS = ["dj_hx.W001"]`).
 
-- **Every `{% url %}` reverses.** `manage.py check` reads every
+- **`{% url %}` tags reverse.** `manage.py check` reads every
   `{% url 'name' … %}` in the project's templates and reverses it with the
   arguments written there, against `ROOT_URLCONF` (check `dj_hx.E022`). A
   renamed route, a dropped argument or a wrong namespace fails `check`,
   `runserver` and `migrate` instead of a 500 on the page that has it. It reads
   every template, so one that nothing renders any more fails too.
-- **Every template variable exists.** `HxTestClient` raises
+- **Templates read only names that exist.** `HxTestClient` raises
   `HxUndefinedVariable` when a project template reads a name nobody supplies or
   an attribute an object lacks, in `{{ }}`, `{% if %}` and `{% for %}` alike,
   naming each template:line. It checks plain `client.get()` too, so a site
   without htmx can use it. pytest-django's `--fail-on-template-vars` sees the
-  `{{ }}` form only (measured under Beside the alternatives).
+  `{{ }}` form only; django-fastdev and django-shouty-templates see all three,
+  at render, and fail a production page if left installed there (measured
+  under Beside the alternatives).
 
 ## The three rules
 
@@ -447,12 +449,17 @@ It raises by itself only when the logger is disabled.
 ## Tools
 
 ```
-manage.py hx_lint [paths...] [--warnings-as-errors]   # template source, never site-packages
-manage.py hx_map [--no-check] [--by-template]          # controls <-> views <-> events, checked
+manage.py hx_lint [paths...] [--warnings-as-errors] [--json]   # template source, never site-packages
+manage.py hx_map [--no-check] [--by-template | --json]          # controls <-> views <-> events, checked
 ```
 
 Neither runs Django's system checks first, so both work while `check` fails:
-its `W005` hint sends you to `hx_lint` for the whole list.
+its `W005` hint sends you to `hx_lint` for the whole list. Each exits 1 on an
+error. With `--json` each prints one JSON object and nothing else on stdout,
+with the same exit status: `hx_lint`'s findings with their file, line, rule and
+severity; `hx_map`'s handlers, its controls (each naming the view that answers
+it), its listeners, a summary, and its errors and warnings unless `--no-check`.
+The map's lists are sorted, so one project gives one document.
 
 `--by-template` reads the same map from the other end: every template and
 partial a view names, the views that render it, and the controls that reach
@@ -541,13 +548,18 @@ swap modifiers) are accepted from htmx 4.0.2's source, not measured.
 
 ## Beside the alternatives
 
-Measured 2026-11-23: Django 6.1.3, Python 3.14.7, each library installed and
-configured as its own README says (django-htmx 1.29.0: the app and
-`HtmxMiddleware`; djxi 0.1.9: the app and `DjxiHeadersMiddleware`, with
-`DX_HTMX_VERSION` at its default `"4"`), Django's test client sending
-`HX-Request: true`, `HX-Request-Type: partial`, `HX-Target: div#rows`, and the
-root logger captured at DEBUG. Only headers and bodies were inspected, not a
-browser.
+Measured on an Apple M4 with Django 6.1.3, each tool installed and configured as
+its own docs say.
+
+### The htmx layer
+
+Measured 2026-11-23 on Python 3.14.7 and re-run 2026-11-24 on Python 3.13.7, on
+the same releases, still the current ones: django-htmx 1.29.0 (the app and
+`HtmxMiddleware`) and djxi 0.1.9 (the app and `DjxiHeadersMiddleware`, with
+`DX_HTMX_VERSION` at its default `"4"`). Django's test client sent
+`HX-Request: true`, `HX-Request-Type: partial` and `HX-Target: div#rows`, and
+the root logger was captured at DEBUG. Only headers and bodies were inspected,
+not a browser.
 
 | A view that | django-htmx 1.29.0 | djxi 0.1.9 | dj-hx |
 |---|---|---|---|
@@ -559,12 +571,13 @@ browser.
 | reads the target | `request.htmx.target`, `.source` | the same | not offered |
 
 Neither library's docs say what htmx 4 does with a 204 or a 3xx. Both have
-things dj-hx does not: django-htmx vendors htmx 2 and 4 and the htmx 4
-extensions behind `{% htmx_script version=4 %}`, has `ptag`, Jinja support and
-a setter for every response header, `HX-Location` included, which htmx 4.0.2
-honours and which dj-hx leaves out on purpose (see what was rejected). djxi
-bundles URLs, views and `<dx-section>` HTML in one class, and calls itself
-pre-alpha.
+things dj-hx does not. django-htmx vendors htmx 2 and 4 and the htmx 4
+extensions behind `{% htmx_script version=4 %}`; in 1.29.0 that htmx 4 is
+4.0.0-beta6 (its sha256 is npm's), and the tag's default is htmx 2. It also has
+`ptag`, Jinja support and a setter for every response header, `HX-Location`
+included, which htmx 4.0.2 honours and which dj-hx leaves out on purpose (see
+what was rejected). djxi bundles URLs, views and `<dx-section>` HTML in one
+class, pins htmx 4.0.0-beta5 in its CDN tag, and calls itself pre-alpha.
 
 Use django-htmx when you want a thin layer over the headers and will use
 `HX-Location` or `HX-Retarget` deliberately, when you need Jinja, or when a
@@ -572,17 +585,61 @@ project is still on or moving from htmx 2. Use dj-hx when you want the server
 to refuse, record or raise on what htmx 4 would do silently, and accept the
 stance that comes with it.
 
-For the undefined-variable check, the alternative is pytest-django's
-`--fail-on-template-vars`. On pytest-django 4.14.0 with Django 6.1.3
-(2026-11-23) it fails `{{ missing }}`, `{{ user.emial }}` and
-`{{ missing|default:"" }}`, and passes `{% if missing %}` and
-`{% for x in missing %}`: it works through `string_if_invalid`, which those
-tags never consult. `HxTestClient` catches the four without a default, by
-reading the `django.template` DEBUG record instead, and passes
-`{{ missing|default:"" }}`, which renders what the template says. The two
-`{% if %}` and `{% for %}` forms are also where a template tests for a name on
-purpose, so on an existing project they are most of what it reports
-([Testing](#testing) has a measurement).
+### `{% url %}` tags
+
+Measured 2026-11-24 on Python 3.13.7, on four templates: an unknown name, a
+route with its `pk` left out, a template no view renders, and an unknown
+namespaced name.
+
+| Tool | When | unknown name | `pk` left out | a template no view renders | `shop:nope` |
+|---|---|---|---|---|---|
+| Django alone | at render | `NoReverseMatch` | `NoReverseMatch` | never | `NoReverseMatch` |
+| django-fastdev 1.13.0 | at render | the same, listing the valid names | the same | never | the same |
+| django-extensions 4.1 `validate_templates` | on demand | not caught: it compiles, and does not reverse | not caught | not caught | not caught |
+| djLint 1.54.0 `--lint --profile=django` | lint | not caught | not caught | not caught | not caught |
+| dj-hx check `dj_hx.E022` | `manage.py check`, exit 1 | caught | caught | caught | caught |
+
+django-extensions' main branch, unreleased, adds `verify_named_urls`: it
+reports the unknown name, the dead template's included, exits 0, and misses the
+`pk` left out and the namespaced name. No tool measured fails `check`.
+
+### Undefined template variables
+
+Measured 2026-11-24 on Python 3.13.7. Each template was rendered by a view
+through Django's test client, with no context but a `user` lacking `emial`.
+
+| Tool | `{{ missing }}` | `{{ user.emial }}` | `{{ missing\|default:"" }}` | `{% if missing %}` | `{% for x in missing %}` | an admin template a project template includes |
+|---|---|---|---|---|---|---|
+| pytest-django 4.14.0 `--fail-on-template-vars` | fails | fails | fails | passes | passes | fails |
+| django-fastdev 1.13.0, `FASTDEV_STRICT_IF = True` | raises | raises | raises | raises | raises | raises |
+| django-shouty-templates 0.2.0 (`"shouty.Shout"`) | raises | raises | raises | raises | raises | raises |
+| dj-hx `HxTestClient` | raises | raises | passes | raises | raises | passes |
+
+All four catch a name an `{% include %}`d template reads that nobody passes.
+They differ in where they act:
+
+- **django-fastdev** goes in `INSTALLED_APPS` and patches the template engine
+  whatever `DEBUG` is. With `DEBUG=False` outside tests the `{{ missing }}` and
+  `{% for %}` pages answered 500, so it has to stay out of production settings.
+  Without `FASTDEV_STRICT_IF` it passes `{% if missing %}`.
+- **django-shouty-templates** patches only when `DEBUG` is on at startup, so a
+  suite on `DEBUG=False` settings gets no check. The `"shouty"` entry its README
+  shows does nothing on Django 6.1 (`"shouty.Shout"` works), and its last
+  release was in 2022.
+- **pytest-django** works through `string_if_invalid`, which changes what
+  `|default` renders, and which `{% if %}` and `{% for %}` never consult.
+- **`HxTestClient`** is test-only and changes no setting. It reads Django's
+  `django.template` DEBUG record, passes a name its expression gives a
+  `|default`, skips templates in site-packages, and raises once the response is
+  complete, naming every lookup with its template:line. The ones that raise at
+  render stop at the first.
+
+Use fastdev or shouty when you want every render in development to raise, and
+will keep them out of production settings. Use pytest-django's flag when
+`{{ }}` alone is enough. Use `HxTestClient` when you want the check in tests
+only, with `|default` honoured. The `{% if %}` and `{% for %}` forms are also
+where a template tests for a name on purpose, so on an existing project they are
+most of what it reports ([Testing](#testing) has a measurement).
 
 ## htmx 4 facts this depends on
 

@@ -519,7 +519,7 @@ with pytest.raises(HxPageIntoFragment, match=r"contacts_view\(\) renders the pag
 
 ```
 manage.py hx_lint [paths...] [--warnings-as-errors] [--json]   # htmx 4 lint over template source, never site-packages
-manage.py hx_map [--no-check] [--by-template]          # controls <-> views <-> events, checked
+manage.py hx_map [--no-check] [--by-template | --json]  # controls <-> views <-> events, checked
 ```
 
 Neither runs Django's system checks first, so both work while `check` fails (and neither takes `--skip-checks`).
@@ -528,6 +528,14 @@ Neither runs Django's system checks first, so both work while `check` fails (and
 "severity", "element", "message"}], "unreadable": [{"file", "error"}]}`, and nothing else on stdout; `errors`
 and `warnings` are counted as the exit status counts them (`--warnings-as-errors` included), and each finding
 keeps its own severity. It exits 1 on an error, as without `--json`.
+
+`hx_map --json` prints `mapcore.map_json()`, hx-flask's own: `{"handlers": [{"endpoint", "name", "rules",
+"verbs", "templates", "announces", "escapes"}], "controls": [{"file", "line", "element", "method", "url",
+"endpoint", "scope", "why", "via"}], "listeners": [{"file", "line", "element", "event"}], "summary":
+{"controls", "fetch_calls", "handlers", "errors", "warnings"}, "errors": [...], "warnings": [...]}`; with
+`--no-check`, no errors or warnings. A control's `endpoint` is the URL name of the view that answers it, or
+null; `url` is what the template writes (`url:<name>` for a `{% url %}`). Every list is sorted. It exits 1 on
+an error, and cannot be combined with `--by-template`.
 
 `--by-template` inverts the map: every template and partial a view names, who renders it, and the
 controls that reach them.

@@ -21,9 +21,9 @@ No virtualenv is checked in: `.venv/` is gitignored, and an old local one can po
 uv venv <venv> && uv pip install -p <venv>/bin/python "django~=6.1.0" pytest pytest-django ruff mypy django-stubs "playwright==1.64.0"  # below Django 6, add django-template-partials
 <venv>/bin/python -m playwright install chromium
 
-<venv>/bin/python -m pytest -q                      # 442 tests, ~17 s
-<venv>/bin/python -m pytest -q -m "not browser"     # 401, ~3 s, skipping Chromium
-<venv>/bin/python -m pytest -q -m browser           # the 41 Playwright tests alone, ~13 s
+<venv>/bin/python -m pytest -q                      # 447 tests, ~18 s
+<venv>/bin/python -m pytest -q -m "not browser"     # 406, ~3 s, skipping Chromium
+<venv>/bin/python -m pytest -q -m browser           # the 41 Playwright tests alone, ~14 s
 <venv>/bin/python -m pytest tests/test_verbs.py::test_text_escapes
 <venv>/bin/ruff check .
 <venv>/bin/mypy dj_hx                                # typed: the Typing :: Typed classifier is a claim, and these two back it
@@ -47,8 +47,8 @@ The example app, from `example/`:
 
 ```
 python manage.py migrate && python manage.py seed_contacts && python manage.py runserver
-python manage.py hx_lint [paths...] [--warnings-as-errors]
-python manage.py hx_map [--no-check]
+python manage.py hx_lint [paths...] [--warnings-as-errors] [--json]
+python manage.py hx_map [--no-check] [--by-template | --json]
 ```
 
 CI runs `ruff check .` and both mypy commands on 3.13, and the suite on eight Python/Django pairs, covering Django 5.2, 6.0 and 6.1

@@ -25,8 +25,10 @@
   `conftest.py` that make every client a suite builds an `HxTestClient`, which
   both consumers had written for themselves. A test runs README's lines as
   written.
-- `manage.py hx_lint --json`: one JSON object on stdout, with the same exit
-  status.
+- `manage.py hx_lint --json` and `manage.py hx_map --json`: one JSON object on
+  stdout each, with the same exit status. The map's is hx-flask's
+  `mapcore.map_json()` (vendored core from hx-flask 040eefb), with sorted
+  lists, so it does not change between runs as the text map's order does.
 
 ### Changed
 
@@ -63,6 +65,10 @@
 - The test that `request_type()` raises `HxProtocolError` under `DEBUG` could
   not fail: `HxTestClient` raised the guard's recorded copy of the same message
   whether the verb raised or not. It now uses a plain client.
+- The package description, and README's two headings for the checks any Django
+  project can use, promised "every template variable". `HxTestClient` skips
+  the lookups the request's data decides, as Testing lists, so a misspelt dict
+  key stays silent. They now say what is checked.
 
 ## 0.2.2 (2026-11-24)
 
