@@ -402,6 +402,18 @@ show. `|default_if_none` is no default for a missing name, which is not None,
 so `{{ x|default_if_none:"-" }}` renders `''` and counts.
 `HxTestClient(undefined=False)` turns the check off.
 
+On a project written before the check, expect much of what it reports to be
+templates that test for a name on purpose. Measured 2026-11-23 on a
+96-template app (dj-hx 0.2.1, Django 6.0.4, Python 3.12.7): 32 lookups, none a
+defect. Nine had a `|default`, which no longer counts. The other 23 were
+`{% if obj.attr %}` in a template shared across kinds of object, and
+`{% if name %}` on an argument an `{% include %}` passes only sometimes. Each
+goes quiet as its message says, by supplying the name with its default: there,
+23 edits and no bug found. The check has no per-template switch. To adopt it
+by stages, subclass the client with `strict=False`, read each
+`HxUndefinedVariable` in `response.hx_findings`, and raise only for a
+`(lookup.template, lookup.variable)` missing from a list you keep and shrink.
+
 The check rests on details of Django's that its documentation does not promise, which the suite
 pins on Django 4.2, 5.2, 6.0 and 6.1: the DEBUG record's message and its `VariableDoesNotExist`,
 the template node being rendered on the stack (for the template:line), and that exception's
@@ -450,6 +462,32 @@ colon (`sse:message`, `contact:saved`) is never asked to be announced by a view,
 and an event a script names (`addEventListener('x', …)`, a hyperscript `send x`)
 is taken as heard and announced. Checks `dj_hx.W024` and `W025` report the same
 pairing at start-up.
+
+The map reads what the templates write and each view's own body. On a project
+written before it, most of its output comes from where that stops. Measured
+2026-11-24 on a 325-template project (dj-hx `8e42984`, Django 6.1.3, Python
+3.12.7): 921 controls, 1 error, 817 warnings.
+
+- **Boost is judged once for the project.** When any template sets
+  `hx-boost:inherited`, every plain `<a href>` and `<form action>` in every
+  template is read as boosted, unless it or an ancestor in its own file says
+  `hx-boost="false"`. The map does not follow `{% extends %}` or
+  `{% include %}`, so it cannot tell which pages a layout's attribute reaches.
+  That project boosts three small includes and one form; 822 of its 921
+  controls were plain links and forms read as boosted, 11 of them in the files
+  that boost. Its one error was among the rest: a form a script file submits,
+  on a page nothing boosts.
+- **A view that calls no verb is a warning on each control that reaches it**,
+  not one for the view: 618 of the 817, for 173 views. `--no-check` prints the
+  map without them.
+- **A URL built in the template is not resolved** (`hx-get="{{ url }}"`,
+  `href="?page={{ n }}"`): the control is listed as "computed URL" and not
+  checked. 175 of the 817. On a second app (92 controls) all 21 were in the
+  templates of its generic CRUD and inline-edit layers, which take their URLs
+  from the context.
+- **A script file is not read**, only a `<script>` in a template. A listener
+  or a `fetch()` in a `.js` file is invisible to the map and to `W024` and
+  `W025`.
 
 ## The example
 
@@ -517,7 +555,10 @@ For the undefined-variable check, the alternative is pytest-django's
 `{% for x in missing %}`: it works through `string_if_invalid`, which those
 tags never consult. `HxTestClient` catches the four without a default, by
 reading the `django.template` DEBUG record instead, and passes
-`{{ missing|default:"" }}`, which renders what the template says.
+`{{ missing|default:"" }}`, which renders what the template says. The two
+`{% if %}` and `{% for %}` forms are also where a template tests for a name on
+purpose, so on an existing project they are most of what it reports
+([Testing](#testing) has a measurement).
 
 ## htmx 4 facts this depends on
 
