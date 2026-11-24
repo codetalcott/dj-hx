@@ -1,9 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.2.2 (2026-11-24)
 
 Found by installing 0.2.1, as the README says, into two Django apps it was not
-built beside: one on htmx 2 with 96 templates, one with no htmx.
+built beside (one on htmx 2 with 96 templates, one with no htmx), and by running
+the package's production consumer (325 templates) against the result.
 
 ### Changed
 
@@ -18,6 +19,15 @@ built beside: one on htmx 2 with 96 templates, one with no htmx.
 - Every `dj_hx.E022` hint ends "A template nothing renders any more fails this
   check too; delete it." All five on the htmx 2 app were in templates left
   behind by removed views.
+- `hx_map` reads a plain link or form as boosted only where an `hx-boost`
+  reaches it: its own, an ancestor's `hx-boost:inherited` in the same file, or
+  one on `<body>` or `<html>`, which reaches every template. Any
+  `hx-boost:inherited` anywhere used to make every plain link in every template
+  a boosted control: on the production consumer, which boosts two pagers, a
+  next/previous bar and one form, 822 of 921 controls. Its map is now 108
+  controls, no errors and 78 warnings, and exits 0. A wrapper that boosts the
+  block it holds is no longer read as boosting the pages that fill it: boost at
+  `<body>` (vendored core from hx-flask 70179df).
 
 ### Fixed
 
@@ -40,15 +50,6 @@ built beside: one on htmx 2 with 96 templates, one with no htmx.
   The same route written as a path was already left alone. On the package's production
   consumer (325 templates) 67 of the map's 72 errors were that, 22 of them
   links to `account_login`.
-- `hx_map` reads a plain link or form as boosted only where an `hx-boost`
-  reaches it: its own, an ancestor's `hx-boost:inherited` in the same file, or
-  one on `<body>` or `<html>`, which reaches every template. Any
-  `hx-boost:inherited` anywhere used to make every plain link in every template
-  a boosted control: on the production consumer, which boosts two pagers, a
-  next/previous bar and one form, 822 of 921 controls. Its map is now 108
-  controls, no errors and 78 warnings, and exits 0. A wrapper that boosts the
-  block it holds is no longer read as boosting the pages that fill it: boost at
-  `<body>` (vendored core from hx-flask 70179df).
 - `hx_map` resolves a `{% url %}` that the attribute follows with a branch
   (`{% url 'list' %}{% if q %}?q={{ q }}{% endif %}`); it took the branch for
   part of the name. Three more of those 72.

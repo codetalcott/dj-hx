@@ -14,6 +14,7 @@ from django.test import override_settings
 from django.urls import include, path
 from django.utils.safestring import SafeString
 
+from dj_hx import fragment
 from dj_hx.hxmap import build_map, print_map
 from dj_hx.templates import in_site_packages
 from tests.urlconfs import mapping
@@ -254,6 +255,25 @@ def test_a_view_that_calls_no_verb_is_a_warning_on_each_control_that_reaches_it(
     m = build_map(urlconf, sources=sources)
     assert m.errors == [] and len(m.warnings) == 2
     assert all("reaches bare() which calls no hx verb" in w for w in m.warnings)
+
+
+def moved(request):
+    return fragment(request, "page.html", "content").retarget("#elsewhere")  # the template no longer predicts this
+
+
+def test_a_view_that_retargets_is_a_warning_naming_its_controls():
+    # the other half of README's row "A control points at a view that calls no verb, or a view retargets"
+    urlconf = types.ModuleType("moved_urls")
+    urlconf.urlpatterns = [path("moved/", moved, name="moved"), path("m/detail/", mapping.detail, name="m-detail")]
+    sources = {"p.html": '<button hx-get="/moved/" hx-target="#panel">a</button>\n<a hx-get="/m/detail/" hx-target="body">b</a>'}
+    m = build_map(urlconf, sources=sources)
+    assert m.errors == []
+    [warning] = m.warnings  # detail() retargets nothing, so its control is not named
+    assert "moved() calls .retarget(); p.html:1 <button> can no longer predict its DOM effect" in warning
+    assert m.handlers["moved"].escapes == {"retarget"} and m.handlers["m-detail"].escapes == set()
+    out = io.StringIO()
+    print_map(out=out, urlconf=urlconf, sources=sources)
+    assert "  escapes: retarget" in out.getvalue()
 
 
 # --------------------------------------------- site-packages, as templates.in_site_packages judges it
