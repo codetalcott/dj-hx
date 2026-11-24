@@ -21,9 +21,9 @@ No virtualenv is checked in: `.venv/` is gitignored, and an old local one can po
 uv venv <venv> && uv pip install -p <venv>/bin/python "django~=6.1.0" pytest pytest-django ruff mypy django-stubs "playwright==1.64.0"  # below Django 6, add django-template-partials
 <venv>/bin/python -m playwright install chromium
 
-<venv>/bin/python -m pytest -q                      # 432 tests, ~16 s
-<venv>/bin/python -m pytest -q -m "not browser"     # 391, ~3 s, skipping Chromium
-<venv>/bin/python -m pytest -q -m browser           # the 41 Playwright tests alone, ~13 s
+<venv>/bin/python -m pytest -q                      # 437 tests, ~18 s
+<venv>/bin/python -m pytest -q -m "not browser"     # 396, ~3 s, skipping Chromium
+<venv>/bin/python -m pytest -q -m browser           # the 41 Playwright tests alone, ~15 s
 <venv>/bin/python -m pytest tests/test_verbs.py::test_text_escapes
 <venv>/bin/ruff check .
 <venv>/bin/mypy dj_hx                                # typed: the Typing :: Typed classifier is a claim, and this is what backs it
@@ -154,7 +154,10 @@ the AST visitor that finds verb calls, the control-vs-handler checks. [hxmap.py]
 Django adapter: URLconf walk, `{% url %}` and `resolve()`, and `{% act %}` through the registry: an
 interaction is found by the callback `dj_hx.urls.urlpatterns` routes it to (identity, not name), its handler
 is scanned rather than a decorator's closure, and `_as_interaction()` records its partial and `triggers=`.
-The `__ACT<n>__` markers index one `acts` list shared by every template. The checks build this map at every
+The `__ACT<n>__` markers index one `acts` list shared by every template. `hx_map` and `hx_lint` run no system
+checks, so either can be the first code to read the URLconf: `_scan_handlers` walks it before it reads
+`interactions.urlpatterns`, which `bind_routes()` rebuilds on that first read. In the suite the URLconf was read long
+ago, so a test of that order runs the map in a new process (`test_hx_map_routes_a_decorated_interaction_before_anything_has_read_the_urlconf`). The checks build this map at every
 `runserver` start, so `_scan_handlers` parses each views module once per map (`module_verbs`), not once per
 view, and `templates.in_site_packages` resolves the site roots once per set of directories. On a private
 378-template production project the checks took 3.6 s before those two, and after them three runs had

@@ -9,6 +9,7 @@ import types
 from pathlib import Path
 
 import pytest
+from django.http import HttpResponse
 from django.test import override_settings
 from django.urls import include, path
 from django.utils.safestring import SafeString
@@ -218,6 +219,35 @@ def test_by_template_says_who_renders_each_partial():
     assert "edit.html\n  contacts_edit()" in text and "edit.html#form\n  contacts_edit()" in text
     assert text.rstrip().endswith("hx map: 7 templates, 9 handlers")
     assert "0 errors, 0 warnings" not in text  # not the by-view report as well
+
+
+# --------------------------------------------- limits README states (Tools), pinned so the prose cannot drift
+
+
+def bare(request):
+    return HttpResponse("x")
+
+
+def test_one_boosting_element_makes_every_plain_link_a_boosted_control():
+    # Boost is judged once for the project: the map does not follow {% extends %} or {% include %}, so it cannot
+    # tell which pages a layout's hx-boost:inherited reaches. A pager that boosts its own links boosts every file's.
+    urlconf = types.ModuleType("boost_urls")
+    urlconf.urlpatterns = [path("m/detail/", mapping.detail, name="m-detail")]
+    page = '<a href="/m/detail/">a</a><a href="/m/detail/" hx-boost="false">b</a>'
+    m = build_map(urlconf, sources={"page.html": page})
+    assert m.controls == []
+    pager = '<div hx-boost:inherited="true"><a href="/m/detail/">next</a></div>'
+    m = build_map(urlconf, sources={"page.html": page, "pager.html": pager})
+    assert [(c.file, c.line, c.boosted) for c in m.controls] == [("page.html", 1, True), ("pager.html", 1, True)]
+
+
+def test_a_view_that_calls_no_verb_is_a_warning_on_each_control_that_reaches_it():
+    urlconf = types.ModuleType("bare_urls")
+    urlconf.urlpatterns = [path("bare/", bare, name="bare")]
+    sources = {"p.html": '<a hx-get="/bare/" hx-target="#x">a</a>\n<a hx-get="/bare/" hx-target="#x">b</a>'}
+    m = build_map(urlconf, sources=sources)
+    assert m.errors == [] and len(m.warnings) == 2
+    assert all("reaches bare() which calls no hx verb" in w for w in m.warnings)
 
 
 # --------------------------------------------- site-packages, as templates.in_site_packages judges it
