@@ -192,7 +192,7 @@ removed(request)                                  # 200, empty; the control's hx
 text(request, "(3 total)")                        # an escaped text fragment
 
 response.trigger("contacts-changed")              # HX-Trigger, always JSON, always with a target (body)
-response.partial("count")                         # appends <hx-partial hx-target="#count"> from the partial
+response.partial("count")                         # appends <hx-partial hx-target="#count"> from the partial (fragments; raises on removed() and text())
 response.push_url(url) / .replace_url(url) / .with_status(code)
 ```
 
@@ -328,8 +328,9 @@ by `HxTestClient`. Nothing is gated on `DEBUG` that a test needs.
 | A 204 answers a partial request | `HxNoSwap`: htmx 4 leaves the target untouched | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-204-answers-a-partial-request) |
 | A response no verb built answers a partial request | `HxBareResponse` | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-response-no-verb-built-answers-a-partial-request) |
 | Messages added on a fragment with no messages template | `HxMessagesUnconfigured` | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#messages-added-on-a-fragment-with-no-messages-template) |
-| A partial's root element is not its name | `HxPartialRootId` at the render | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-partials-root-element-is-not-its-name) |
-| partial names a partial the template does not define | `HxUnknownPartial`, listing the partials it does | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#partial-names-a-partial-the-template-does-not-define) |
+| A partial's root element is not its name | `HxPartialRootId` at the render; the messages bridge records it, and the messages wait for the next page | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-partials-root-element-is-not-its-name) |
+| partial names a partial the template does not define | `HxUnknownPartial`, listing the partials it does; the messages bridge records it | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#partial-names-a-partial-the-template-does-not-define) |
+| .partial() on removed() or text() | `HxError` at the call: neither has a context to render the partial from | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#partial-on-removed-or-text) |
 | An htmx request without HX-Request-Type | `HxProtocolError`: raised under `DEBUG`; in production answered as the page and recorded | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#an-htmx-request-without-hx-request-type) |
 | htmx 2 idioms in the HTML | the lint: on every test-client response, in the `DEBUG` log, in `manage.py hx_lint`, as check `dj_hx.W005` | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#htmx-2-idioms-in-the-html) |
 | A template reads a name nobody supplies | `HxTestClient` raises `HxUndefinedVariable`, naming each variable and template:line, `{% if %}` and `{% for %}` included | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-template-reads-a-name-nobody-supplies) |

@@ -13,7 +13,8 @@ the one place to look.
 from __future__ import annotations
 
 from django.conf import settings
-from django.http import HttpResponse
+from django.http import HttpRequest, HttpResponse
+from django.http.response import HttpResponseBase
 
 from .errors import HxBareResponse, HxError, HxNoSwap, HxProtocolError, HxRedirectIntoFragment
 from .request import REQUEST_TYPE_HEADER, is_htmx, protocol_message, who
@@ -21,7 +22,7 @@ from .request import REQUEST_TYPE_HEADER, is_htmx, protocol_message, who
 __all__ = ["guard", "findings_of", "is_html"]
 
 
-def is_html(response) -> bool:
+def is_html(response: HttpResponseBase) -> bool:
     """A response whose body htmx would swap: not streamed, and ``text/html``."""
     return (
         not getattr(response, "streaming", False)
@@ -29,15 +30,16 @@ def is_html(response) -> bool:
     )
 
 
-def findings_of(response) -> list[HxError]:
+def findings_of(response: HttpResponseBase) -> list[HxError]:
     """The findings recorded on a response so far (never raises)."""
     found = getattr(response, "hx_findings", None)
     if found is None:
-        found = response.hx_findings = []
+        found = []
+        response.hx_findings = found  # type: ignore[attr-defined]  # any response can carry findings
     return found
 
 
-def _routing_redirect(request, response) -> bool:
+def _routing_redirect(request: HttpRequest, response: HttpResponseBase) -> bool:
     """
     True when the 3xx (or the 404 CommonMiddleware will turn into one) is
     ``APPEND_SLASH``'s fix-up rather than a handler's decision.
@@ -59,12 +61,12 @@ def _routing_redirect(request, response) -> bool:
     return False
 
 
-def guard(request, response) -> list[HxError]:
+def guard(request: HttpRequest, response: HttpResponseBase) -> list[HxError]:
     """Record the findings for ``response`` and return them all."""
     found = findings_of(response)
     if getattr(response, "hx_guarded", False):
         return found
-    response.hx_guarded = True
+    response.hx_guarded = True  # type: ignore[attr-defined]
 
     if not is_htmx(request):
         return found
@@ -111,7 +113,7 @@ def guard(request, response) -> list[HxError]:
     return found
 
 
-def _built_by_a_verb(response) -> bool:
+def _built_by_a_verb(response: HttpResponseBase) -> bool:
     from .verbs import HxResponse
 
     return isinstance(response, HxResponse)

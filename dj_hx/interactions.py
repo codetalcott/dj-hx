@@ -51,15 +51,16 @@ from __future__ import annotations
 import functools
 import inspect
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from importlib import import_module
 from typing import Any
 
 from django.apps import apps
 from django.core.exceptions import ImproperlyConfigured
-from django.http import HttpResponseNotAllowed
-from django.urls import NoReverseMatch, path
+from django.http import HttpRequest, HttpResponseNotAllowed
+from django.http.response import HttpResponseBase
+from django.urls import NoReverseMatch, URLPattern, path
 from django.urls.converters import IntConverter
 
 from .errors import HxEmptyRefusal
@@ -68,12 +69,16 @@ from .verbs import HxResponse, _record, check_root_id, fragment
 __all__ = ["interaction"]
 
 registry: dict[str, Interaction] = {}
-urlpatterns: list = []  # served by dj_hx.urls; filled as each app's interactions module is imported, bound by bind_routes()
+urlpatterns: list[URLPattern] = []  # served by dj_hx.urls; filled as each app's interactions module is imported, bound by bind_routes()
 
 METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")
 INCLUDE = 'path("", include("dj_hx.urls"))'
 MODULE = "interactions"  # the submodule of each project app that ready() imports
 _VARIADIC = (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+
+# What @interaction takes and wraps: an exception class or a sequence of them, and a handler returning context keys.
+Refusals = type[BaseException] | tuple[type[BaseException], ...] | list[type[BaseException]]
+Handler = Callable[..., dict[str, Any] | None]
 
 
 @dataclass(frozen=True)
@@ -84,7 +89,7 @@ class Interaction:
     method: str
     template: str
     partial: str
-    context: Callable[..., dict]
+    context: Callable[..., dict[str, Any]]
     context_params: tuple[str, ...]  # the route's parameters that context= takes; any other it takes has a default
     refuses: tuple[type[BaseException], ...]
     triggers: tuple[str, ...]
@@ -93,7 +98,7 @@ class Interaction:
     route: str
     view: Callable[..., Any]  # the routed view @interaction returned, before any decorator above it
 
-    def respond(self, request, **kwargs):
+    def respond(self, request: HttpRequest, **kwargs: Any) -> HttpResponseBase:
         """The wrapper view's body: the method guard, the handler, then its partial."""
         if request.method != self.method:
             return HttpResponseNotAllowed([self.method])
@@ -125,7 +130,7 @@ class Interaction:
             f'message for the user: raise {kind}("...").'
         )
 
-    def _render(self, request, kwargs, reply: dict) -> HxResponse:
+    def _render(self, request: HttpRequest, kwargs: dict[str, Any], reply: dict[str, Any]) -> HxResponse:
         # `error` is the layer's: a refusal writes it, and any other reply reads None unless context= or the handler sets it.
         context = {"error": None, **self.context(request, **{p: kwargs[p] for p in self.context_params})}
         undefined = sorted(key for key in reply if key not in context)
@@ -154,7 +159,7 @@ def _starred(parameter: inspect.Parameter) -> str:
     return ("*" if parameter.kind is inspect.Parameter.VAR_POSITIONAL else "**") + parameter.name
 
 
-def _check_arguments(name: str, method, refuses, params: list[inspect.Parameter]) -> None:
+def _check_arguments(name: str, method: Any, refuses: Any, params: list[inspect.Parameter]) -> None:
     if not isinstance(method, str) or method.upper() not in METHODS:
         raise ImproperlyConfigured(
             f"{name}(): method={method!r} is not a method an interaction answers; write GET, POST, PUT, PATCH or DELETE."
@@ -173,11 +178,11 @@ def _check_arguments(name: str, method, refuses, params: list[inspect.Parameter]
         )
 
 
-def _refusals(refuses) -> tuple:
+def _refusals(refuses: Any) -> tuple[Any, ...]:
     return tuple(refuses) if isinstance(refuses, (tuple, list)) else (refuses,)
 
 
-def _context_params(name: str, context, params: list[inspect.Parameter]) -> tuple[str, ...]:
+def _context_params(name: str, context: Callable[..., Any], params: list[inspect.Parameter]) -> tuple[str, ...]:
     """The route parameters ``context`` is called with; raises for one it needs that the route lacks."""
     context_name = getattr(context, "__name__", repr(context))
     takes = list(inspect.signature(context).parameters.values())
@@ -198,7 +203,7 @@ def _context_params(name: str, context, params: list[inspect.Parameter]) -> tupl
     return tuple(p.name for p in takes[1:] if p.name in route)
 
 
-def _check_route(name: str, route: str, pattern, params: list[inspect.Parameter]) -> None:
+def _check_route(name: str, route: str, pattern: URLPattern, params: list[inspect.Parameter]) -> None:
     converters = pattern.pattern.converters
     takes = [p.name for p in params]
     if set(converters) != set(takes):
@@ -214,10 +219,18 @@ def _check_route(name: str, route: str, pattern, params: list[inspect.Parameter]
         )
 
 
-def interaction(method: str, *, partial: str, context: Callable[..., dict], refuses=(), triggers=(), route=None):
+def interaction(
+    method: str,
+    *,
+    partial: str,
+    context: Callable[..., dict[str, Any]],
+    refuses: Refusals = (),
+    triggers: tuple[str, ...] | list[str] = (),
+    route: str | None = None,
+) -> Callable[[Handler], Callable[..., HttpResponseBase]]:
     """Register the decorated function as an interaction (see the module docstring) and return its routed view."""
 
-    def decorate(func):
+    def decorate(func: Handler) -> Callable[..., HttpResponseBase]:
         name = func.__name__
         if name in registry:
             other = registry[name].func
@@ -240,7 +253,7 @@ def interaction(method: str, *, partial: str, context: Callable[..., dict], refu
         _check_arguments(name, method, refuses, signature)
         params = signature[1:]
 
-        def view(request, **kwargs):
+        def view(request: HttpRequest, **kwargs: Any) -> HttpResponseBase:
             return it.respond(request, **kwargs)
 
         functools.update_wrapper(view, func)  # who(request) and hx_map name the handler, not "view"
@@ -284,7 +297,7 @@ def act_form(it: Interaction) -> str:
     return f"{{% act '{it.name}'{''.join(f' {p}=...' for p in it.params)} %}}"
 
 
-def act_unknown(name) -> str:
+def act_unknown(name: str) -> str:
     """What ``{% act %}`` and check E009 say of a name no interaction has."""
     known = ", ".join(sorted(registry)) or "none"
     return (
@@ -293,7 +306,7 @@ def act_unknown(name) -> str:
     )
 
 
-def act_mismatch(it: Interaction, positional: int, keywords) -> str | None:
+def act_mismatch(it: Interaction, positional: int, keywords: Iterable[str]) -> str | None:
     """What ``{% act %}`` and check E010 say of arguments that are not ``it``'s parameters; None when they are."""
     name, takes = it.name, ", ".join(it.params) or "no parameters"
     if positional:
@@ -313,7 +326,7 @@ def act_mismatch(it: Interaction, positional: int, keywords) -> str | None:
     return None
 
 
-def act_not_included(name) -> str:
+def act_not_included(name: str) -> str:
     """What ``{% act %}`` raises, and ``hx_map`` reports, when no URLconf includes ``dj_hx.urls``."""
     return (
         f"{{% act '{name}' %}} reverses {name}()'s route in the dj_hx namespace, which no URLconf registers: "
@@ -326,17 +339,17 @@ def namespace_missing(exc: NoReverseMatch) -> bool:
     return "'dj_hx' is not a registered namespace" in str(exc)
 
 
-def module_attribute(it: Interaction):
+def module_attribute(it: Interaction) -> Any:
     """What the module that defines the handler holds under the handler's name, or None."""
     return getattr(sys.modules.get(it.view.__module__), it.name, None)
 
 
-def unwraps_to(it: Interaction, held):
+def unwraps_to(it: Interaction, held: Any) -> Any:
     """Where ``inspect.unwrap`` from ``held`` stops: the view, the raw handler, or the last object it can see."""
     return inspect.unwrap(held, stop=lambda link: link is it.view or link is it.func)
 
 
-def _routed_view(it: Interaction):
+def _routed_view(it: Interaction) -> Callable[..., Any]:
     """
     What the handler's module holds under its name, routed as written when it is callable: the view
     ``@interaction`` returned, or a decorator of it, with or without ``functools.wraps`` (dropping one

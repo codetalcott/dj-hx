@@ -7,6 +7,10 @@ the verbs and the middleware, logged, and raised by ``HxTestClient``, so a
 residual false positive cannot become a 500 in production.
 """
 
+from __future__ import annotations
+
+from collections.abc import Iterable
+
 
 class HxError(Exception):
     """Base class."""
@@ -55,7 +59,7 @@ class HxMessagesUnconfigured(HxError):
 class HxLintError(HxError):
     """The rendered HTML failed the htmx 4 lint (see ``dj_hx.hxlint``)."""
 
-    def __init__(self, findings, where=""):
+    def __init__(self, findings: Iterable[object], where: str = "") -> None:
         self.findings = list(findings)
         head = f"dj-hx lint found {len(self.findings)} issue(s)" + (f" in {where}" if where else "")
         super().__init__(head + ":\n  " + "\n  ".join(str(f) for f in self.findings))
@@ -64,7 +68,7 @@ class HxLintError(HxError):
 class HxUndefinedVariable(HxError):
     """``HxTestClient``: a project template read a variable that does not exist, which Django renders as nothing."""
 
-    def __init__(self, lookups, where=""):
+    def __init__(self, lookups: Iterable[object], where: str = "") -> None:
         self.lookups = list(lookups)
         count = len(self.lookups)
         head = f"{where} read" if where else "A template read"

@@ -8,9 +8,10 @@ import json
 import re
 
 import pytest
-from django.test import override_settings
+from django.test import Client, override_settings
 
 from dj_hx import (
+    HxError,
     HxFragmentIntoPage,
     HxMessagesUnconfigured,
     HxNoSwap,
@@ -22,6 +23,7 @@ from dj_hx import (
 )
 from dj_hx.testing import HxTestClient
 from dj_hx.verbs import check_root_id
+from tests.conftest import PARTIAL, locmem
 
 pytestmark = pytest.mark.usefixtures("lib")
 
@@ -185,6 +187,13 @@ def test_unknown_partial_lists_the_partials_the_template_defines(client):
         client.hx_get("/lib/unknown-partial/")
 
 
+@pytest.mark.parametrize(("url", "kind"), [("/lib/removed-partial/", "removed"), ("/lib/text-partial/", "text")])
+def test_partial_on_a_response_with_no_context_raises(client, url, kind):
+    """removed() and text() have nothing to render #count from; a silent no-op left the region as it was."""
+    with pytest.raises(HxError, match=re.escape(f"partial('count') on {kind}(), which has no context to render #count")):
+        client.hx_get(url)
+
+
 # -------------------------------------------------------------- partial rendering
 
 
@@ -214,6 +223,33 @@ def test_messages_without_a_template_are_loud(client):
             client.hx_delete("/lib/flash-removed/")
 
 
+FLASH = '{% partialdef messages inline %}<div id="flash">{% for m in messages %}<p class="flash">{{ m }}</p>{% endfor %}</div>{% endpartialdef %}'
+
+
+@pytest.mark.parametrize(
+    ("setting", "error", "complaint"),
+    [
+        ("flash.html#messages", HxPartialRootId, 'its root <div> must carry id="messages"; it has id="flash"'),
+        ("layout.html#flash", HxUnknownPartial, "layout.html defines no partial 'flash'"),
+    ],
+)
+def test_a_messages_partial_that_fails_is_recorded_and_its_messages_wait(caplog, setting, error, complaint):
+    """
+    HxMiddleware never raises a finding: in production, a messages partial that is missing or has the
+    wrong root would otherwise turn every fragment response that carries a message into a 500.
+    """
+    browser = Client()  # production's view: nothing raises a recorded finding
+    with override_settings(TEMPLATES=locmem({"flash.html": FLASH}), HX_MESSAGES_TEMPLATE=setting):
+        with caplog.at_level("WARNING", logger="dj_hx"):
+            r = browser.delete("/lib/flash-removed/", **PARTIAL)
+        assert r.status_code == 200 and r.content == b""
+        assert [type(f) for f in r.hx_findings] == [error]
+        assert sum(complaint in m for m in caplog.messages) == 1
+        with pytest.raises(error, match=re.escape(complaint)):
+            HxTestClient().hx_delete("/lib/flash-removed/")  # a test still fails on it
+    assert b'<p class="flash">Deleted!</p>' in browser.get("/lib/").content  # not shown, so kept for the next page
+
+
 def test_messages_bridge_skips_streamed_and_non_html_responses(client):
     r = client.hx_get("/lib/flash-file/")
     assert r.status_code == 200 and r.content == b"[]"
@@ -236,7 +272,9 @@ def test_htmx_request_without_request_type_is_a_protocol_error(client):
     with pytest.raises(HxProtocolError, match="needs htmx 4"):
         client.get("/lib/plain/", HTTP_HX_REQUEST="true")  # no verb: the guard alone
     with override_settings(DEBUG=True), pytest.raises(HxProtocolError, match="Under DEBUG this raises"):
-        client.get("/lib/", HTTP_HX_REQUEST="true")  # the verb raises inside the view
+        # The verb raises inside the view. A plain client, because HxTestClient would raise the guard's
+        # recorded copy of the same message, and the test would pass whether or not the verb raised.
+        Client().get("/lib/", HTTP_HX_REQUEST="true")
 
 
 def test_in_production_a_missing_request_type_is_answered_as_full_and_logged(caplog):

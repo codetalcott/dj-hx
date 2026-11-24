@@ -17,6 +17,8 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: ruff check .
       - run: mypy dj_hx
+      # README's idioms checked as a project checks its views: strict, dj-hx's modules analysed but not reported.
+      - run: mypy --strict --follow-imports=silent tests/typed_consumer.py
 
   test:
     runs-on: ubuntu-latest

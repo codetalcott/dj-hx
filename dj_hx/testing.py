@@ -33,17 +33,22 @@ import logging
 import sys
 import threading
 import warnings
-from collections.abc import Mapping
+from collections.abc import Callable, Generator, Iterable, Iterator, Mapping
 from contextlib import contextmanager, nullcontext
 from contextvars import ContextVar
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import urlencode
 
 from django.core.exceptions import ImproperlyConfigured
 from django.test import Client
 
-from .errors import HxLintError, HxRedirectError, HxUndefinedVariable
+from .errors import HxError, HxLintError, HxRedirectError, HxUndefinedVariable
 from .guard import guard
+
+if TYPE_CHECKING:
+    from django.core.checks import CheckMessage
+    from django.test.client import _MonkeyPatchedWSGIResponse  # django-stubs' name for what the test client returns
 
 __all__ = ["HxTestClient", "HxLintWarning", "hx_check_messages", "assert_no_hx_check_issues"]
 
@@ -61,14 +66,22 @@ def hx_headers(*, full: bool = False) -> dict[str, str]:
 
 
 class HxTestClient(Client):
-    def __init__(self, *args, strict: bool = True, lint: bool = True, lint_ignore=(), undefined: bool = True, **kwargs):
+    def __init__(
+        self,
+        *args: Any,
+        strict: bool = True,
+        lint: bool = True,
+        lint_ignore: Iterable[str] = (),
+        undefined: bool = True,
+        **kwargs: Any,
+    ) -> None:
         super().__init__(*args, **kwargs)
         self.strict = strict
         self.lint = lint
         self.lint_ignore = tuple(lint_ignore)
         self.undefined = undefined
 
-    def request(self, **request):
+    def request(self, **request: Any) -> _MonkeyPatchedWSGIResponse:
         where = f"{request.get('REQUEST_METHOD', 'GET')} {request.get('PATH_INFO', '')}"
         with _collecting_lookups() if self.undefined else nullcontext() as lookups:
             response = super().request(**request)
@@ -83,10 +96,10 @@ class HxTestClient(Client):
         if self.strict and findings:
             raise _with_the_rest(findings)
         if self.lint:
-            response.hx_lint = self._lint(response, where)
+            response.hx_lint = self._lint(response, where)  # type: ignore[attr-defined]
         return response
 
-    def _lint(self, response, where):
+    def _lint(self, response: _MonkeyPatchedWSGIResponse, where: str) -> list[Any]:
         from django.conf import settings
 
         from . import hxlint
@@ -113,7 +126,14 @@ class HxTestClient(Client):
 
     # ---------------------------------------------------------------- helpers
 
-    def _hx(self, send, url, full, follow, kwargs):
+    def _hx(
+        self,
+        send: Callable[..., _MonkeyPatchedWSGIResponse],
+        url: str,
+        full: bool,
+        follow: bool | None,
+        kwargs: dict[str, Any],
+    ) -> _MonkeyPatchedWSGIResponse:
         response = send(url, follow=bool(follow), **hx_headers(full=full), **kwargs)
         if full and follow is None and 300 <= response.status_code < 400:
             raise HxRedirectError(
@@ -124,24 +144,62 @@ class HxTestClient(Client):
             )
         return response
 
-    def hx_get(self, url, data=None, *, full=False, follow=None, **kwargs):
+    def hx_get(
+        self, url: str, data: Any = None, *, full: bool = False, follow: bool | None = None, **kwargs: Any
+    ) -> _MonkeyPatchedWSGIResponse:
         """GET as htmx (``data`` -> query string)."""
         return self._hx(self.get, url, full, follow, {"data": data, **kwargs})
 
-    def hx_post(self, url, data=None, *, full=False, follow=None, json=None, **kwargs):
+    def hx_post(
+        self,
+        url: str,
+        data: Any = None,
+        *,
+        full: bool = False,
+        follow: bool | None = None,
+        json: Any = None,
+        **kwargs: Any,
+    ) -> _MonkeyPatchedWSGIResponse:
         """POST as htmx; ``data`` is form-encoded like FormData, ``json=`` sends JSON."""
         if json is not None:
             data = _json.dumps(json)
             kwargs.setdefault("content_type", "application/json")
         return self._hx(self.post, url, full, follow, {"data": data, **kwargs})
 
-    def hx_put(self, url, data=None, *, full=False, follow=None, json=None, **kwargs):
+    def hx_put(
+        self,
+        url: str,
+        data: Any = None,
+        *,
+        full: bool = False,
+        follow: bool | None = None,
+        json: Any = None,
+        **kwargs: Any,
+    ) -> _MonkeyPatchedWSGIResponse:
         return self._hx(self.put, url, full, follow, self._body(data, json, kwargs))
 
-    def hx_patch(self, url, data=None, *, full=False, follow=None, json=None, **kwargs):
+    def hx_patch(
+        self,
+        url: str,
+        data: Any = None,
+        *,
+        full: bool = False,
+        follow: bool | None = None,
+        json: Any = None,
+        **kwargs: Any,
+    ) -> _MonkeyPatchedWSGIResponse:
         return self._hx(self.patch, url, full, follow, self._body(data, json, kwargs))
 
-    def hx_delete(self, url, data=None, *, full=False, follow=None, json=None, **kwargs):
+    def hx_delete(
+        self,
+        url: str,
+        data: Any = None,
+        *,
+        full: bool = False,
+        follow: bool | None = None,
+        json: Any = None,
+        **kwargs: Any,
+    ) -> _MonkeyPatchedWSGIResponse:
         """DELETE as htmx. htmx 4 sends DELETE parameters in the query string: pass them in ``url``."""
         if json is not None:
             data = _json.dumps(json)
@@ -149,7 +207,7 @@ class HxTestClient(Client):
         return self._hx(self.delete, url, full, follow, {"data": data, **kwargs})
 
     @staticmethod
-    def _body(data, json, kwargs):
+    def _body(data: Any, json: Any, kwargs: dict[str, Any]) -> dict[str, Any]:
         if json is not None:
             return {"data": _json.dumps(json), "content_type": "application/json", **kwargs}
         if isinstance(data, dict):
@@ -157,7 +215,7 @@ class HxTestClient(Client):
         return {"data": data or "", "content_type": "application/x-www-form-urlencoded", **kwargs}
 
 
-def _with_the_rest(findings):
+def _with_the_rest(findings: list[HxError]) -> HxError:
     """
     The first finding, to raise, carrying the others in its message: a response with three findings
     is fixed in one run, not three. The type stays the first's, so ``pytest.raises(HxNoSwap)`` holds.
@@ -200,7 +258,7 @@ class UndefinedLookup:
     tag: str  # the tag or ``{{ }}`` that reads it
     included: bool = False  # a top-level name read by a template an {% include %} renders
 
-    def __str__(self):
+    def __str__(self) -> str:
         line = "" if self.line is None else f":{self.line}"
         where = f"{self.template}{line}: {self.variable!r} in {self.tag}"
         if self.included:
@@ -211,14 +269,15 @@ class UndefinedLookup:
 class _Lookups:
     """The lookups that fail while one request runs, in its context (``_COLLECTING``)."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.failed: list[tuple] = []  # (variable, origin, token, included); judged once the request is over
         self.debug_names = _debug_processor_names()
 
-    def take(self, record) -> None:
-        params: tuple = getattr(record.exc_info[1], "params", ())
+    def take(self, record: logging.LogRecord) -> None:
+        # _is_failed_lookup() has passed: the record carries the exception and a tuple of args.
+        params: tuple[Any, ...] = getattr(record.exc_info[1] if record.exc_info else None, "params", ())
         current = params[1] if len(params) == 2 else _UNKNOWN
-        variable = str(record.args[0])
+        variable = str(cast(tuple[Any, ...], record.args)[0])
         if _defaulted():
             return
         nodes = _nodes_being_rendered()
@@ -271,7 +330,7 @@ def _debug_processor_names() -> frozenset[str]:
     return frozenset({"debug", "sql_queries"}) if configured else frozenset()
 
 
-def _is_session(current) -> bool:
+def _is_session(current: object) -> bool:
     """A Django session, which is request data but not a Mapping; never imported here, so no app is needed."""
     sessions = sys.modules.get("django.contrib.sessions.backends.base")  # a session exists only once it is imported
     return sessions is not None and isinstance(current, sessions.SessionBase)
@@ -285,7 +344,7 @@ def _is_index(bit: str) -> bool:
     return True
 
 
-def _is_a_slip(variable: str, current, node, debug_names: frozenset[str]) -> bool:
+def _is_a_slip(variable: str, current: object, node: Any, debug_names: frozenset[str]) -> bool:
     """
     Whether a failed lookup is the template author's to fix: a top-level name nobody supplies, or an
     attribute an object lacks (``{{ user.emial }}``, ``{{ items.length }}``). Not counted, because the
@@ -336,7 +395,7 @@ def _defaulted() -> bool:
         del frame
 
 
-def _tag(token) -> str:
+def _tag(token: Any) -> str:
     from django.template.base import TokenType
 
     if token is None:
@@ -344,7 +403,7 @@ def _tag(token) -> str:
     return f"{{{{ {token.contents} }}}}" if token.token_type is TokenType.VAR else f"{{% {token.contents} %}}"
 
 
-def _nodes_being_rendered():
+def _nodes_being_rendered() -> Generator[Any, None, None]:
     """The template nodes on this thread's stack, innermost (the tag or ``{{ }}`` being rendered) first."""
     from django.template.base import Node
 
@@ -359,7 +418,7 @@ def _nodes_being_rendered():
         del frame
 
 
-def _is_failed_lookup(record) -> bool:
+def _is_failed_lookup(record: logging.LogRecord) -> bool:
     """Django's record of a name or attribute that does not exist; not a lookup that raised an exception Django silences."""
     from django.template.base import VariableDoesNotExist
 
@@ -368,6 +427,7 @@ def _is_failed_lookup(record) -> bool:
         isinstance(record.msg, str)
         and record.msg.startswith(_FAILED_LOOKUP)
         and isinstance(exception, VariableDoesNotExist)
+        and isinstance(record.args, tuple)
         and bool(record.args)
     )
 
@@ -379,7 +439,7 @@ class _Gate(logging.Filter):
     delivered before its level was lowered to DEBUG, so no handler sees a record it would not have seen.
     """
 
-    def filter(self, record):
+    def filter(self, record: logging.LogRecord) -> bool:
         if _is_failed_lookup(record):
             lookups = _COLLECTING.get()
             if lookups is not None:
@@ -398,7 +458,7 @@ _saved: dict[str, int] = {}  # the logger's own level and the level it delivered
 
 
 @contextmanager
-def _collecting_lookups():
+def _collecting_lookups() -> Iterator[_Lookups]:
     """
     Collect the template lookups that fail while the block runs. The first request lowers the logger's
     level and attaches the gate; the last one to finish, raising or not, takes both back.
@@ -445,7 +505,7 @@ def _why_blind() -> str | None:
     return None
 
 
-def hx_check_messages(*, include_warnings: bool = True) -> list:
+def hx_check_messages(*, include_warnings: bool = True) -> list[CheckMessage]:
     """dj-hx's system-check messages; pytest does not run checks, so call this from a test."""
     from django.conf import settings
     from django.core.checks import ERROR, run_checks

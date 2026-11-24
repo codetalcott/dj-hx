@@ -9,7 +9,13 @@ reads them, on purpose: a handler that branches on an element id is dead code
 the moment the template is edited.
 """
 
+from __future__ import annotations
+
+from typing import TypeVar
+
 from django.conf import settings
+from django.http import HttpRequest
+from django.http.response import HttpResponseBase
 from django.utils.cache import patch_vary_headers
 
 from .errors import HxProtocolError
@@ -17,6 +23,8 @@ from .errors import HxProtocolError
 REQUEST_HEADER = "HX-Request"
 REQUEST_TYPE_HEADER = "HX-Request-Type"
 VARY_HEADERS = ("HX-Request", "HX-Request-Type")
+
+_Response = TypeVar("_Response", bound=HttpResponseBase)
 
 __all__ = [
     "REQUEST_HEADER",
@@ -33,12 +41,12 @@ __all__ = [
 ]
 
 
-def is_htmx(request) -> bool:
+def is_htmx(request: HttpRequest) -> bool:
     """``HX-Request: true``."""
     return request.headers.get(REQUEST_HEADER) == "true"
 
 
-def request_type(request) -> str | None:
+def request_type(request: HttpRequest) -> str | None:
     """
     ``"full"``, ``"partial"``, or ``None`` for a browser.
 
@@ -59,7 +67,7 @@ def request_type(request) -> str | None:
     raise HxProtocolError(protocol_message(request))
 
 
-def protocol_message(request) -> str:
+def protocol_message(request: HttpRequest) -> str:
     """What the verb raises under ``DEBUG`` and the guard records: one wording for both."""
     return (
         f"{who(request)}: HX-Request is set but HX-Request-Type is not; this needs htmx 4. "
@@ -68,27 +76,27 @@ def protocol_message(request) -> str:
     )
 
 
-def wants_page(request) -> bool:
+def wants_page(request: HttpRequest) -> bool:
     """A browser, a boosted link, or a control that targets the body."""
     return request_type(request) != "partial"
 
 
-def wants_fragment(request) -> bool:
+def wants_fragment(request: HttpRequest) -> bool:
     """A control that targets an element."""
     return request_type(request) == "partial"
 
 
-def current_url(request) -> str | None:
+def current_url(request: HttpRequest) -> str | None:
     return request.headers.get("HX-Current-URL")
 
 
-def vary_on_hx(response):
+def vary_on_hx(response: _Response) -> _Response:
     """Every URL that answers differently by request type must say so to caches."""
     patch_vary_headers(response, VARY_HEADERS)
     return response
 
 
-def who(request) -> str:
+def who(request: HttpRequest) -> str:
     """``contacts_view()`` for messages: the routed view, else method and path."""
     match = getattr(request, "resolver_match", None)
     func = getattr(match, "func", None)
