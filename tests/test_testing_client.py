@@ -51,12 +51,12 @@ def test_non_html_and_empty_responses_are_skipped(client):
 
 
 def test_the_client_guards_without_the_middleware(client):
-    from dj_hx import HxRedirectIntoFragment
+    from dj_hx import HxPageIntoFragment
 
     middleware = [m for m in __import__("django.conf").conf.settings.MIDDLEWARE if "dj_hx" not in m]
     with override_settings(MIDDLEWARE=middleware):
-        with pytest.raises(HxRedirectIntoFragment):
-            client.hx_post("/lib/plain-redirect/")
+        with pytest.raises(HxPageIntoFragment):
+            client.hx_get("/lib/bare-page/")
         assert "HX-Request" in client.hx_get("/lib/")["Vary"]  # the verbs set it themselves
 
 

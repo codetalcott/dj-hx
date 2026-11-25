@@ -40,6 +40,17 @@ def plain_redirect(request):
     return HttpResponseRedirect("/lib/")  # bypassed the verbs
 
 
+def redirect_to_page(request):
+    return HttpResponseRedirect("/lib/bare-page/")  # a login check's shape: a 302 to a whole page
+
+
+def htmx_navigates(request):
+    messages.success(request, "Moved")
+    response = HttpResponse("<!doctype html><html><body>never swapped</body></html>", status=int(request.GET["status"]))
+    response[request.GET["header"]] = request.GET["value"]
+    return response  # django-htmx's HttpResponseClientRedirect, HttpResponseClientRefresh and HttpResponseLocation
+
+
 def leave(request):
     return navigate(request, "lib-index")  # a login check in front of a fragment view
 
@@ -175,6 +186,8 @@ urlpatterns = [
     path("lib/count/", count),
     path("lib/save/", save),
     path("lib/plain-redirect/", plain_redirect),
+    path("lib/redirect-to-page/", redirect_to_page),
+    path("lib/navigates/", htmx_navigates),
     path("lib/leave/", leave),
     path("lib/flash-leave/", flash_leave),
     path("lib/things/", things),

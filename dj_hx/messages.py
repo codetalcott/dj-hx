@@ -28,7 +28,7 @@ from django.http import HttpRequest
 from django.http.response import HttpResponseBase
 
 from .errors import HxError, HxMessagesUnconfigured
-from .guard import findings_of
+from .guard import findings_of, navigates
 from .request import who
 from .verbs import check_root_id, render_partial, wrap_partial
 
@@ -66,8 +66,8 @@ def pending_messages(request: HttpRequest) -> int:
 
 def bridge_messages(request: HttpRequest, response: HttpResponseBase) -> None:
     """Append pending messages to a fragment response; records a finding if it cannot, and never raises one."""
-    if getattr(response, "hx_kind", None) == "navigate":
-        return  # htmx swaps nothing and loads a page, which shows the messages
+    if navigates(response):
+        return  # htmx swaps nothing and loads a page (navigate(), HX-Redirect, HX-Refresh, HX-Location), which shows them
     if not pending_messages(request):
         return
     configured = messages_template()
