@@ -620,6 +620,20 @@ project, and a deliberate 204 under `hx-swap="none"` would still be recorded.
 The views go on reading `request.htmx.target`. The verbs, `{% act %}` and the
 start-up checks on interactions come only by converting them.
 
+Converting costs lines. Three resources of one private app were ported from a
+generic CRUD layer (django_ultimate_crud) to plain views and the verbs, on
+2026-11-23 and 2026-11-24. Counted with `wc -l` over ruff-formatted code, each
+came to 1.6, 1.9 and 2.1 times the lines of its configuration plus its own
+templates: 250 to 355 lines a resource. The most was for the one with filters,
+three bulk actions and a CSV export. What the lines bought:
+
+- `hx_map` resolves every control in the ported templates;
+- each port fixed bugs that no existing test had caught: a Create or Edit that
+  was dead, and a deleted row left on screen by a 204.
+
+Taking out what the three still share would mean a view factory, which is the
+generic layer again.
+
 ### `{% url %}` tags
 
 Measured 2026-11-24 on Python 3.13.7, on four templates: an unknown name, a
