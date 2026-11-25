@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.4.3 (2026-11-25)
+
+Two event-pairing fixes from the same six public Django projects: `W025` there went from 7 to 5 and `W024` from 3 to
+5, every `W024` left being an event a static JavaScript file listens for. No interface changes.
 
 ### Fixed
 
