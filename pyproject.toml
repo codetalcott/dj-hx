@@ -1,6 +1,6 @@
 [project]
 name = "dj-hx"
-version = "0.4.1"
+version = "0.4.2"
 description = "Handler-first htmx 4 for Django: the view names the outcome, the template keeps the controls. Also, for any Django project: {% url %} tags checked at manage.py check, undefined template names caught in tests"
 authors = [{name = "William Talcott"}]
 readme = "README.md"

@@ -29,8 +29,8 @@ Facts to hold while writing code against this package:
 Not on PyPI; install from the release tag:
 
 ```sh
-pip install "dj-hx @ git+https://github.com/codetalcott/dj-hx@v0.4.1"
-pip install "dj-hx[partials] @ git+https://github.com/codetalcott/dj-hx@v0.4.1"   # Django 5.2
+pip install "dj-hx @ git+https://github.com/codetalcott/dj-hx@v0.4.2"
+pip install "dj-hx[partials] @ git+https://github.com/codetalcott/dj-hx@v0.4.2"   # Django 5.2
 ```
 
 ```python
