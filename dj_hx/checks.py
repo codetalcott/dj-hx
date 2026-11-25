@@ -181,7 +181,9 @@ def check_middleware(app_configs=None, **kwargs):
                     "A message added while answering a fragment request has nowhere to go and would "
                     "appear on some later page load (HxTestClient raises HxMessagesUnconfigured). Set "
                     'HX_MESSAGES_TEMPLATE = "layout.html#messages", where the partial\'s root element is '
-                    'id="messages" and it iterates {{ messages }}.'
+                    'id="messages" and it iterates {{ messages }}. If your fragments show their own messages '
+                    '(an {% include %} of the messages template), add "dj_hx.W003" to SILENCED_SYSTEM_CHECKS '
+                    "instead: a fragment that leaves messages unshown is still recorded."
                 ),
                 id="dj_hx.W003",
             )

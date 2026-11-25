@@ -86,8 +86,8 @@ against.
   `django.shortcuts.render` to an htmx request.** Say what happened:
   `redirect`, `removed`, `text`, `render(request, template, partial)`, and
   `navigate` when the answer is another page whatever the control targets (a
-  login check). A response no verb built that answers a partial request is
-  recorded (`HxBareResponse`).
+  login check). With `HX_REQUIRE_VERBS`, a response no verb built that answers
+  a partial request is recorded (`HxBareResponse`), and so is any 3xx.
 - **Never read `HX-Source` or `HX-Target`.** The real question is whether the
   client asked for a page or a fragment: `wants_page(request)`.
 - **Announce facts; do not update regions.** Prefer `.trigger("contacts-changed")`
@@ -154,7 +154,13 @@ MIDDLEWARE = [
 ]
 
 HX_MESSAGES_TEMPLATE = "layout.html#messages"   # optional; see the messages bridge
+HX_REQUIRE_VERBS = True                         # optional; see below
 ```
+
+Set `HX_REQUIRE_VERBS` in a project written with the verbs: on a partial request
+it also records any 3xx and any response no verb built. Leave it out to add the
+guard beside django-htmx and keep the views as they are (see
+[the htmx layer](#the-htmx-layer)).
 
 On Django 5.2, `{% partialdef %}` comes from django-template-partials,
 which registers nothing globally. Install it, add it to `INSTALLED_APPS`, and
@@ -210,7 +216,11 @@ on a fragment response it would appear on some later page load. With
 `HX_MESSAGES_TEMPLATE = "layout.html#messages"`, `HxMiddleware` renders pending
 messages through that partial and appends them to fragment responses as
 `<hx-partial hx-target="#messages" hx-swap="outerHTML">`. It peeks before it
-consumes. The partial's root is `id="messages"` and it iterates `messages`:
+consumes. A fragment whose own template shows the messages (an `{% include %}`
+of the messages template) has consumed them, and gets nothing appended. A
+response htmx will not swap (`navigate()`, `HX-Redirect`, `HX-Refresh`,
+`HX-Location`) leaves them for the page htmx loads. The partial's root is
+`id="messages"` and it iterates `messages`:
 
 ```django
 {% partialdef messages inline %}
@@ -320,15 +330,17 @@ Every row of the design's silent-failure catalogue has a test in `tests/`, and a
 entry in [FAILURES.md](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md).
 The verbs raise where the outcome is certain at call time; everything else is
 recorded on `response.hx_findings`, logged to the `dj_hx` logger, and raised
-by `HxTestClient`. Nothing is gated on `DEBUG` that a test needs.
+by `HxTestClient`. Nothing is gated on `DEBUG` that a test needs. A response
+carrying `HX-Redirect`, `HX-Refresh: true` or `HX-Location` is not judged,
+because htmx 4 obeys those headers before any swap.
 
 | Failure | What happens | Full entry |
 |---|---|---|
-| A page answers a request that targets an element | `page()` raises `HxPageIntoFragment` | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-page-answers-a-request-that-targets-an-element) |
+| A page answers a request that targets an element | `page()` raises `HxPageIntoFragment`; the guard records it for any other whole page (its first tag `<html>` or `<body>`), whoever built it | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-page-answers-a-request-that-targets-an-element) |
 | A fragment answers a boosted or body-targeted request | `fragment()` / `text()` record `HxFragmentIntoPage` | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-fragment-answers-a-boosted-or-body-targeted-request) |
-| A 3xx answers a partial request | `redirect()` raises; the guard records `HxRedirectIntoFragment`, `APPEND_SLASH`'s 301 and `login_required`'s 302 included; `navigate()` leaves the page | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-3xx-answers-a-partial-request) |
+| A 3xx answers a partial request | `redirect()` raises; fetch follows any other 3xx with the request's headers, so a page it reaches is recorded there, `login_required`'s login page included; the guard records `APPEND_SLASH`'s 301, and `HX_REQUIRE_VERBS` every 3xx (`HxRedirectIntoFragment`); `navigate()` leaves the page | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-3xx-answers-a-partial-request) |
 | A 204 answers a partial request | `HxNoSwap`: htmx 4 leaves the target untouched | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-204-answers-a-partial-request) |
-| A response no verb built answers a partial request | `HxBareResponse` | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-response-no-verb-built-answers-a-partial-request) |
+| A response no verb built answers a partial request | `HxBareResponse`, under `HX_REQUIRE_VERBS` | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-response-no-verb-built-answers-a-partial-request) |
 | Messages added on a fragment with no messages template | `HxMessagesUnconfigured` | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#messages-added-on-a-fragment-with-no-messages-template) |
 | A partial's root element is not its name | `HxPartialRootId` at the render; the messages bridge records it, and the messages wait for the next page | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-partials-root-element-is-not-its-name) |
 | partial names a partial the template does not define | `HxUnknownPartial`, listing the partials it does; the messages bridge records it | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#partial-names-a-partial-the-template-does-not-define) |
@@ -404,7 +416,8 @@ finding, a warning otherwise; `lint_ignore=(...)` or `HX_LINT_IGNORE`
 silence a rule). Recorded findings raise: the first, with every other finding
 on that response listed in its message, so one run shows them all;
 `HxTestClient(strict=False)` turns that off. A 3xx to a full request must be chosen with `follow=`, because
-htmx's fetch follows it and the browser never sees it.
+htmx's fetch follows it and the browser never sees it. A 3xx to a partial request is judged where it leads:
+`follow=True` follows it with the same headers, as fetch does.
 
 A project template that reads a name nobody supplies, or an attribute an
 object lacks, raises `HxUndefinedVariable`, naming each one and its
@@ -564,8 +577,8 @@ not a browser.
 | A view that | django-htmx 1.29.0 | djxi 0.1.9 | dj-hx |
 |---|---|---|---|
 | answers a partial request with a 204 | goes out as is; nothing logged | same | `HxNoSwap` recorded, raised in tests |
-| answers a partial request with a 302 | goes out as is; nothing logged | same | `redirect()` raises; the guard records any other 3xx |
-| answers a partial request with `django.shortcuts.render` | the whole page goes out; nothing logged | same | `HxBareResponse` recorded |
+| answers a partial request with a 302 | goes out as is; nothing logged | same | `redirect()` raises; a page any other 3xx leads to is recorded, and `HX_REQUIRE_VERBS` records the 3xx itself |
+| answers a partial request with `django.shortcuts.render` | the whole page goes out; nothing logged | same | `HxPageIntoFragment` recorded |
 | fires an event | `trigger_client_event(r, "x")` writes `{"x": {}}`, no target | `set_trigger("x")` writes `x`, no target | `.trigger()` always writes a target (why: measured under htmx 4 facts) |
 | writes an htmx 2 header | `trigger_client_event(..., after="swap")` writes `HX-Trigger-After-Swap`, which htmx 4.0.2 does not read; the docs do not label it | no such helper | none offered |
 | reads the target | `request.htmx.target`, `.source` | the same | not offered |
@@ -584,6 +597,28 @@ Use django-htmx when you want a thin layer over the headers and will use
 project is still on or moving from htmx 2. Use dj-hx when you want the server
 to refuse, record or raise on what htmx 4 would do silently, and accept the
 stance that comes with it.
+
+Or keep django-htmx and add dj-hx beside it for the guard alone: `"dj_hx"` in
+`INSTALLED_APPS` and `HxMiddleware` after `MessageMiddleware`, with the views
+unchanged and `HX_REQUIRE_VERBS` left out. The guard then records only what goes
+wrong whoever built the response: a 204, a whole page answering a partial
+request, and the page a redirect leads to, since fetch follows a redirect with
+the request's headers. This was measured 2026-11-24 on Python 3.13.7 with
+django-htmx 1.29.0 and, in Chromium, htmx 4.0.2. The workload was a miniature
+that copies five of [matorral]'s (8095e52) django-htmx response patterns:
+
+- a `TemplateResponse` of a partial when `request.htmx`;
+- a POST that 302s to the list's URL;
+- the messages include as the reply, with `HX-Trigger`;
+- `HttpResponseClientRedirect`;
+- `HttpResponseClientRefresh`.
+
+None of the five recorded anything, and each message showed once. A seeded 204,
+`django.shortcuts.render` of a page and a 302 to a login page were each
+recorded. That is a reconstruction of one project's patterns, not a run of the
+project, and a deliberate 204 under `hx-swap="none"` would still be recorded.
+The views go on reading `request.htmx.target`. The verbs, `{% act %}` and the
+start-up checks on interactions come only by converting them.
 
 ### `{% url %}` tags
 
@@ -668,3 +703,4 @@ MIT
 
 [hx-flask]: https://github.com/codetalcott/hx-flask
 [dj-fixi]: https://github.com/codetalcott/dj-fixi
+[matorral]: https://github.com/matorral-project/matorral

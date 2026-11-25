@@ -10,7 +10,8 @@ outer sync (E013), a self-replacing control, click-to-edit's ``hx-target:inherit
 ``closest #<partial>`` (E012), and a ``<form method="post" hx-action>`` (E011); the other forms they accept
 are read from htmx 4.0.2's source. Then what the swaps E013 rejects do instead, and what an ``hx-select`` that
 reaches a control does (E026), with the ``hx-select=""`` that stops an inherited one. tests/test_interactions.py
-shows the desk passes every check.
+shows the desk passes every check. Last, two facts the guard rests on: fetch follows a redirect with the request's
+headers, and a whole page answering a partial request lands inside the target.
 """
 
 from urllib.parse import urlparse
@@ -376,6 +377,20 @@ def test_an_own_empty_hx_select_stops_the_inherited_one(page, live, desk):
 
 
 # ------------------------------------------------------------------ what the guard records
+
+def test_fetch_follows_a_redirect_with_the_requests_headers(page, live, desk):
+    # Why the guard leaves a plain 3xx to the request fetch makes when it follows it: that request is a partial one
+    # too, so a page there is recorded there, and a fragment there is swapped as the redirect meant.
+    open_desk(page, live)
+    page.evaluate("""() => {
+        document.body.insertAdjacentHTML('beforeend', '<div id="slot"></div><button id="ask" hx-post="/desk/moved/" hx-target="#slot">ask</button>');
+        htmx.process(document.getElementById('ask'));
+    }""")
+    page.locator("#ask").click()
+    finished(page, 1)
+    expect(page.locator("#slot")).to_have_text("GET partial")  # a 302 after a POST is followed as a GET
+    assert page.console_errors == []
+
 
 WHOLE_PAGE = "<!doctype html><html><head><title>Another page</title></head><body><h1>Another page</h1></body></html>"
 

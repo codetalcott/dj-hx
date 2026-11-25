@@ -21,9 +21,9 @@ No virtualenv is checked in: `.venv/` is gitignored, and an old local one can po
 uv venv <venv> && uv pip install -p <venv>/bin/python "django~=6.1.0" pytest pytest-django ruff mypy django-stubs "playwright==1.64.0"  # below Django 6, add django-template-partials
 <venv>/bin/python -m playwright install chromium
 
-<venv>/bin/python -m pytest -q                      # 447 tests, ~18 s
-<venv>/bin/python -m pytest -q -m "not browser"     # 406, ~3 s, skipping Chromium
-<venv>/bin/python -m pytest -q -m browser           # the 41 Playwright tests alone, ~14 s
+<venv>/bin/python -m pytest -q                      # 468 tests, ~19 s
+<venv>/bin/python -m pytest -q -m "not browser"     # 425, ~4 s, skipping Chromium
+<venv>/bin/python -m pytest -q -m browser           # the 43 Playwright tests alone, ~15 s
 <venv>/bin/python -m pytest tests/test_verbs.py::test_text_escapes
 <venv>/bin/ruff check .
 <venv>/bin/mypy dj_hx                                # typed: the Typing :: Typed classifier is a claim, and these two back it
@@ -76,8 +76,11 @@ set them.
 
 **Raise vs. record.** A verb raises only when the outcome is certain at call time (`page()` into a partial
 request, `redirect()` into a partial request). Everything else is appended to `response.hx_findings` and
-logged to the `dj_hx` logger. [guard.py](dj_hx/guard.py) records the post-hoc ones (3xx, 204, a missing
-`HX-Request-Type`, `APPEND_SLASH`). [middleware.py](dj_hx/middleware.py) never raises a finding: the
+logged to the `dj_hx` logger. [guard.py](dj_hx/guard.py) records the post-hoc ones (a 204, a whole page by
+htmx 4.0.2's own test, `APPEND_SLASH`, a missing `HX-Request-Type`; under `HX_REQUIRE_VERBS` also any 3xx and a
+response no verb built) and judges no body htmx obeys a header over (`navigates()`). A plain 3xx is left to the
+request fetch makes when it follows it, which carries the same headers (measured in Chromium), so a project on
+django-htmx keeps its views; do not record it by default. [middleware.py](dj_hx/middleware.py) never raises a finding: the
 messages bridge records a messages partial that is missing or has the wrong root, and keeps the messages
 for the next page; [testing.py](dj_hx/testing.py) is where findings become exceptions. Keep that split: a
 false positive must not be able to 500 in production. A test that a verb raises uses a plain `Client`:

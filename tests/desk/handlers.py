@@ -13,14 +13,17 @@ interactions set aside, and puts them back after.
   The browser test measures where each event lands once the swap has removed the row.
 - ``cross_off`` answers a row with ``removed()`` and a message, which the messages bridge appends as an
   ``<hx-partial>``; the browser test measures which swaps still remove the row (``hx_map`` warns on the rest).
+- ``moved`` is a plain 302 to ``echo``, which answers with the method and ``HX-Request-Type`` it received: the
+  browser test measures what fetch keeps when it follows a redirect, which is why the guard leaves a plain 3xx
+  to the request that follows it.
 """
 
 import json
 
 from django.contrib import messages
-from django.http import Http404
+from django.http import Http404, HttpResponseRedirect
 
-from dj_hx import interaction, page, removed
+from dj_hx import interaction, page, removed, text
 
 MEASURED = ("morph", "sync", "selfswap", "retitle", "nearest")
 TITLES = ("Draft", "Revised", "Final")
@@ -73,6 +76,14 @@ def cross_off(request):
     """The row is gone, and a message says so: the reply's body is empty beside the bridged <hx-partial>."""
     messages.success(request, "Crossed off.")
     return removed(request)
+
+
+def moved(request):
+    return HttpResponseRedirect("/desk/echo/")  # no verb: what a project on django-htmx writes
+
+
+def echo(request):
+    return text(request, f"{request.method} {request.headers.get('HX-Request-Type')}")
 
 
 @interaction("POST", partial="desk.html#notify", context=desk_context, refuses=(AlreadyNotified,), triggers=("notified",))
