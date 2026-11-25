@@ -486,10 +486,13 @@ Site-packages, wherever dj-hx skips it (`hx_lint`, `hx_map`, the checks,
 `hx_map` classifies every control as full or partial by htmx 4's own rule
 (the target is `body`, an `hx-select` reaches it, its own or an ancestor's
 `hx-select:inherited`, or the element is boosted),
-resolves it through `{% url %}`, `{% act %}` or the literal path, and checks it
+resolves it through `{% url %}` (an application namespace reaching its default
+instance, as `reverse()` does), `{% act %}` or the literal path, and checks it
 against the verbs its view calls, with `if request.method == "DELETE":` branches
-attributed to that method; a control whose view returns only JSON is an error,
-since htmx swaps it in as text. A control with `hx-swap="none"` (its own or an
+attributed to that method. A control whose view returns only a `JsonResponse` is
+an error, since htmx swaps it in as text. A dict a view's code returns is not
+JSON in Django: it is a class-based view's `get_context_data`, or an
+interaction's context. A control with `hx-swap="none"` (its own or an
 ancestor's `hx-swap:inherited`) is not checked for what its view answers: the
 answer is put nowhere. Nor is one that reaches a view in site-packages, by
 `{% url %}` or by path (allauth's `account_login`, `admin:index`): the map

@@ -556,7 +556,8 @@ one (`pip install --user`) included.
 `fragment()` and announces its `triggers=`; an `{% act %}` naming no interaction, or with `dj_hx.urls` not
 included, is an error) or the literal path, and errors when a partial control reaches a view that only calls `page`, or a full
 control reaches one that only calls `fragment`/`text`/`removed`, or a control reaches a view whose every return
-is JSON (a warning when one return is); `navigate` says nothing about shape, so a view that calls it and `page` is
+is a `JsonResponse` (a warning when one return is; a returned dict is not JSON in Django: `get_context_data`'s, an
+interaction's context); an application namespace in `{% url %}` resolves to its default instance, as `reverse()` does; `navigate` says nothing about shape, so a view that calls it and `page` is
 still page-only. A control with `hx-swap="none"` (its own or an ancestor's `hx-swap:inherited`) is not checked
 for what its view answers, since the answer is put nowhere; nor is one that reaches a view in site-packages, by
 `{% url %}` or by path (allauth's `account_login`, `admin:index`), which the map does not read. Limits: boost

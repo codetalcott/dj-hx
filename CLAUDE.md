@@ -153,7 +153,8 @@ for `{% partialdef %}` bodies. E022 reads `{% url %}` through `url_tags()`, whic
 a tag in `{% verbatim %}` is text to Django, and `strip_template_syntax` would read it. A tag written across lines
 is text before Django 6.2 and a tag from it (`templates.tags_span_lines()` asks the lexer); the canary job found that.
 It reverses through `django.urls.reverse()`, taking each placeholder from the converter the resolver holds
-for that parameter (the namespace walk mirrors `reverse()`'s), never from the route string; a keyword naming
+for that parameter (the namespace walk mirrors `reverse()`'s: `hxmap.namespace_walk()`, which the map resolves
+`{% url %}` names through too), never from the route string; a keyword naming
 a route's extra kwarg is passed that default. It skips `{% url ... as var %}`: Django's documented form for a
 view that may be missing, which admin's own templates use, so an Error there would stop `migrate`. W024 and W025
 take `hxmap.map_with_interactions()` and call `mapcore.unpaired_events()` on it, the pairing `hx_map` warns

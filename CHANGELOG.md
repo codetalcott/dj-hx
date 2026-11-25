@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+From a run of the checks on six public Django projects, where 61 of `hx_map`'s 64 Errors were false.
+
+### Fixed
+
+- `hx_map` resolves a `{% url %}` that names an application namespace to its default instance, as `reverse()`
+  does. Before, `include("…funds.urls", "apply")` with `app_name = "funds"` made every `{% url 'funds:…' %}`
+  "name no URL pattern the map can see": 35 of one project's 60 false Errors.
+- `hx_map` ends a `{% url %}`'s name at its own tag, so a tag that follows in the same attribute
+  (`{% url 'x' %}{% modify_query … %}`) is no longer read into the name: the other 25.
+- `hx_map` finds a list of patterns included under several namespaces under each one, through dj-fixi's
+  URLconf walk (dj-fixi `89c5805`). NAV routes its API under `api:`, `api:1:` and `api:2:`, and only `api:` was found.
+- `hx_map` no longer reads a returned dict as a JSON reply. That is Flask's rule; in Django only `JsonResponse` is
+  JSON, and a dict is a class-based view's `get_context_data`. This removed ten false warnings on one project.
+
 ## 0.4.0 (2026-11-24)
 
 The guard can now sit beside django-htmx. Installing `HxMiddleware` no longer flags every view the verbs did not
