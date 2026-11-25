@@ -105,6 +105,7 @@ class HxTestClient(Client):
         from django.conf import settings
 
         from . import hxlint
+        from .templates import project_script_attributes
 
         if getattr(response, "streaming", False) or response.status_code >= 500:
             return []
@@ -115,7 +116,12 @@ class HxTestClient(Client):
             return []
         ignore = set(self.lint_ignore) | set(getattr(settings, "HX_LINT_IGNORE", ()))
         findings = [
-            f for f in hxlint.lint_html(body, extensions=getattr(settings, "HX_EXTENSIONS", ()))
+            f
+            for f in hxlint.lint_html(
+                body,
+                extensions=getattr(settings, "HX_EXTENSIONS", ()),
+                script_attributes=project_script_attributes(),
+            )
             if f.rule not in ignore
         ]
         errors = [f for f in findings if f.severity == "error"]

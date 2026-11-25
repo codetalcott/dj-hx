@@ -47,7 +47,7 @@ from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 
 from . import hx_vocab as vocab
-from .hxlint import HYPERSCRIPT_ATTRS, HYPERSCRIPT_TYPE, JINJA, Node, parse, parse_swap_spec, parse_trigger_specs, shown
+from .hxlint import HYPERSCRIPT_ATTRS, HYPERSCRIPT_TYPE, JINJA, Node, hcon_parse, parse, parse_swap_spec, parse_trigger_specs, shown
 
 __all__ = [
     "URLFOR",
@@ -598,6 +598,11 @@ class HandlerVisitor(ast.NodeVisitor):
                 self._templates(verb, node)
             elif name in self.flash_names or name.rsplit(".", 1)[-1] in self.flash_names:
                 self.h.flashes = True
+        for kw in node.keywords:  # HttpResponse(status=204, headers={"HX-Trigger": json.dumps({...})})
+            if kw.arg == "headers" and isinstance(kw.value, ast.Dict):
+                for key, value in zip(kw.value.keys, kw.value.values):
+                    if isinstance(key, ast.Constant) and isinstance(key.value, str) and key.value.lower() == "hx-trigger":
+                        self.h.announces |= _trigger_header_events(value)
         if isinstance(node.func, ast.Attribute):
             if node.func.attr == "trigger" and node.args and isinstance(node.args[0], ast.Constant):
                 self.h.announces.add(str(node.args[0].value))
@@ -605,6 +610,16 @@ class HandlerVisitor(ast.NodeVisitor):
                 self.h.escapes.add(node.func.attr)
             elif node.func.attr == "get" and node.args:
                 self._header_read(node.func.value, node.args[0])  # request.headers.get("HX-Trigger")
+        self.generic_visit(node)
+
+    def visit_Assign(self, node: ast.Assign):
+        # response["HX-Trigger"] = "a, b" or response.headers["HX-Trigger"] = json.dumps({"a": ...}): the header
+        # .trigger() writes, written by hand (visit_Call reads headers={...}). The events are read as htmx 4.0.2
+        # reads the header (#me).
+        for target in node.targets:
+            key = target.slice if isinstance(target, ast.Subscript) else None
+            if isinstance(key, ast.Constant) and isinstance(key.value, str) and key.value.lower() == "hx-trigger":
+                self.h.announces |= _trigger_header_events(node.value)
         self.generic_visit(node)
 
     def visit_Subscript(self, node: ast.Subscript):
@@ -645,6 +660,35 @@ class HandlerVisitor(ast.NodeVisitor):
         partial = kw.get("partial") or (consts[1] if len(consts) > 1 else None)
         if template:
             self.h.templates.add(f"{template}#{partial}" if partial and "." not in partial else (partial or template))
+
+
+def _trigger_header_events(value: ast.AST) -> set[str]:
+    """
+    The events an ``HX-Trigger`` value written in Python names, as htmx 4.0.2 reads the header: an object's
+    keys when it starts with ``{``, else the comma-separated names. A string, an f-string's literal names
+    (``f"{earlier}, modal-open"``) and ``json.dumps({...})``'s literal keys are read; anything else names none.
+    """
+    if isinstance(value, ast.Call) and (getattr(value.func, "attr", None) or getattr(value.func, "id", None)) == "dumps":
+        arg = value.args[0] if value.args else None
+        if isinstance(arg, ast.Dict):
+            return {k.value for k in arg.keys if isinstance(k, ast.Constant) and isinstance(k.value, str)}
+        return set()
+    if isinstance(value, ast.Constant) and isinstance(value.value, str):
+        text = value.value.strip()
+        if text.startswith("{"):
+            try:
+                parsed = hcon_parse(text)
+            except ValueError:  # htmx's parse throws on it too
+                return set()
+            return {str(k) for k in parsed}
+        return {name.strip() for name in text.split(",") if name.strip()}
+    if isinstance(value, ast.JoinedStr):
+        parts = [p.value if isinstance(p, ast.Constant) else "\0" for p in value.values]
+        text = "".join(str(p) for p in parts).strip()
+        if text.startswith("{"):
+            return set()
+        return {name.strip() for name in text.split(",") if name.strip() and "\0" not in name}
+    return set()
 
 
 def _in_scope(scopes: dict[str, set[str]], method: str) -> set[str]:
@@ -807,7 +851,7 @@ def check(handlers: dict[str, Handler], controls: list[Control], listeners: list
     unannounced, unheard = unpaired_events(handlers, listeners, script_names)
     for event, heard in unannounced.items():
         where = ", ".join(f"{li.file}:{li.line}" for li in heard)
-        m.warnings.append(f"event '{event}' is listened for ({where}) but no handler announces it with .trigger() and no script names it.")
+        m.warnings.append(f"event '{event}' is listened for ({where}) but no handler announces it with .trigger() or an HX-Trigger header it sets, and no script names it.")
     for event, by in unheard.items():
         w = ", ".join(h.label for h in by)
         m.warnings.append(f"event '{event}' is announced by {w} but nothing in the templates listens for it.")

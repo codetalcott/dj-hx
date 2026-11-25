@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased
+
+The four false classes left after 0.4.1's map fixes, from the same run of the checks on six public Django projects.
+
+### Added
+
+- Check `dj_hx.W027`, a Warning, for a `{% url %}` naming a route that a URLconf module adds only under a module-level
+  `if`, `elif` or `else` these settings do not take: a `path()`'s `name=` there, or a name inside what an `include()`
+  there includes. It names the line and the condition. Before, that was E022, an Error, which stops `migrate`: one
+  project includes `django.conf.urls.i18n` only under `settings.LANGUAGE_SWITCHER` and renders its
+  `{% url 'set_language' %}` under the same condition. The URLconf's source is read only when a tag has failed. A
+  route a call builds (`debug_toolbar_urls()`), a loop adds, or a third-party URLconf adds by what is installed is
+  not seen, and stays E022.
+
+### Fixed
+
+- The lint reads `hx-swap-oob` as htmx 4.0.2 does, through hx-flask's lint (`3612ad0`): `/^(\S+):(.+)/` splits off
+  the target selector, and only the rest is checked as a swap spec. Every `style:selector` value was an
+  `unknown-swap-modifier` Error, `outerHTML:#count` included, and one whose selector holds a space two.
+- `unknown-attribute` skips an `hx-*` attribute a script names (`hasAttribute("hx-noprog")`, `"[hx-noprog]"`): the
+  project's own, which htmx ignores and the script reads. A script on the page counts, and so does an inline
+  `<script>` in any project template, on every surface (`hx_lint` and check `W005`, `HxTestClient`, the DEBUG
+  middleware's log), so a fragment without the layout's script is not reported. A misspelling no script names is
+  still an Error.
+- `hx_map`, `W024` and `W025` read an `HX-Trigger` header a view writes by hand (`response["HX-Trigger"] = "a, b"`,
+  or `HttpResponse(headers={"HX-Trigger": ...})`; a JSON object, `json.dumps({...})`, an f-string's literal names) as
+  announcing those events, read as htmx 4.0.2 reads the header. W025 warned that nothing announced 13 events two
+  projects' views announced that way. W024's message now says "with .trigger() or an HX-Trigger header".
+
 ## 0.4.1 (2026-11-25)
 
 Fixes to `hx_map` from a run of the checks on six public Django projects, where 61 of its 64 Errors were false.

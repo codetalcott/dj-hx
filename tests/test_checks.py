@@ -3,9 +3,12 @@ The system checks: quiet on the example project, and each one on its own defect.
 has no interactions, so the rota app's are set aside here; tests/test_interactions.py checks those.
 """
 
+import os
+from pathlib import Path
+
 import pytest
 from django.conf import settings
-from django.core.checks import ERROR, INFO
+from django.core.checks import ERROR, INFO, WARNING
 from django.test import override_settings
 
 from dj_hx.testing import assert_no_hx_check_issues, hx_check_messages
@@ -211,6 +214,52 @@ def test_e022_skips_a_name_built_at_run_time_and_what_django_does_not_read_as_a_
     assert url_messages(tmp_path, source) == []
 
 
+def gated_messages(directory, source):
+    (directory / "page.html").write_text(source)
+    with override_settings(ROOT_URLCONF="tests.urlconfs.gated", TEMPLATES=on_disk(directory)):
+        return [m for m in hx_check_messages() if m.id in ("dj_hx.E022", "dj_hx.W027")]
+
+
+def test_w027_a_url_a_urlconf_adds_only_under_a_condition_not_taken(tmp_path):
+    # hypha includes django.conf.urls.i18n only under settings.LANGUAGE_SWITCHER, and renders its
+    # {% url 'set_language' %} only under the same; with it off, E022 stopped migrate.
+    messages = gated_messages(tmp_path, "\n".join([
+        "{% url 'set_language' %}",  # inside an include() of a dotted path
+        "{% url 'beta' %}",  # a path()'s name= on an elif
+        "{% url 'debug:panel' %}",  # inside an include() of an (urls, app_name) pair the module holds
+        "{% url 'app:explain' %}",  # in an included app's own URLconf
+        "{% url 'closed' %} {% url 'app:index' %}",  # the branches taken: they reverse
+        "{% url 'bta' %}",  # a name no branch adds is still E022
+    ]))
+    assert [(m.id, m.level, m.obj) for m in messages] == [
+        ("dj_hx.W027", WARNING, "page.html:1"),
+        ("dj_hx.W027", WARNING, "page.html:2"),
+        ("dj_hx.W027", WARNING, "page.html:3"),
+        ("dj_hx.W027", WARNING, "page.html:4"),
+        ("dj_hx.E022", ERROR, "page.html:6"),
+    ]
+    here = os.path.relpath(Path(__file__).parent / "urlconfs")
+    assert messages[0].msg == (
+        f"{{% url 'set_language' %}} names a URL pattern that {here}/gated.py:23 adds only when "
+        "getattr(settings, 'LANGUAGE_SWITCHER', False), which these settings do not meet, so the page raises "
+        "NoReverseMatch if it renders this tag."
+    )
+    assert f"{here}/gated.py:25 adds only when not getattr(settings, 'LANGUAGE_SWITCHER', False) and getattr(settings, 'BETA', False)," in messages[1].msg
+    assert f"{here}/gated.py:30 adds only when settings.DEBUG," in messages[2].msg
+    assert f"{here}/gated_app.py:13 adds only when settings.DEBUG," in messages[3].msg
+    assert "{% url 'set_language' as url %}" in messages[0].hint and "silence dj_hx.W027" in messages[0].hint
+
+
+def test_w027_reads_a_urlconf_only_when_a_tag_fails(tmp_path, monkeypatch):
+    from dj_hx import checks
+
+    def unread():
+        raise AssertionError("read the URLconf source with every tag reversing")
+
+    monkeypatch.setattr(checks, "_gated_routes", unread)
+    assert gated_messages(tmp_path, "{% url 'closed' %}") == []
+
+
 def test_e022_reads_a_tag_written_across_lines_where_django_does(tmp_path):
     """Django 6.2 lexes a {% %} across lines as a tag, and renders it; before, it is text. E022 follows the lexer."""
     from dj_hx.templates import tags_span_lines
@@ -245,6 +294,19 @@ def test_i023_a_url_whose_route_takes_a_converter_without_a_placeholder(tmp_path
     assert messages[0].msg == says and "SILENCED_SYSTEM_CHECKS" in messages[0].hint
 
 
+def test_w024_and_w025_read_an_hx_trigger_header_a_view_writes_by_hand(tmp_path):
+    # matorral's views write response["HX-Trigger"] = '{"issueChanged": true}', hypha's
+    # HttpResponse(headers={"HX-Trigger": json.dumps(...)}); W025 said nothing announced either.
+    (tmp_path / "page.html").write_text(
+        '<div hx-get="/h/changed/" hx-target="body" hx-trigger="issueChanged from:body, saved from:body, '
+        'leadUpdated from:body">x</div>'
+    )
+    with override_settings(ROOT_URLCONF="tests.urlconfs.headers", TEMPLATES=on_disk(tmp_path)):
+        messages = [m for m in hx_check_messages() if m.id in ("dj_hx.W024", "dj_hx.W025")]
+    assert [(m.id, m.obj) for m in messages] == [("dj_hx.W024", "h-saved")]  # archived, which nothing hears
+    assert messages[0].msg.startswith("saved() announces 'archived' with .trigger() or an HX-Trigger header, but")
+
+
 def test_w024_a_views_trigger_no_template_listens_for(tmp_path):
     # contacts() announces contacts-changed with .trigger(), as hx_map finds it; index.html is not here to listen
     (tmp_path / "page.html").write_text("<p>no listener</p>")
@@ -253,7 +315,7 @@ def test_w024_a_views_trigger_no_template_listens_for(tmp_path):
     assert [(m.obj, m.msg) for m in messages] == [
         (
             "contacts",
-            "contacts() announces 'contacts-changed' with .trigger(), but no project template listens for it "
+            "contacts() announces 'contacts-changed' with .trigger() or an HX-Trigger header, but no project template listens for it "
             "(hx-trigger, hx-on, or a hyperscript 'on contacts-changed' in an attribute or an inline "
             '<script type="text/hyperscript">), and no script there names it.',
         )

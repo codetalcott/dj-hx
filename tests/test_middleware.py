@@ -34,6 +34,21 @@ def test_debug_lint_logs_and_the_template_header(caplog):
     assert sum("hx lint: GET /lib/lint-bad/" in m and "swap-style-case" in m for m in caplog.messages) == 1
 
 
+def test_debug_lint_takes_an_attribute_a_project_script_names_as_the_projects_own(tmp_path, caplog):
+    from tests.conftest import on_disk
+
+    (tmp_path / "base.html").write_text('<html><body><script>!e.target.hasAttribute("hx-noprog")</script></body></html>')
+    (tmp_path / "button.html").write_text('<a id="button.html" hx-get="/x/" hx-noprog>export</a>')
+    (tmp_path / "typo.html").write_text('<a id="typo.html" hx-get="/x/" hx-noprgo>export</a>')
+    client = HxTestClient(strict=False, lint=False)
+    with override_settings(DEBUG=True, ROOT_URLCONF="tests.urlconfs.own_attribute", TEMPLATES=on_disk(tmp_path)):
+        with caplog.at_level("WARNING", logger="dj_hx"):
+            client.hx_get("/button/")
+            client.hx_get("/typo/")
+    logged = [m for m in caplog.messages if "unknown-attribute" in m]
+    assert len(logged) == 1 and "hx lint: GET /typo/" in logged[0]  # not /button/
+
+
 def test_nothing_is_gated_on_debug_that_a_test_needs(client):
     """The bridge, the guard and the client's lint all run with DEBUG off (pytest-django's default)."""
     from django.conf import settings
