@@ -98,6 +98,11 @@ def flash_removed(request):
     return removed(request)
 
 
+def flash_shown(request):
+    messages.success(request, "Shown")
+    return fragment(request, "layout.html", "messages")  # the fragment shows the messages itself, as django-htmx projects do
+
+
 def flash_page(request):
     messages.success(request, "Hello")
     return render(request, "index.html", "rows", PAGE)
@@ -130,6 +135,10 @@ def bare_page(request):
 
 def bare_template_response(request):
     return TemplateResponse(request, "index.html", PAGE)  # what a generic view returns
+
+
+def fragment_of_page(request):
+    return fragment(request, "index.html", context=PAGE)  # a verb, but the whole page
 
 
 def escaped(request):
@@ -180,6 +189,7 @@ urlpatterns = [
     path("lib/unknown-partial/", unknown_partial),
     path("lib/extra/", extra),
     path("lib/flash-removed/", flash_removed),
+    path("lib/flash-shown/", flash_shown),
     path("lib/flash-page/", flash_page),
     path("lib/flash-file/", flash_file),
     path("lib/flash-stream/", flash_stream),
@@ -187,6 +197,7 @@ urlpatterns = [
     path("lib/flash-plain/", flash_plain),
     path("lib/bare-page/", bare_page),
     path("lib/bare-template-response/", bare_template_response),
+    path("lib/fragment-of-page/", fragment_of_page),
     path("lib/escaped/", escaped),
     path("lib/lint-bad/", lint_bad),
     path("lib/lint-warn/", lint_warn),

@@ -212,6 +212,16 @@ def test_messages_reach_a_fragment_response_as_a_partial(client):
     assert b"Deleted!" not in client.get("/lib/").content
 
 
+def test_a_fragment_that_shows_its_own_messages_gets_no_second_copy(client):
+    """A django-htmx habit: the fragment's template shows the messages (often out of band), which consumes them."""
+    body = client.hx_get("/lib/flash-shown/").content.decode()
+    assert body.count('<p class="flash">Shown</p>') == 1 and "<hx-partial" not in body
+    assert b"Shown" not in client.get("/lib/").content  # consumed by the fragment that showed them
+    with override_settings(HX_MESSAGES_TEMPLATE=None):
+        client.hx_get("/lib/flash-shown/")  # HxTestClient would raise an HxMessagesUnconfigured recorded here
+        assert b"Shown" not in client.get("/lib/").content
+
+
 def test_messages_on_a_full_response_stay_in_the_page(client):
     body = client.hx_get("/lib/flash-page/", full=True).content.decode()
     assert '<p class="flash">Hello</p>' in body and "<hx-partial" not in body

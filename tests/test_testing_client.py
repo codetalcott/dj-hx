@@ -64,11 +64,11 @@ def test_every_finding_on_a_response_is_raised_at_once(client):
     """The first finding is the exception; the rest are in its message, so one run shows them all."""
     from dj_hx import HxBareResponse, HxMessagesUnconfigured
 
-    with override_settings(HX_MESSAGES_TEMPLATE=None):
+    with override_settings(HX_MESSAGES_TEMPLATE=None, HX_REQUIRE_VERBS=True):
         with pytest.raises(HxBareResponse, match=r"Also recorded on this response, 1 more:\n  HxMessagesUnconfigured: flash_plain\(\)") as info:
             client.hx_get("/lib/flash-plain/")
     recorded = HxTestClient(strict=False, lint=False)
-    with override_settings(HX_MESSAGES_TEMPLATE=None):
+    with override_settings(HX_MESSAGES_TEMPLATE=None, HX_REQUIRE_VERBS=True):
         r = recorded.hx_get("/lib/flash-plain/")
     assert [type(f) for f in r.hx_findings] == [HxBareResponse, HxMessagesUnconfigured]
     assert str(info.value).startswith("flash_plain() answered a request that targets an element with a response no verb built")

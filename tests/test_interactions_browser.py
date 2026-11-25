@@ -373,3 +373,29 @@ def test_an_own_empty_hx_select_stops_the_inherited_one(page, live, desk):
     expect(one(page, "nearest")).to_have_count(1)
     expect(page.locator("#nearest .replies")).to_have_text("1")
     assert page.console_errors == []
+
+
+# ------------------------------------------------------------------ what the guard records
+
+WHOLE_PAGE = "<!doctype html><html><head><title>Another page</title></head><body><h1>Another page</h1></body></html>"
+
+
+def test_a_whole_page_answering_a_partial_request_lands_inside_the_target(page, live, desk):
+    # Why the guard records HxPageIntoFragment for a 2xx whose first tag is <html> or <body>, whoever built it:
+    # htmx 4.0.2 reads it as a document and swaps that document's body into the element. The browser serves it,
+    # so no view is involved.
+    page.route("**/whole-page/", lambda route: route.fulfill(body=WHOLE_PAGE, content_type="text/html"))
+    sent = []
+    page.on("request", lambda request: request.url.endswith("/whole-page/") and sent.append(request.headers.get("hx-request-type")))
+    open_desk(page, live)
+    page.evaluate("""() => {
+        document.body.insertAdjacentHTML('beforeend', '<div id="slot"></div><button id="ask" hx-get="/whole-page/" hx-target="#slot">ask</button>');
+        htmx.process(document.getElementById('ask'));
+    }""")
+    page.locator("#ask").click()
+    finished(page, 1)
+    assert sent == ["partial"]
+    expect(page.locator("#slot h1")).to_have_text("Another page")  # the other page's heading, inside the element
+    expect(page.locator("h1")).to_have_count(2)  # beside the desk's own
+    assert page.title() == "Another page"  # its <title> was taken too
+    assert page.console_errors == []
