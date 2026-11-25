@@ -118,6 +118,19 @@ def test_lint_templates_is_the_commands_run_for_a_projects_own_test(tmp_path):
     assert len(lint_templates().files) == 6  # by default, the project's template directories
 
 
+def test_lint_templates_reads_the_projects_own_attributes_from_every_template(tmp_path):
+    from django.test import override_settings
+
+    from tests.conftest import on_disk
+
+    (tmp_path / "base.html").write_text('<html><body><script>!e.target.hasAttribute("hx-noprog")</script></body></html>')
+    (tmp_path / "button.html").write_text('<a hx-get="/x/" hx-noprog>export</a>\n<a hx-get="/x/" hx-noprgo>typo</a>')
+    with override_settings(TEMPLATES=on_disk(tmp_path)):
+        # one file given, and the script that reads the attribute is in another project template
+        run = lint_templates([tmp_path / "button.html"])
+    assert [(f.rule, f.line) for f in run.findings] == [("unknown-attribute", 2)]
+
+
 def test_command_defaults_to_the_projects_template_directories():
     out = io.StringIO()
     call_command("hx_lint", stdout=out)

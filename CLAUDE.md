@@ -21,8 +21,8 @@ No virtualenv is checked in: `.venv/` is gitignored, and an old local one can po
 uv venv <venv> && uv pip install -p <venv>/bin/python "django~=6.1.0" pytest pytest-django ruff mypy django-stubs "playwright==1.64.0"  # below Django 6, add django-template-partials
 <venv>/bin/python -m playwright install chromium
 
-<venv>/bin/python -m pytest -q                      # 474 tests, ~20 s
-<venv>/bin/python -m pytest -q -m "not browser"     # 430, ~4 s, skipping Chromium
+<venv>/bin/python -m pytest -q                      # 480 tests, ~19 s
+<venv>/bin/python -m pytest -q -m "not browser"     # 436, ~4 s, skipping Chromium
 <venv>/bin/python -m pytest -q -m browser           # the 44 Playwright tests alone, ~15 s
 <venv>/bin/python -m pytest tests/test_verbs.py::test_text_escapes
 <venv>/bin/ruff check .
@@ -106,14 +106,17 @@ top-level name its templates read: `tests/urlconfs/lib.py`'s `PAGE` carries `ext
 **Ordering matters.** `HxMiddleware` must run its response phase before `MessageMiddleware` stores
 messages, which means it is listed *after* it. [checks.py](dj_hx/checks.py) enforces that as `dj_hx.E002`;
 the check ids are documented in that module's docstring: W001 to W008 for settings, middleware and the lint (E007 is retired),
-E009 to E017, W018, W019, E020, I021 and E026 for interactions, E022 and I023 for `{% url %}`, and W024 and W025
+E009 to E017, W018, W019, E020, I021 and E026 for interactions, E022, I023 and W027 for `{% url %}`, and W024 and W025
 for events.
 
 **The lint has two surfaces over one rule set.** [hxlint.py](dj_hx/hxlint.py) works on rendered HTML
 strings. [templates.py](dj_hx/templates.py) strips Django template syntax (line numbers preserved,
 `{{ }}` and value tags become a sentinel the rules skip, branch tags hxlint's `branch_marker()`, so `duplicate-id`
 knows which elements cannot render together) so the same rules run over source for
-`hx_lint` and check `dj_hx.W005`. Template discovery never walks site-packages, which
+`hx_lint` and check `dj_hx.W005`. Every lint caller (`lint_templates`, `HxTestClient`, the DEBUG middleware's
+log) passes `templates.project_script_attributes()`, the `hx-*` names the project templates' inline scripts read,
+so a fragment carrying the project's own attribute without the layout's script is judged as the source lint judges
+it; a new caller passes it too. Template discovery never walks site-packages, which
 `templates.in_site_packages` judges for every caller (template discovery, `ready()`, `hx_map`, E014):
 sysconfig's purelib/platlib plus the `site-packages`/`dist-packages` directories `site` reports, the user
 one included. Keep one copy of that rule.
@@ -156,7 +159,9 @@ It reverses through `django.urls.reverse()`, taking each placeholder from the co
 for that parameter (the namespace walk mirrors `reverse()`'s: `hxmap.namespace_walk()`, which the map resolves
 `{% url %}` names through too), never from the route string; a keyword naming
 a route's extra kwarg is passed that default. It skips `{% url ... as var %}`: Django's documented form for a
-view that may be missing, which admin's own templates use, so an Error there would stop `migrate`. W024 and W025
+view that may be missing, which admin's own templates use, so an Error there would stop `migrate`. A name no pattern has that a
+module-level `if` in a loaded URLconf module adds is W027 instead (`_gated_routes()` reads the modules' source, and
+only once a tag has failed, so a clean project pays nothing). W024 and W025
 take `hxmap.map_with_interactions()` and call `mapcore.unpaired_events()` on it, the pairing `hx_map` warns
 from: there is no second trigger or listener collector. An interaction the map has no handler for (not
 routed, or in site-packages) is added from the registry, so its `triggers=` still count.

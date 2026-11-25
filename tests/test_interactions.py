@@ -1471,8 +1471,9 @@ def test_w025_a_listener_nothing_announces(startup, template, says):
     warning = the(messages, "dj_hx.W025")
     assert warning.level == WARNING and warning.msg.startswith(says)
     assert warning.msg.endswith(
-        "but no view announces it with .trigger(), no interaction declares it in triggers=, and no script in the "
-        "templates names it (a quoted name in a <script> or hx-on, or a hyperscript send or trigger)."
+        "but no view announces it with .trigger() or an HX-Trigger header it sets, no interaction declares it in "
+        "triggers=, and no script in the templates names it (a quoted name in a <script> or hx-on, or a hyperscript "
+        "send or trigger)."
     )
     assert "cannot see every side" in warning.hint
 

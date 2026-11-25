@@ -52,10 +52,12 @@ class HxMiddleware:
         if not isinstance(response, HttpResponse) or not is_html(response) or response.status_code >= 500:
             return
         from . import hxlint
+        from .templates import project_script_attributes
 
         body = response.content.decode(response.charset or "utf-8", errors="replace")
         ignore = set(getattr(settings, "HX_LINT_IGNORE", ()))
-        for finding in hxlint.lint_html(body, extensions=getattr(settings, "HX_EXTENSIONS", ())):
+        named = project_script_attributes()
+        for finding in hxlint.lint_html(body, extensions=getattr(settings, "HX_EXTENSIONS", ()), script_attributes=named):
             if finding.rule in ignore or finding.severity == "info":
                 continue
             log = logger.error if finding.severity == "error" else logger.warning

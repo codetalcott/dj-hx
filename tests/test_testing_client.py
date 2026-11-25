@@ -45,6 +45,19 @@ def test_lint_raises_warns_and_can_be_silenced(client):
         assert client.hx_get("/lib/lint-bad/").hx_lint == []
 
 
+def test_an_attribute_a_script_in_any_project_template_names_is_the_projects_own(tmp_path):
+    from tests.conftest import on_disk
+
+    # hypha's export buttons carry hx-noprog; base.html's script reads it, and the fragment comes without it
+    (tmp_path / "base.html").write_text('<html><body><script>!e.target.hasAttribute("hx-noprog")</script></body></html>')
+    (tmp_path / "button.html").write_text('<a id="button.html" hx-get="/x/" hx-noprog>export</a>')
+    (tmp_path / "typo.html").write_text('<a id="typo.html" hx-get="/x/" hx-noprgo>export</a>')
+    with override_settings(ROOT_URLCONF="tests.urlconfs.own_attribute", TEMPLATES=on_disk(tmp_path)):
+        assert HxTestClient().hx_get("/button/").hx_lint == []
+        with pytest.raises(HxLintError, match="hx-noprgo is not an htmx 4 attribute"):
+            HxTestClient().hx_get("/typo/")
+
+
 def test_non_html_and_empty_responses_are_skipped(client):
     assert client.hx_get("/lib/json/").hx_lint == []
     assert client.hx_delete("/lib/a/").hx_lint == []

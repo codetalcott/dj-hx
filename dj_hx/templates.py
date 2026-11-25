@@ -187,11 +187,37 @@ def partial_sources(source: str) -> dict[str, tuple[int, str]]:
     return found
 
 
-def lint_template_source(source: str, file: str | None = None, extensions=()) -> list[Finding]:
-    """Findings for one template's source, without rendering it (page-level rules off)."""
+def lint_template_source(source: str, file: str | None = None, extensions=(), script_attributes=()) -> list[Finding]:
+    """
+    Findings for one template's source, without rendering it (page-level rules off). ``script_attributes``: the
+    ``hx-*`` names scripts in other templates read (``project_script_attributes()``), beside its own.
+    """
     return hxlint.lint_html(
-        strip_template_syntax(source), extensions=extensions, is_document=False, file=file, source_mode=True
+        strip_template_syntax(source),
+        extensions=extensions,
+        is_document=False,
+        file=file,
+        source_mode=True,
+        script_attributes=script_attributes,
     )
+
+
+def project_script_attributes() -> frozenset[str]:
+    """
+    The ``hx-*`` names the inline ``<script>`` elements of the project's templates mention
+    (``hxlint.script_attributes``). An unknown ``hx-*`` attribute one names is the project's own, which htmx
+    ignores and the script reads, and a fragment carries it without the layout's script, so every lint surface
+    passes these. Read once per process for each set of template directories.
+    """
+    return _script_attributes(tuple(str(d) for d in template_directories()))
+
+
+@functools.lru_cache(maxsize=8)
+def _script_attributes(directories: tuple[str, ...]) -> frozenset[str]:
+    names: set[str] = set()
+    for source in template_sources([Path(d) for d in directories]).values():
+        names |= hxlint.script_attributes(source, html=True)
+    return frozenset(names)
 
 
 def in_site_packages(path) -> bool:
@@ -289,15 +315,18 @@ def lint_templates(paths: Iterable[str | Path] = ()) -> TemplateLint:
         run.files += [root] if root.is_file() else list(iter_template_files([root]))
     ignore = set(getattr(settings, "HX_LINT_IGNORE", ()))
     extensions = getattr(settings, "HX_EXTENSIONS", ())
+    sources: dict[Path, str] = {}
     for path in run.files:
         try:
-            source = path.read_text(encoding="utf-8", errors="replace")
+            sources[path] = path.read_text(encoding="utf-8", errors="replace")
         except OSError as exc:
             run.unreadable.append((path, str(exc)))
-            continue
+    # A script anywhere in the project, or in the files given, names the project's own attributes.
+    named = set(project_script_attributes()).union(*(hxlint.script_attributes(s, html=True) for s in sources.values()))
+    for path, source in sources.items():
         run.findings += [
             f
-            for f in lint_template_source(source, file=str(path), extensions=extensions)
+            for f in lint_template_source(source, file=str(path), extensions=extensions, script_attributes=named)
             if f.rule not in ignore and f.severity != "info"
         ]
     return run

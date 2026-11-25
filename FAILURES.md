@@ -231,14 +231,18 @@ check`, keeps `runserver` from starting, and aborts `migrate`, `makemigrations`,
 the rest. E022 reverses against `ROOT_URLCONF` only, so a site that routes some requests through
 another URLconf (`request.urlconf`, as django-hosts sets it) silences it.
 
-E022's result depends on the settings it runs under. A route included only under `DEBUG` or a
-feature flag does not exist under other settings, so a template that links it, even behind
-`{% if %}`, is an E022 there, and a deploy's `migrate` runs the checks under production settings.
-Write such a link as `{% url 'name' as link %}{% if link %}…{% endif %}`: Django stores `""` for a
-route that does not reverse, and E022 skips the `as` form.
+E022's result depends on the settings it runs under, and a deploy's `migrate` runs the checks under
+production settings. A route a URLconf adds only under a module-level `if` (`if settings.DEBUG:`, a
+feature flag) does not exist when that branch is not taken. Where the URLconf's own source shows it
+there, a `path()`'s `name=` in the branch or a name inside what an `include()` there includes, the tag
+is Warning `dj_hx.W027` instead, naming the line and the condition, so it does not stop `migrate`; the
+check cannot see the condition each page renders the tag under. A route a call builds
+(`debug_toolbar_urls()`), a loop adds, or a third-party URLconf adds by what is installed is not seen,
+and stays E022. Either way `{% url 'name' as link %}{% if link %}…{% endif %}` is quiet: Django stores
+`""` for a route that does not reverse, and both skip the `as` form.
 
 ## An event nobody listens for, or nobody announces
 
-**Failure.** An event a view announces with `.trigger()` (as `hx_map` finds it) or an interaction declares in `triggers=` that no project template listens for (`hx-trigger`, `hx-on`, a hyperscript `on` in an `_`, `script` or `data-script` attribute or in an inline `<script type="text/hyperscript">`, behaviors included); an event a template listens for that nothing announces. A listener for a browser event, for one of hyperscript's observers (`on intersection`, `on mutation`, `on resize`), or for a name with a colon (htmx's own `htmx:*`, an extension's `sse:message`, a namespaced `contact:saved`) is never asked to be announced, and still pairs with a `.trigger()` or `triggers=` of that name; a name built in the template (`on {{ name }}`) is not read as a listener. An event a script in the templates names (a quoted name in a `<script>` or `hx-on`, such as `addEventListener('x', …)`, or a hyperscript `send` or `trigger`, even one inside a quoted string) counts for both sides, since the scan cannot tell whether the script listens or sends
+**Failure.** An event a view announces with `.trigger()` or an `HX-Trigger` header it writes (`response["HX-Trigger"] = "a, b"` or `HttpResponse(headers={"HX-Trigger": ...})`, a JSON object, `json.dumps({...})`; as `hx_map` finds it) or an interaction declares in `triggers=` that no project template listens for (`hx-trigger`, `hx-on`, a hyperscript `on` in an `_`, `script` or `data-script` attribute or in an inline `<script type="text/hyperscript">`, behaviors included); an event a template listens for that nothing announces. A listener for a browser event, for one of hyperscript's observers (`on intersection`, `on mutation`, `on resize`), or for a name with a colon (htmx's own `htmx:*`, an extension's `sse:message`, a namespaced `contact:saved`) is never asked to be announced, and still pairs with a `.trigger()` or `triggers=` of that name; a name built in the template (`on {{ name }}`) is not read as a listener. An event a script in the templates names (a quoted name in a `<script>` or `hx-on`, such as `addEventListener('x', …)`, or a hyperscript `send` or `trigger`, even one inside a quoted string) counts for both sides, since the scan cannot tell whether the script listens or sends
 
 **What happens.** checks `dj_hx.W024` (naming the view or the handler) and `W025` (naming template:line), through the pairing `hx_map` uses. Warnings, not Errors: a JavaScript file, a hyperscript file (`<script type="text/hyperscript" src=…>`), an Alpine listener (`@refreshed.window`, `x-on:refreshed.window`), a template in site-packages or a helper the view calls can be the other side, which a scan cannot see. Both skip when `ROOT_URLCONF` is unset

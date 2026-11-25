@@ -35,9 +35,10 @@ I023     Info     A {% url %} not checked: its route takes a converter with no p
 W024     Warning  An event a view or interaction announces that no template listens for
 W025     Warning  An event a template listens for that nothing announces
 E026     Error    An hx-select (own or :inherited) reaches an {% act %} control
+W027     Warning  A {% url %} names a route a URLconf adds only under a condition unmet here
 =======  =======  ==========================================================
 
-E009 to E016, I021, E022, I023 and E026 read the project's template files as hx_lint
+E009 to E016, I021, E022, I023, E026 and W027 read the project's template files as hx_lint
 does, never site-packages. A computed hx-swap or hx-method is not judged. A
 templated id or hx-target is judged by its literal parts (``_could_equal``):
 skipped only when it could equal the expected value (id="{{ name }}"), an Error
@@ -72,9 +73,16 @@ Positional and keyword arguments are counted apart; a keyword that names one of
 a route's extra kwargs is passed that default. {% url ... as var %} is skipped:
 it is Django's documented form for a view that may be missing. A custom
 converter or a re_path group gets I023 instead. It reads .html and .htm
-templates and reverses against ROOT_URLCONF only.
-W024 and W025 pair the events views announce with .trigger() (as hx_map finds
-them) and interactions declare in triggers= with the listeners in the project's
+templates and reverses against ROOT_URLCONF only. A name no pattern or namespace
+has gets W027 instead when a URLconf module the resolver loaded adds it under a
+module-level if (or its elif or else) these settings do not take: a path()'s
+name= there, or a name inside what an include() there includes, imported to
+read it. That block left nothing in the resolver, so the module's source is
+read, and only when a tag fails. A name a call builds (debug_toolbar_urls())
+or a loop adds is not read, and stays E022.
+W024 and W025 pair the events views announce with .trigger() or an HX-Trigger
+header they write (response["HX-Trigger"] = "a, b" or HttpResponse(headers={...}),
+read for its literal names as htmx 4.0.2 reads the header; as hx_map finds them) and interactions declare in triggers= with the listeners in the project's
 templates (hx-trigger, hx-on, and hyperscript on in an attribute or an inline
 <script type="text/hyperscript">, behaviors included), through
 mapcore.unpaired_events(), the pairing hx_map warns from. A browser event,
@@ -93,6 +101,7 @@ resolves literal paths.
 from __future__ import annotations
 
 import re
+from typing import Any
 
 import django
 from django.core.checks import CheckMessage, Error, Info, Tags, Warning, register
@@ -780,10 +789,19 @@ def check_url_tags(app_configs=None, **kwargs):
     except Exception:
         return []
     messages = []
+    gated = {}  # a name, as a tag writes it -> (where, condition): _gated_routes()
+    read = []
+
+    def gate(name: str) -> tuple[str, str] | None:
+        if not read:  # read the URLconf modules' source once, and only when a tag has failed
+            gated.update(_gated_routes())
+            read.append(True)
+        return gated.get(name)
+
     for template, source in template_sources().items():
         for tag in url_tags(source):
             if tag.name is not None and tag.stored_as is None:  # a name built at run time, or `as var`
-                messages += _url_messages(tag, f"{template}:{tag.line}")
+                messages += _url_messages(tag, f"{template}:{tag.line}", gate)
     return messages
 
 
@@ -833,6 +851,121 @@ def _url_patterns(name: str):
     return patterns, None
 
 
+def _gated_routes() -> dict[str, tuple[str, str]]:
+    """
+    ``{"set_language": ("proj/urls.py:51", "settings.LANGUAGE_SWITCHER")}``: each URL name, as a tag writes it,
+    that a URLconf module the resolver loaded adds only under a module-level ``if``, ``elif`` or ``else``, with
+    where and on what condition. The branch not taken left nothing in the resolver, so the module's source is
+    read: a ``path()``'s ``name=`` in the block, and the names inside what an ``include()`` there includes (a
+    dotted path, imported; a name the module holds; either in an ``(urls, app_name)`` pair). Nothing here raises.
+    """
+    import ast
+    import importlib
+    import inspect
+    import os
+    import types
+
+    from django.urls import get_resolver
+    from django.urls.resolvers import RegexPattern, URLResolver
+
+    found: dict[str, tuple[str, str]] = {}
+    scanned: set[tuple[str, tuple[str, ...]]] = set()
+
+    def names_in(urlconf) -> list[str]:
+        try:
+            return _url_names(URLResolver(RegexPattern(r"^"), urlconf))
+        except Exception:  # an include that does not load: Django's own checks say why when it is taken
+            return []
+
+    def included(call, module) -> list[str]:
+        target = call.args[0]
+        namespace = call.args[1].value if len(call.args) > 1 and isinstance(call.args[1], ast.Constant) else None
+        namespace = next((k.value.value for k in call.keywords if k.arg == "namespace" and isinstance(k.value, ast.Constant)), namespace)
+        app_name = None
+        if isinstance(target, ast.Tuple) and len(target.elts) == 2:
+            if isinstance(target.elts[1], ast.Constant):
+                app_name = target.elts[1].value
+            target = target.elts[0]
+        urlconf: Any = None
+        if isinstance(target, ast.Constant) and isinstance(target.value, str):
+            try:
+                urlconf = importlib.import_module(target.value)
+            except Exception:
+                return []
+        elif isinstance(target, (ast.Name, ast.Attribute)):
+            dotted = ast.unparse(target).split(".")
+            urlconf = getattr(module, dotted[0], None)
+            for attr in dotted[1:]:
+                urlconf = getattr(urlconf, attr, None)
+        if isinstance(urlconf, tuple) and len(urlconf) == 2:  # include(shop), shop = (urlpatterns, "shop")
+            urlconf, app_name = urlconf[0], app_name or urlconf[1]
+        if urlconf is None:
+            return []
+        if isinstance(urlconf, types.ModuleType):
+            app_name = app_name or getattr(urlconf, "app_name", None)
+        prefixes = [f"{n}:" for n in dict.fromkeys((namespace, app_name)) if isinstance(n, str) and n] or [""]
+        return [p + name for name in names_in(urlconf) for p in prefixes]
+
+    def branches(stmt, earlier: list):
+        """Each branch of an if/elif/else chain, with the whole condition it is taken on."""
+        test = ast.BoolOp(ast.And(), [*earlier, stmt.test]) if earlier else stmt.test
+        yield stmt.body, test
+        earlier = [*earlier, ast.UnaryOp(ast.Not(), stmt.test)]
+        if len(stmt.orelse) == 1 and isinstance(stmt.orelse[0], ast.If):
+            yield from branches(stmt.orelse[0], earlier)
+        elif stmt.orelse:
+            yield stmt.orelse, ast.BoolOp(ast.And(), earlier) if len(earlier) > 1 else earlier[0]
+
+    def scan(module, prefixes: list[str]) -> None:
+        if (module.__name__, tuple(prefixes)) in scanned:
+            return
+        scanned.add((module.__name__, tuple(prefixes)))
+        try:
+            source, file = inspect.getsource(module), inspect.getsourcefile(module) or module.__name__
+            tree = ast.parse(source)
+        except (OSError, TypeError, SyntaxError):
+            return
+        try:
+            file = os.path.relpath(file)
+        except ValueError:  # another drive, on Windows
+            pass
+        for stmt in tree.body:
+            if not isinstance(stmt, ast.If):
+                continue
+            for body, test in branches(stmt, []):
+                at = (f"{file}:{body[0].lineno}" if body else f"{file}:{stmt.lineno}", ast.unparse(test))
+                for node in (n for b in body for n in ast.walk(b) if isinstance(n, ast.Call)):
+                    func = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", "")
+                    names: list[str] = []
+                    if func in ("path", "re_path", "url"):
+                        names = [k.value.value for k in node.keywords if k.arg == "name" and isinstance(k.value, ast.Constant) and isinstance(k.value.value, str)]
+                    elif func == "include" and node.args:
+                        names = included(node, module)
+                    for name in names:
+                        for p in prefixes:
+                            found.setdefault(p + name, at)
+
+    def visit(resolver, prefixes: list[str], depth: int) -> None:
+        if depth > 10:  # a URLconf that includes itself
+            return
+        try:
+            module, patterns = resolver.urlconf_module, list(resolver.url_patterns)
+        except Exception:
+            return
+        if isinstance(module, types.ModuleType):
+            scan(module, prefixes)
+        for pattern in patterns:
+            if isinstance(pattern, URLResolver):
+                names = [n for n in dict.fromkeys((pattern.namespace, pattern.app_name)) if n]
+                visit(pattern, [f"{p}{n}:" for p in prefixes for n in names] if names else prefixes, depth + 1)
+
+    try:
+        visit(get_resolver(), [""], 0)
+    except Exception:
+        return found
+    return found
+
+
 def _url_names(resolver, prefix: str = "") -> list[str]:
     """Every name ``{% url %}`` can reverse under ``resolver``, namespaced as a tag writes it."""
     names = [prefix + key for key in resolver.reverse_dict if isinstance(key, str)]
@@ -851,8 +984,11 @@ def _route_shown(route: str, params, converters) -> str:
     }
 
 
-def _url_messages(tag, where: str) -> list:
-    """E022 or I023 for one ``{% url %}``: reversed with a placeholder for each argument it passes."""
+def _url_messages(tag, where: str, gate=lambda name: None) -> list:
+    """
+    E022 or I023 for one ``{% url %}``: reversed with a placeholder for each argument it passes. W027 instead of
+    E022 for a name ``gate(name)`` says a URLconf adds only under a condition these settings do not take.
+    """
     import difflib
 
     from django.urls import NoReverseMatch, get_resolver, reverse
@@ -873,6 +1009,21 @@ def _url_messages(tag, where: str) -> list:
             "Pass every argument by keyword, or every one by position.",
         )
     patterns, missing = _url_patterns(tag.name)
+    gated = gate(tag.name) if missing or not patterns else None
+    if gated:
+        line, condition = gated
+        return [
+            Warning(
+                f"{shown} names a URL pattern that {line} adds only when {condition}, which these settings do not "
+                "meet, so the page raises NoReverseMatch if it renders this tag.",
+                hint=f"Render the tag only under the same condition, or write {{% url '{tag.name}' as url %}}, "
+                "Django's form for a view that may be missing, which stores \"\" then. This is a Warning, not E022, "
+                "because the check cannot see the condition each page renders the tag under; silence dj_hx.W027 "
+                "where every one holds it.",
+                obj=where,
+                id="dj_hx.W027",
+            )
+        ]
     if missing:
         namespace, inside, known = missing
         close = difflib.get_close_matches(namespace, known, n=3, cutoff=0.6)
@@ -984,7 +1135,7 @@ def check_events(app_configs=None, **kwargs):
             it = owner.get(id(h))
             if it is not None and _installed(it):
                 continue  # its listeners are in that app's templates, which are never read
-            who, how = (f"{it.name}()", "in its triggers=") if it else (h.label, "with .trigger()")
+            who, how = (f"{it.name}()", "in its triggers=") if it else (h.label, "with .trigger() or an HX-Trigger header")
             messages.append(
                 Warning(
                     f"{who} announces '{event}' {how}, but no project template listens for it (hx-trigger, hx-on, or "
@@ -1000,9 +1151,9 @@ def check_events(app_configs=None, **kwargs):
         where = ", ".join(f"{li.file}:{li.line}" for li in heard)
         messages.append(
             Warning(
-                f"'{event}' is listened for ({where}), but no view announces it with .trigger(), no interaction "
-                "declares it in triggers=, and no script in the templates names it (a quoted name in a <script> or "
-                "hx-on, or a hyperscript send or trigger).",
+                f"'{event}' is listened for ({where}), but no view announces it with .trigger() or an HX-Trigger "
+                "header it sets, no interaction declares it in triggers=, and no script in the templates names it (a "
+                "quoted name in a <script> or hx-on, or a hyperscript send or trigger).",
                 hint=f"Announce it, with triggers=({event!r},) on the interaction or .trigger({event!r}) on the "
                 "view's response, or correct the name. " + _UNSEEN.format("send it", "W025"),
                 obj=f"{heard[0].file}:{heard[0].line}",

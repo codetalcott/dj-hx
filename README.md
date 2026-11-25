@@ -21,7 +21,9 @@ same design for Flask is [hx-flask]; the sibling for Fixi.js is [dj-fixi].
 **Status:** 0.4.1 (2026-11-25), alpha, installed from its git tag; not on PyPI. Django 5.2, 6.0
 and 6.1; Python 3.11 to 3.14, the free-threaded 3.14 included. Upgrading from 0.3.0: a project written
 with the verbs sets `HX_REQUIRE_VERBS = True` to keep 0.3.0's strictness (see the
-[CHANGELOG](https://github.com/codetalcott/dj-hx/blob/main/CHANGELOG.md)).
+[CHANGELOG](https://github.com/codetalcott/dj-hx/blob/main/CHANGELOG.md)). This page describes `main`, which is
+ahead of 0.4.1: check `W027` and the lint and event fixes under the CHANGELOG's Unreleased are not in 0.4.1.
+Install `@main` for them.
 
 ## A silent failure, caught
 
@@ -367,7 +369,7 @@ imports from `dj_hx` (`from dj_hx import HxNoSwap`).
 | Interactions registered but dj_hx.urls not included | check `dj_hx.E020`; `{% act %}` raises `ImproperlyConfigured` | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#interactions-registered-but-djhxurls-not-included) |
 | A decorator without functools.wraps, or below the interaction | checks `dj_hx.W018`, `W019` | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-decorator-without-functoolswraps-or-below-the-interaction) |
 | An act the checks cannot tie to a control | check `dj_hx.I021`, an Info | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#an-act-the-checks-cannot-tie-to-a-control) |
-| A url tag that does not reverse | check `dj_hx.E022`; `I023` for a route it cannot reverse with a placeholder | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-url-tag-that-does-not-reverse) |
+| A url tag that does not reverse | check `dj_hx.E022`; `I023` for a route it cannot reverse with a placeholder; `W027` for a route a URLconf adds only under a condition these settings do not meet | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-url-tag-that-does-not-reverse) |
 | An event nobody listens for, or nobody announces | checks `dj_hx.W024`, `W025` | [more](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#an-event-nobody-listens-for-or-nobody-announces) |
 
 On an existing site the first `manage.py check` is a worklist, `dj_hx.E022` above all; [FAILURES.md](https://github.com/codetalcott/dj-hx/blob/main/FAILURES.md#a-url-tag-that-does-not-reverse) says how to work through it one id at a time. Its Errors stop `migrate` too, so a container that runs `migrate` before the server does not start until they are fixed: run `check` before the first deploy. A template nothing renders any more fails `E022` like a live one; delete it.
@@ -499,8 +501,8 @@ answer is put nowhere. Nor is one that reaches a view in site-packages, by
 lists the control and does not read that view. An `{% act %}` control resolves through the
 interaction registry to its interaction, which answers its one method with its
 partial (`fragment()`) and announces its `triggers=`; one naming no interaction,
-or written while `dj_hx.urls` is not included, is an error. It also pairs `.trigger("x")` with
-`hx-trigger="x from:body"` in both directions, and with a hyperscript listener
+or written while `dj_hx.urls` is not included, is an error. It also pairs `.trigger("x")`, or an
+`HX-Trigger` header the view writes itself, with `hx-trigger="x from:body"` in both directions, and with a hyperscript listener
 (`_="on x from body ..."`, or the same in an inline `<script type="text/hyperscript">`,
 behaviors included); a listener for a browser event such as `click`, for a
 hyperscript observer (`on intersection`, `on mutation`), or for a name with a
