@@ -1,10 +1,12 @@
 """
 What htmx 4 would do silently with a response, said out loud.
 
-``guard(request, response)`` returns the findings for one response: a 3xx, a
-204, or a response no verb built answering a request that targets an element,
-an htmx request that is not htmx 4, messages pending on a fragment response
-with nowhere to go.
+``guard(request, response)`` returns the findings for one response: a 204 or
+a whole page answering a request that targets an element, whoever built the
+response, ``APPEND_SLASH``'s redirect of such a request, and an htmx request
+that is not htmx 4. A body htmx will not swap (``HX-Redirect``, ``HX-Refresh``,
+``HX-Location``) is not judged. ``HX_REQUIRE_VERBS`` adds what only the verbs'
+stance rules out: any other 3xx, and a response no verb built.
 ``HxMiddleware`` records and logs them; ``HxTestClient`` raises them. The
 verbs record their own findings the same way, so ``response.hx_findings`` is
 the one place to look.
@@ -12,14 +14,21 @@ the one place to look.
 
 from __future__ import annotations
 
+import re
+
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse
 from django.http.response import HttpResponseBase
 
-from .errors import HxBareResponse, HxError, HxNoSwap, HxProtocolError, HxRedirectIntoFragment
+from .errors import HxBareResponse, HxError, HxNoSwap, HxPageIntoFragment, HxProtocolError, HxRedirectIntoFragment
 from .request import REQUEST_TYPE_HEADER, is_htmx, protocol_message, who
 
-__all__ = ["guard", "findings_of", "is_html"]
+__all__ = ["guard", "findings_of", "is_html", "is_document", "navigates"]
+
+# htmx 4.0.2's own test, from its swap (``#Ie``): drop the first <head>, then a body whose first tag is <html> or
+# <body> is parsed as a document, and that document's body is what goes into the target.
+_HEAD = re.compile(r"<head(\s[^>]*)?>[\s\S]*?</head>", re.IGNORECASE)
+_FIRST_TAG = re.compile(r"<([a-z][^/>\x20\t\r\n\f]*)", re.IGNORECASE)
 
 
 def is_html(response: HttpResponseBase) -> bool:
@@ -28,6 +37,20 @@ def is_html(response: HttpResponseBase) -> bool:
         not getattr(response, "streaming", False)
         and (response.get("Content-Type") or "").startswith("text/html")
     )
+
+
+def is_document(response: HttpResponseBase) -> bool:
+    """A body htmx 4 would read as a whole document, so it swaps that page's body into the target."""
+    if not isinstance(response, HttpResponse):
+        return False
+    body = response.content.decode(response.charset or "utf-8", errors="replace")
+    first = _FIRST_TAG.search(_HEAD.sub("", body, count=1))
+    return first is not None and first.group(1).lower() in ("html", "body")
+
+
+def navigates(response: HttpResponseBase) -> bool:
+    """``HX-Refresh: true``, ``HX-Redirect`` or ``HX-Location``: htmx 4 obeys it before any swap, so it swaps none of the body."""
+    return response.get("HX-Refresh") == "true" or bool(response.get("HX-Redirect")) or bool(response.get("HX-Location"))
 
 
 def findings_of(response: HttpResponseBase) -> list[HxError]:
@@ -86,31 +109,53 @@ def guard(request: HttpRequest, response: HttpResponseBase) -> list[HxError]:
                 "exactly ({% url %} does)."
             )
         )
-    elif 300 <= status < 400:
-        found.append(
-            HxRedirectIntoFragment(
-                f"{who(request)} answered a request that targets an element with a {status}; fetch will follow it "
-                "and swap the page into that element. Use redirect() on a body-targeted control, navigate() to leave "
-                "the page (a login check, an expired session), or return a fragment."
+        return found
+    if 300 <= status < 400:
+        # fetch follows it with the same headers, so the request it makes is guarded in its turn: a page at the
+        # other end is recorded there. Only HX_REQUIRE_VERBS records the redirect itself.
+        if _verbs_required():
+            found.append(
+                HxRedirectIntoFragment(
+                    f"{who(request)} answered a request that targets an element with a {status} (HX_REQUIRE_VERBS is "
+                    "set); fetch follows it with the same headers and swaps whatever that URL answers into the element. "
+                    "Use redirect() on a body-targeted control, navigate() to leave the page (a login check, an expired "
+                    "session), or return a fragment."
+                )
             )
-        )
-    elif status == 204:
+        return found
+    if navigates(response):
+        return found
+    if status == 204:
         found.append(
             HxNoSwap(
                 f"{who(request)} answered a request that targets an element with a 204; htmx 4 does not swap it. "
                 'Use removed() with hx-swap="delete", or return a fragment.'
             )
         )
-    elif status < 300 and is_html(response) and not _built_by_a_verb(response):
+    elif status < 300 and is_html(response) and is_document(response):
+        found.append(
+            HxPageIntoFragment(
+                f"{who(request)} answered a request that targets an element with a whole page (its first tag is "
+                "<html> or <body>); htmx 4 swaps that page's body into the element, inside the page already there. "
+                "Return a fragment (render(request, template, partial), fragment()), or give the control "
+                'hx-target="body". If a redirect led here, fetch followed it with the same headers: change the view '
+                "that redirected (navigate() leaves the page)."
+            )
+        )
+    elif status < 300 and is_html(response) and not _built_by_a_verb(response) and _verbs_required():
         found.append(
             HxBareResponse(
                 f"{who(request)} answered a request that targets an element with a response no verb built "
-                "(django.shortcuts.render, a plain HttpResponse, a TemplateResponse); whether it is a page or a "
-                "fragment cannot be checked, and django.shortcuts.render sends the whole page into the element. "
-                "Use render(request, template, partial), fragment(), text() or removed()."
+                "(django.shortcuts.render, a plain HttpResponse, a TemplateResponse), so the verbs' checks did not "
+                "run on it (HX_REQUIRE_VERBS is set). Use render(request, template, partial), fragment(), text() "
+                "or removed()."
             )
         )
     return found
+
+
+def _verbs_required() -> bool:
+    return bool(getattr(settings, "HX_REQUIRE_VERBS", False))
 
 
 def _built_by_a_verb(response: HttpResponseBase) -> bool:

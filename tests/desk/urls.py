@@ -9,5 +9,7 @@ urlpatterns = [
     path("desk/drop/bare/", handlers.drop_bare, name="desk_drop_bare"),
     path("desk/drop/targeted/", handlers.drop_targeted, name="desk_drop_targeted"),
     path("desk/cross-off/", handlers.cross_off, name="desk_cross_off"),
+    path("desk/moved/", handlers.moved),
+    path("desk/echo/", handlers.echo),
     path("", include("dj_hx.urls")),
 ]

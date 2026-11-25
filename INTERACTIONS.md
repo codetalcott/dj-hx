@@ -74,8 +74,8 @@ of it was measured in Chromium on htmx 4.0.2 (`tests/test_interactions_browser.p
     such as one defined inside a function, is routed to the bare view, and any decorator applied to
     it is dropped.
   - A signed-out request to a `@login_required` interaction gets its 302. On a control that targets
-    an element the guard records that 302 (`HxRedirectIntoFragment`), as it does for any view,
-    because fetch would follow it into the target.
+    an element, fetch follows it with the same headers, and the login page it reaches is recorded
+    (`HxPageIntoFragment`), as for any view. `HX_REQUIRE_VERBS` records the 302 itself.
   - Every interaction is routed by the root `include("dj_hx.urls")`, not under its app's own
     include, so protection attached to that include, such as `decorator_include` or a middleware
     that checks the app's URL prefix, never reaches it. A decorator above `@interaction` does, and

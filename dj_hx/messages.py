@@ -9,6 +9,7 @@ project's messages partial and appends them as an ``<hx-partial>``::
     HX_MESSAGES_TEMPLATE = "layout.html#messages"   # root element must be id="messages"
 
 It peeks before it consumes, and consumes only once it knows it will append.
+A response whose own template already showed the messages is left alone.
 The middleware must be listed *after* ``MessageMiddleware`` so its response
 phase runs first, before the messages are written back to the cookie or
 session; check ``dj_hx.E002`` says so.
@@ -27,7 +28,7 @@ from django.http import HttpRequest
 from django.http.response import HttpResponseBase
 
 from .errors import HxError, HxMessagesUnconfigured
-from .guard import findings_of
+from .guard import findings_of, navigates
 from .request import who
 from .verbs import check_root_id, render_partial, wrap_partial
 
@@ -54,6 +55,10 @@ def pending_messages(request: HttpRequest) -> int:
     storage = get_messages(request)
     if not isinstance(storage, BaseStorage) or not storage:  # a request without the middleware gets a plain list
         return 0
+    if storage.used:
+        # The response already showed them: its template iterated the storage, which consumes it. One added
+        # after that waits for the next page, as Django keeps it.
+        return 0
     count = len(list(storage))
     storage.used = False  # peeked, not consumed (the documented way)
     return count
@@ -61,8 +66,8 @@ def pending_messages(request: HttpRequest) -> int:
 
 def bridge_messages(request: HttpRequest, response: HttpResponseBase) -> None:
     """Append pending messages to a fragment response; records a finding if it cannot, and never raises one."""
-    if getattr(response, "hx_kind", None) == "navigate":
-        return  # htmx swaps nothing and loads a page, which shows the messages
+    if navigates(response):
+        return  # htmx swaps nothing and loads a page (navigate(), HX-Redirect, HX-Refresh, HX-Location), which shows them
     if not pending_messages(request):
         return
     configured = messages_template()

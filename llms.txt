@@ -89,10 +89,13 @@ Template context processors must include `django.template.context_processors.req
 | One URL reached by both a body-targeted control and an element-targeted one | branch on `wants_page(request)` |
 
 Never return `HttpResponse(status=204)`, `HttpResponseRedirect`, `django.shortcuts.redirect`,
-`django.shortcuts.render` or `HttpResponse("")` to an htmx request. Say what happened with a verb: a
-response no verb built that answers an element-targeted request is recorded as `HxBareResponse`.
+`django.shortcuts.render` or `HttpResponse("")` to an htmx request. Say what happened with a verb. The
+guard records a whole page (first tag `<html>` or `<body>`) answering an element-targeted request, whoever
+built it. With `HX_REQUIRE_VERBS = True` it also records any 3xx and any response no verb built
+(`HxBareResponse`).
 
-Django's `login_required` answers with a 302, which the guard records when a control targets an element.
+Django's `login_required` answers with a 302. When a control targets an element, fetch follows it with the same
+headers, and the login page it reaches is recorded (`HxPageIntoFragment`); `HX_REQUIRE_VERBS` records the 302.
 Leave the page instead; on a partial request `request.get_full_path()` is the fragment's URL, so come back
 to the page, `current_url(request)`:
 
@@ -238,7 +241,8 @@ urlpatterns = [..., path("", include("dj_hx.urls"))]   # once, at the site root
   `remind = interaction(...)(remind)` in the module that defines `remind` (the handler is
   `inspect.unwrap(remind)`). An interaction the module does not hold under its name gets the bare view, and
   decorators applied to it are dropped. `login_required`'s 302 to a control that targets an element is
-  recorded by the guard (`HxRedirectIntoFragment`), as for any view.
+  followed by fetch, and the login page it reaches is recorded (`HxPageIntoFragment`), as for any view;
+  `HX_REQUIRE_VERBS` records the 302 itself.
 - Reply: `fragment()` of the partial with `context(request, <the route parameters it names>)` and the
   returned keys over it, status 200, then `.trigger(name)` for each of `triggers`. A `context=` parameter the
   route lacks takes its default. Its root element must carry `id="<partial name>"` (`HxPartialRootId`).
@@ -314,6 +318,7 @@ layout:
 | Setting | Meaning |
 |---|---|
 | `HX_MESSAGES_TEMPLATE = "layout.html#messages"` | Partial used to render pending `django.contrib.messages` into fragment responses. `#name` defaults to `messages`. Root element must be `id="<name>"`. |
+| `HX_REQUIRE_VERBS = True` | On a partial request, also record any 3xx (`HxRedirectIntoFragment`) and any `text/html` 2xx no verb built (`HxBareResponse`). Off by default, so a project on django-htmx can add the guard and keep its views. |
 | `HX_LINT_IGNORE = ("implicit-inheritance",)` | Lint rules to silence everywhere (test client, middleware, `hx_lint`, W005). |
 | `HX_EXTENSIONS = ("hx-live", "sse")` | Extensions the pages load, for the lint (also detected from `<script src>`). The file name (`hx-sse`) or the name htmx registers (`sse`, as in `htmx.config.extensions`); W008 flags any other. |
 | `SILENCED_SYSTEM_CHECKS = ["dj_hx.W005"]` | Standard Django; the check ids are below. An Error's id can be silenced too, as while working through E022's first run on an existing site: an Error stops `check`, `runserver`, `migrate`, `makemigrations`, `createsuperuser` and `manage.py test`. |
@@ -324,12 +329,12 @@ All subclass `HxError` except `HxRedirectError` (an `AssertionError` from the te
 
 | Error | Raised or recorded | Cause | Fix |
 |---|---|---|---|
-| `HxPageIntoFragment` | raised by `page()` | page answers an element-targeted request | `hx-target="body"` on the control, or `render(..., partial)` |
-| `HxRedirectIntoFragment` | raised by `redirect()`; recorded by the guard for any other 3xx, including `APPEND_SLASH`'s 301 | 3xx answers an element-targeted request | target body, `navigate()` to leave the page, or return a fragment; match the route's trailing slash (`{% url %}` does) |
+| `HxPageIntoFragment` | raised by `page()`; recorded by the guard for any other whole page | page answers an element-targeted request (first tag `<html>` or `<body>` once the first `<head>` is dropped; the page a redirect led to included) | `hx-target="body"` on the control, or `render(..., partial)` |
+| `HxRedirectIntoFragment` | raised by `redirect()`; recorded by the guard for `APPEND_SLASH`'s 301, and for any other 3xx under `HX_REQUIRE_VERBS` | 3xx answers an element-targeted request | target body, `navigate()` to leave the page, or return a fragment; match the route's trailing slash (`{% url %}` does) |
 | `HxFragmentIntoPage` | recorded by `fragment()` / `text()` | bare fragment answers a boosted or body-targeted request | target an element, or render a page |
-| `HxNoSwap` | recorded by the guard | 204 answers a partial request; htmx 4 does not swap | `removed()` + `hx-swap="delete"`, or a fragment |
-| `HxBareResponse` | recorded by the guard | a `text/html` 2xx no verb built answers an element-targeted request (`django.shortcuts.render`, `HttpResponse`, `TemplateResponse`) | use a verb |
-| `HxMessagesUnconfigured` | recorded by the middleware | messages added on a fragment response, `HX_MESSAGES_TEMPLATE` unset | set it |
+| `HxNoSwap` | recorded by the guard | 204 answers a partial request; htmx 4 does not swap (not judged with `HX-Redirect`, `HX-Refresh: true` or `HX-Location`) | `removed()` + `hx-swap="delete"`, or a fragment |
+| `HxBareResponse` | recorded by the guard under `HX_REQUIRE_VERBS` | a `text/html` 2xx no verb built answers an element-targeted request (`django.shortcuts.render`, `HttpResponse`, `TemplateResponse`) | use a verb |
+| `HxMessagesUnconfigured` | recorded by the middleware | messages added on a fragment response that did not show them, `HX_MESSAGES_TEMPLATE` unset; not on a response htmx will not swap (`HX-Redirect`, `HX-Refresh`, `HX-Location`) | set it |
 | `HxProtocolError` | raised by `request_type()` under `DEBUG`; recorded by the guard (production answers `full`) | `HX-Request` without `HX-Request-Type` | use htmx 4 |
 | `HxUnknownPartial` | raised at render; recorded by the messages bridge | `partial=` names no partial of the template; message lists the ones it defines | write `{% partialdef name inline %}` around the region |
 | `HxEmptyRefusal` | recorded by an interaction's reply | a declared refusal with an empty or blank message: the 422 reply's `{% if error %}` shows nothing | raise it with a message: `raise NotOnRota("Member 9 is not on the rota.")` |
@@ -470,6 +475,8 @@ What the client enforces on every request, including plain `client.get`:
   `HxLintWarning` (`warnings.warn`). `lint=False` or `lint_ignore=("rule",)` per client.
 - A 3xx to a `full=True` request raises `HxRedirectError` unless `follow=True` or `follow=False` was
   chosen, because htmx's fetch follows redirects and the browser never sees the 3xx.
+- A 3xx to a partial request is judged where it leads: `follow=True` follows it with the same headers, as
+  fetch does, and a page there raises `HxPageIntoFragment`.
 - A project template that reads a name nobody supplies, or an attribute an object lacks, raises
   `HxUndefinedVariable`, a recorded finding (`strict=False` leaves it in `response.hx_findings`). Its
   `.lookups` give each one's `variable` (the name, or the attribute after a dot), `template`, `line`, `tag`
@@ -599,7 +606,8 @@ System checks (tag `dj_hx`):
 | E026 | an `hx-select` reaches an `{% act %}` control: its own, or the nearest ancestor's `hx-select:inherited` (htmx 4 has no `hx-disinherit`; an own `hx-select=""` is an empty value, no select, and stops an ancestor's). htmx 4 then sends `HX-Request-Type: full`, so each reply records `HxFragmentIntoPage`, and swaps in only what the selector finds in the reply. Measured on htmx 4.0.2: a selector that matches nothing in the reply removes the partial's region; one that matches inside it puts that element in the region's place. A computed `hx-select` is not judged |
 
 `HxMiddleware` also: adds `Vary` to every response, runs the guard, bridges pending messages onto partial
-2xx HTML responses (peeking before consuming), logs findings as warnings on the `dj_hx` logger, and under
+2xx HTML responses (peeking before consuming; not when the response's own template showed them, or htmx will
+load a page instead: `HX-Redirect`, `HX-Refresh`, `HX-Location`), logs findings as warnings on the `dj_hx` logger, and under
 `DEBUG` lints every htmx response (`X-HX-Template` is set by the verb that rendered the response). It never
 raises a finding: a messages partial that is missing or whose root is not its name is recorded, the fragment
 goes out without the messages, and they wait for the next page.

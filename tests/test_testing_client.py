@@ -51,12 +51,12 @@ def test_non_html_and_empty_responses_are_skipped(client):
 
 
 def test_the_client_guards_without_the_middleware(client):
-    from dj_hx import HxRedirectIntoFragment
+    from dj_hx import HxPageIntoFragment
 
     middleware = [m for m in __import__("django.conf").conf.settings.MIDDLEWARE if "dj_hx" not in m]
     with override_settings(MIDDLEWARE=middleware):
-        with pytest.raises(HxRedirectIntoFragment):
-            client.hx_post("/lib/plain-redirect/")
+        with pytest.raises(HxPageIntoFragment):
+            client.hx_get("/lib/bare-page/")
         assert "HX-Request" in client.hx_get("/lib/")["Vary"]  # the verbs set it themselves
 
 
@@ -64,11 +64,11 @@ def test_every_finding_on_a_response_is_raised_at_once(client):
     """The first finding is the exception; the rest are in its message, so one run shows them all."""
     from dj_hx import HxBareResponse, HxMessagesUnconfigured
 
-    with override_settings(HX_MESSAGES_TEMPLATE=None):
+    with override_settings(HX_MESSAGES_TEMPLATE=None, HX_REQUIRE_VERBS=True):
         with pytest.raises(HxBareResponse, match=r"Also recorded on this response, 1 more:\n  HxMessagesUnconfigured: flash_plain\(\)") as info:
             client.hx_get("/lib/flash-plain/")
     recorded = HxTestClient(strict=False, lint=False)
-    with override_settings(HX_MESSAGES_TEMPLATE=None):
+    with override_settings(HX_MESSAGES_TEMPLATE=None, HX_REQUIRE_VERBS=True):
         r = recorded.hx_get("/lib/flash-plain/")
     assert [type(f) for f in r.hx_findings] == [HxBareResponse, HxMessagesUnconfigured]
     assert str(info.value).startswith("flash_plain() answered a request that targets an element with a response no verb built")

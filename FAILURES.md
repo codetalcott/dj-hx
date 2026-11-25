@@ -8,7 +8,13 @@ silently, what dj-hx does instead, what it reads to decide, and what it cannot s
 
 **Failure.** A page answers a request that targets an element
 
-**What happens.** `page()` raises `HxPageIntoFragment`
+**What happens.** `page()` raises `HxPageIntoFragment`. The guard records it for any other 2xx `text/html`
+response whose first tag, once the first `<head>` is dropped, is `<html>` or `<body>`. That is htmx 4.0.2's own
+test: its swap reads such a body as a document and puts the document's body into the target, under the page already
+there, and takes its `<title>` (measured in Chromium by `tests/test_interactions_browser.py`). It covers
+`django.shortcuts.render`, a `TemplateResponse`, a verb given a page template, and the page a redirect leads to. A
+response carrying `HX-Redirect`, `HX-Refresh: true` or `HX-Location` is not judged, because htmx obeys those before
+any swap.
 
 ## A fragment answers a boosted or body-targeted request
 
@@ -20,25 +26,37 @@ silently, what dj-hx does instead, what it reads to decide, and what it cannot s
 
 **Failure.** Any 3xx answers a partial request, including `APPEND_SLASH`'s 301 and `login_required`'s 302
 
-**What happens.** `redirect()` raises; the guard records `HxRedirectIntoFragment`, naming APPEND_SLASH when that is the cause, and `navigate()` for leaving the page
+**What happens.** `redirect()` raises. fetch follows any other 3xx with the request's headers, `HX-Request-Type`
+included (measured in Chromium, 2026-11-24), so what it reaches is guarded in its turn. A page there is recorded as
+`HxPageIntoFragment`, naming the view that answered. A fragment there is swapped as intended: a POST that redirects
+to a list's URL is a working pattern. The guard always records `APPEND_SLASH`'s 301 (`HxRedirectIntoFragment`,
+naming the cause), because a POST that follows it arrives as a GET without its body. `HX_REQUIRE_VERBS` records every
+other 3xx too. `navigate()` leaves the page. What it cannot see: a redirect to a page another server answers.
 
 ## A 204 answers a partial request
 
 **Failure.** A 204 answers a partial request
 
-**What happens.** `HxNoSwap`: htmx 4 leaves the target untouched
+**What happens.** `HxNoSwap`: htmx 4 leaves the target untouched. A 204 carrying `HX-Redirect`, `HX-Refresh: true`
+or `HX-Location` is not judged. A deliberate 204 under `hx-swap="none"` is recorded as well; `removed()` answers that
+control the same way.
 
 ## A response no verb built answers a partial request
 
 **Failure.** A response no verb built answers a partial request
 
-**What happens.** `HxBareResponse`: `django.shortcuts.render`, a plain `HttpResponse` or a `TemplateResponse` cannot be checked, and Django's `render` sends the whole page
+**What happens.** Under `HX_REQUIRE_VERBS = True`, `HxBareResponse`: `django.shortcuts.render`, a plain
+`HttpResponse` or a `TemplateResponse` skipped the verbs' checks (the request type, the partial's name, its root).
+Without the setting nothing is recorded, so a project on django-htmx can install the guard and keep its views. A whole
+page is recorded either way (above).
 
 ## Messages added on a fragment with no messages template
 
 **Failure.** Messages added on a fragment with no messages template
 
-**What happens.** `HxMessagesUnconfigured`
+**What happens.** `HxMessagesUnconfigured`. Not when the fragment's own template showed the messages, since iterating
+them consumes them, and not when htmx will load a page instead of swapping (`navigate()`, `HX-Redirect`,
+`HX-Refresh`, `HX-Location`), since that page shows them.
 
 ## A partial's root element is not its name
 

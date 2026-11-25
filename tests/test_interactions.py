@@ -456,7 +456,7 @@ def test_site_wide_middleware_reaches_every_interaction(rota, db):
     # Interactions are routed by the root include("dj_hx.urls"), not under their app's own include, so only a
     # decorator above @interaction or middleware that sees every request protects them.
     middleware = [*settings.MIDDLEWARE, "django.contrib.auth.middleware.LoginRequiredMiddleware"]
-    with override_settings(MIDDLEWARE=middleware):
+    with override_settings(MIDDLEWARE=middleware, HX_REQUIRE_VERBS=True):  # which records the redirect itself
         r = HxTestClient(strict=False).hx_post("/x/rota/notify/spring/3/")
     assert r.status_code == 302 and r["Location"].startswith(f"{settings.LOGIN_URL}?next=")
     assert [type(finding) for finding in r.hx_findings] == [HxRedirectIntoFragment]
@@ -535,8 +535,11 @@ def test_a_view_decorator_above_interaction_wraps_the_route(rota, client, db, dj
     url = reverse("dj_hx:sign_off", kwargs={"member": 5})
     r = client.post(url)  # a browser, signed out: @login_required answers
     assert (r.status_code, r["Location"]) == (302, f"/accounts/login/?next={url}")
-    with pytest.raises(HxRedirectIntoFragment, match=r"sign_off\(\) answered a request that targets an element with a 302"):
-        client.hx_post(url)  # its 302 to a control that targets an element, which the guard records
+    r = client.hx_post(url)  # a control that targets an element: @login_required answers it too
+    assert (r.status_code, r["Location"]) == (302, f"/accounts/login/?next={url}")
+    with override_settings(HX_REQUIRE_VERBS=True):
+        with pytest.raises(HxRedirectIntoFragment, match=r"sign_off\(\) answered a request that targets an element with a 302"):
+            client.hx_post(url)  # which HX_REQUIRE_VERBS records
     client.force_login(django_user_model.objects.create_user("ada"))
     r = client.hx_post(url)
     assert (r.status_code, r.content.decode()) == (200, '<div id="signoff">Signed off by ada</div>')

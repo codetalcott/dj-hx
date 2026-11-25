@@ -21,7 +21,7 @@ class HxProtocolError(HxError):
 
 
 class HxPageIntoFragment(HxError):
-    """``page()`` answered a request whose target is not the body."""
+    """A whole page answered a request whose target is not the body: ``page()`` raises it, the guard records it."""
 
 
 class HxFragmentIntoPage(HxError):
@@ -37,7 +37,7 @@ class HxNoSwap(HxError):
 
 
 class HxBareResponse(HxError):
-    """A response no verb built answered a request that targets an element."""
+    """With ``HX_REQUIRE_VERBS``: a response no verb built answered a request that targets an element."""
 
 
 class HxUnknownPartial(HxError):

@@ -6,7 +6,7 @@ is strict about what htmx would do silently.
   ``HX-Request: true`` and ``HX-Request-Type: partial`` (``full=True`` for a
   boosted link or a body-targeted control), form-encoded like htmx's FormData.
 - Every response's recorded findings (the verbs' and the middleware's) are
-  raised: ``HxRedirectIntoFragment``, ``HxNoSwap``, ``HxFragmentIntoPage``,
+  raised: ``HxPageIntoFragment``, ``HxRedirectIntoFragment``, ``HxNoSwap``, ``HxFragmentIntoPage``,
   ``HxMessagesUnconfigured``, ``HxProtocolError``. Without ``HxMiddleware``
   the client runs the guard itself.
 - Every ``text/html`` response is linted for the htmx 4 vocabulary and an
@@ -15,7 +15,9 @@ is strict about what htmx would do silently.
 - A 3xx answering a *full* request raises ``HxRedirectError`` unless the test
   says ``follow=True`` (the page the browser shows) or ``follow=False`` (the
   redirect itself), because htmx's fetch follows redirects and the browser
-  never sees them. A 3xx answering a partial request is the guard's finding.
+  never sees them. A 3xx answering a partial request is judged where it leads:
+  ``follow=True`` follows it with the same headers, as fetch does (the 3xx
+  itself is a finding only under ``HX_REQUIRE_VERBS``).
 - A project template that reads a name nobody supplies, or an attribute an
   object lacks, raises ``HxUndefinedVariable``, naming each one and its
   template:line; a lookup the request's data decides is skipped

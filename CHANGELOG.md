@@ -1,5 +1,38 @@
 # Changelog
 
+## Unreleased
+
+The guard can now sit beside django-htmx. Installing `HxMiddleware` no longer flags every view the verbs did
+not build: by default the guard records only what goes wrong whoever built the response. That was measured on a
+miniature copying five of matorral's django-htmx response patterns (README, "The htmx layer"). A project written
+with the verbs that wants 0.3.0's strictness sets `HX_REQUIRE_VERBS = True`.
+
+### Changed
+
+- A response no verb built (`HxBareResponse`) and a plain 3xx answering a partial request
+  (`HxRedirectIntoFragment`) are recorded only under the new `HX_REQUIRE_VERBS = True`. fetch follows a 3xx with
+  the request's headers (measured in Chromium), so the guard judges the request it makes: a page there is recorded,
+  `login_required`'s login page included, and a fragment there is what the redirect meant. `APPEND_SLASH`'s 301 is
+  still always recorded.
+- W003's hint says to silence it when the fragments show their own messages.
+
+### Added
+
+- The guard records `HxPageIntoFragment` for any whole page answering a partial request, whoever built it. A whole
+  page is one whose first tag, once the first `<head>` is dropped, is `<html>` or `<body>`: htmx 4.0.2's own test.
+  Chromium shows such a page landing inside the target, beside the page already there.
+
+### Fixed
+
+- The messages bridge showed a fragment's messages a second time when the fragment's own template had already shown
+  them (django-htmx projects often `{% include %}` the messages template in their fragments). With
+  `HX_MESSAGES_TEMPLATE` set they appeared twice in the reply. Without it they came back on the next page, and
+  `HxMessagesUnconfigured` was recorded. Measured in Chromium on 0.3.0.
+- A response htmx 4 obeys a header over (`HX-Redirect`, `HX-Refresh: true`, `HX-Location`, as django-htmx's
+  `HttpResponseClientRedirect`, `HttpResponseClientRefresh` and `HttpResponseLocation` send) is no longer judged. The
+  bridge now leaves its messages for the page htmx loads. With `HX_MESSAGES_TEMPLATE` set they were put into a body
+  htmx never reads, and lost.
+
 ## 0.3.0 (2026-11-24)
 
 From an evaluation of 0.2.2 against the repository's own standard: every claim

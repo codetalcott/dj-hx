@@ -87,11 +87,19 @@ def test_navigate_leaves_the_messages_for_the_page_it_loads(client):
     assert b"Please log in" in client.get("/lib/").content
 
 
-def test_guard_catches_a_plain_django_redirect(client):
-    with pytest.raises(HxRedirectIntoFragment, match="answered a request that targets an element with a 302"):
-        client.hx_post("/lib/plain-redirect/")
-    with pytest.raises(HxRedirectIntoFragment, match=r"navigate\(\) to leave the page"):
-        client.hx_post("/lib/plain-redirect/")
+def test_a_plain_redirect_is_judged_where_fetch_follows_it(client):
+    """fetch follows a 3xx with the request's headers (measured in Chromium, experiment 2), so the guard judges what it reaches."""
+    r = client.hx_post("/lib/plain-redirect/")  # to /lib/, which answers this request with its rows
+    assert r.status_code == 302 and r.hx_findings == []
+    assert client.hx_post("/lib/plain-redirect/", follow=True).content.count(b"<tr>") == 3
+    with pytest.raises(HxPageIntoFragment, match=r"bare_page\(\) answered .* with a whole page.* If a redirect led here"):
+        client.hx_post("/lib/redirect-to-page/", follow=True)
+
+
+def test_hx_require_verbs_records_the_redirect_itself(client):
+    with override_settings(HX_REQUIRE_VERBS=True):
+        with pytest.raises(HxRedirectIntoFragment, match=r"with a 302 \(HX_REQUIRE_VERBS is set\).*navigate\(\) to leave the page"):
+            client.hx_post("/lib/plain-redirect/")
 
 
 def test_guard_names_an_append_slash_redirect(client):
@@ -101,8 +109,8 @@ def test_guard_names_an_append_slash_redirect(client):
 
 def test_guard_logs_instead_of_raising_when_not_strict(caplog):
     with caplog.at_level("WARNING", logger="dj_hx"):
-        r = HxTestClient(strict=False).hx_post("/lib/plain-redirect/")
-    assert r.status_code == 302  # logged, not raised, so the redirect went out
+        r = HxTestClient(strict=False).hx_get("/lib/bare-page/")
+    assert r.status_code == 200  # logged, not raised, so the page went out
     assert sum("answered a request that targets an element" in m for m in caplog.messages) == 1
 
 
@@ -210,6 +218,31 @@ def test_messages_reach_a_fragment_response_as_a_partial(client):
     assert '<p class="flash">Deleted!</p>' in body
     # consumed: the next page does not show it again
     assert b"Deleted!" not in client.get("/lib/").content
+
+
+def test_a_fragment_that_shows_its_own_messages_gets_no_second_copy(client):
+    """A django-htmx habit: the fragment's template shows the messages (often out of band), which consumes them."""
+    body = client.hx_get("/lib/flash-shown/").content.decode()
+    assert body.count('<p class="flash">Shown</p>') == 1 and "<hx-partial" not in body
+    assert b"Shown" not in client.get("/lib/").content  # consumed by the fragment that showed them
+    with override_settings(HX_MESSAGES_TEMPLATE=None):
+        client.hx_get("/lib/flash-shown/")  # HxTestClient would raise an HxMessagesUnconfigured recorded here
+        assert b"Shown" not in client.get("/lib/").content
+
+
+@pytest.mark.parametrize(("header", "value"), [("HX-Redirect", "/lib/"), ("HX-Refresh", "true"), ("HX-Location", "/lib/")])
+@pytest.mark.parametrize("status", [200, 204])
+def test_a_response_htmx_obeys_before_any_swap_is_not_judged_and_keeps_its_messages(client, header, value, status):
+    """htmx 4.0.2 obeys HX-Refresh, HX-Redirect and HX-Location before any swap (its #de), so no body is swapped."""
+    url = f"/lib/navigates/?header={header}&value={value}&status={status}"
+    with override_settings(HX_REQUIRE_VERBS=True):
+        r = client.hx_post(url)  # HxTestClient: a finding (a whole page, a 204, no verb) would raise
+    assert b"<hx-partial" not in r.content
+    assert b'<p class="flash">Moved</p>' in client.get("/lib/").content  # left for the page htmx loads
+    with override_settings(HX_MESSAGES_TEMPLATE=None):
+        client.hx_post(url)  # and no HxMessagesUnconfigured
+    with pytest.raises(HxPageIntoFragment):
+        client.hx_post("/lib/navigates/?header=HX-Refresh&value=false&status=200")  # htmx refreshes only on "true"
 
 
 def test_messages_on_a_full_response_stay_in_the_page(client):
