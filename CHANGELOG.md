@@ -1,8 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.4.1 (2026-11-25)
 
-From a run of the checks on six public Django projects, where 61 of `hx_map`'s 64 Errors were false.
+Fixes to `hx_map` from a run of the checks on six public Django projects, where 61 of its 64 Errors were false.
+No public interface changes.
 
 ### Fixed
 
