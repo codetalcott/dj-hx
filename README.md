@@ -18,11 +18,10 @@ header, offers no way to read the others, and makes each of htmx 4's silent
 outcomes loud (see [Beside the alternatives](#beside-the-alternatives)). The
 same design for Flask is [hx-flask]; the sibling for Fixi.js is [dj-fixi].
 
-**Status:** 0.3.0 (2026-11-24), alpha, installed from its git tag; not on PyPI. Django 5.2, 6.0
-and 6.1; Python 3.11 to 3.14, the free-threaded 3.14 included. This page describes `main`, which is
-ahead of 0.3.0. `HX_REQUIRE_VERBS`, the guard's check for a whole page, and adding the guard beside
-django-htmx are not in 0.3.0 (see [CHANGELOG](https://github.com/codetalcott/dj-hx/blob/main/CHANGELOG.md),
-Unreleased). Install `@main` for them.
+**Status:** 0.4.0 (2026-11-24), alpha, installed from its git tag; not on PyPI. Django 5.2, 6.0
+and 6.1; Python 3.11 to 3.14, the free-threaded 3.14 included. Upgrading from 0.3.0: a project written
+with the verbs sets `HX_REQUIRE_VERBS = True` to keep 0.3.0's strictness (see the
+[CHANGELOG](https://github.com/codetalcott/dj-hx/blob/main/CHANGELOG.md)).
 
 ## A silent failure, caught
 
@@ -62,8 +61,8 @@ HxNoSwap`). It runs under pytest-django, with `DJANGO_SETTINGS_MODULE` set in
 ## Install
 
 ```sh
-pip install "dj-hx @ git+https://github.com/codetalcott/dj-hx@v0.3.0"
-pip install "dj-hx[partials] @ git+https://github.com/codetalcott/dj-hx@v0.3.0"   # Django 5.2
+pip install "dj-hx @ git+https://github.com/codetalcott/dj-hx@v0.4.0"
+pip install "dj-hx[partials] @ git+https://github.com/codetalcott/dj-hx@v0.4.0"   # Django 5.2
 ```
 
 ```python
@@ -77,7 +76,7 @@ MIDDLEWARE = [
 ]
 
 HX_MESSAGES_TEMPLATE = "layout.html#messages"   # see the messages bridge
-HX_REQUIRE_VERBS = True                         # optional, and on main only (not in 0.3.0); see below
+HX_REQUIRE_VERBS = True                         # optional; see below
 ```
 
 With `django.contrib.messages` installed, as `startproject` installs it, check `dj_hx.W003`
@@ -599,8 +598,7 @@ project is still on or moving from htmx 2. Use dj-hx when you want the server
 to refuse, record or raise on what htmx 4 would do silently, and accept the
 stance that comes with it.
 
-Or keep django-htmx and add dj-hx beside it for the guard alone (on `main`, not in
-0.3.0): `"dj_hx"` in
+Or keep django-htmx and add dj-hx beside it for the guard alone: `"dj_hx"` in
 `INSTALLED_APPS` and `HxMiddleware` after `MessageMiddleware`, with the views
 unchanged and `HX_REQUIRE_VERBS` left out. The guard then records only what goes
 wrong whoever built the response: a 204, a whole page answering a partial
