@@ -161,6 +161,18 @@ def test_map_treats_script_dispatched_events_as_announced():
 
 
 @override_settings(ROOT_URLCONF="tests.urlconfs.mapping")
+def test_a_listener_is_read_beside_a_django_template_tag_but_not_across_branches():
+    # hypha's activity feed: hx-trigger="load, commentAdded from:body{% if extra_triggers %}, {{ extra_triggers }}{% endif %}"
+    beside = "load, nobody-listens from:body{% if more %}, {{ more }}{% endif %}"
+    m = build_map(sources={"p.html": f'<div hx-get="/m/page/" hx-target="body" hx-trigger="{beside}">x</div>'})
+    assert [li.event for li in m.listeners] == ["load", "nobody-listens"]
+    assert not [w for w in m.warnings if "nobody-listens" in w]
+    divided = "{% if a %}nobody-listens{% else %}closed{% endif %} from:body"
+    m = build_map(sources={"p.html": f'<div hx-get="/m/page/" hx-target="body" hx-trigger="{divided}">x</div>'})
+    assert m.listeners == [] and [w for w in m.warnings if "'nobody-listens' is announced" in w]
+
+
+@override_settings(ROOT_URLCONF="tests.urlconfs.mapping")
 def test_a_hyperscript_listener_pairs_with_the_views_trigger():
     sources = {"p.html": '<div _="on nobody-listens from body add .flash to me">x</div>'}
     m = build_map(sources=sources)

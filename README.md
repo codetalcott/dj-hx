@@ -21,7 +21,8 @@ same design for Flask is [hx-flask]; the sibling for Fixi.js is [dj-fixi].
 **Status:** 0.4.2 (2026-11-25), alpha, installed from its git tag; not on PyPI. Django 5.2, 6.0
 and 6.1; Python 3.11 to 3.14, the free-threaded 3.14 included. Upgrading from 0.3.0: a project written
 with the verbs sets `HX_REQUIRE_VERBS = True` to keep 0.3.0's strictness (see the
-[CHANGELOG](https://github.com/codetalcott/dj-hx/blob/main/CHANGELOG.md)).
+[CHANGELOG](https://github.com/codetalcott/dj-hx/blob/main/CHANGELOG.md)). This page describes `main`, which is
+ahead of 0.4.2: the event fixes under the CHANGELOG's Unreleased are not in 0.4.2. Install `@main` for them.
 
 ## A silent failure, caught
 
@@ -583,7 +584,7 @@ not a browser.
 | answers a partial request with a 302 | goes out as is; nothing logged | same | `redirect()` raises; a page any other 3xx leads to is recorded, and `HX_REQUIRE_VERBS` records the 3xx itself |
 | answers a partial request with `django.shortcuts.render` | the whole page goes out; nothing logged | same | `HxPageIntoFragment` recorded |
 | fires an event | `trigger_client_event(r, "x")` writes `{"x": {}}`, no target | `set_trigger("x")` writes `x`, no target | `.trigger()` always writes a target (why: measured under htmx 4 facts) |
-| writes an htmx 2 header | `trigger_client_event(..., after="swap")` writes `HX-Trigger-After-Swap`, which htmx 4.0.2 does not read; the docs do not label it | no such helper | none offered |
+| writes an htmx 2 header | `trigger_client_event(..., after="swap")` writes `HX-Trigger-After-Swap`, which htmx 4.0.2 does not read; the docs do not label it | no such helper | none offered; `W025` still reports a listener for an event sent that way, since `hx_map` counts `trigger_client_event()` as announcing only without `after="swap"` or `"settle"` |
 | reads the target | `request.htmx.target`, `.source` | the same | not offered |
 
 Neither library's docs say what htmx 4 does with a 204 or a 3xx. Both have

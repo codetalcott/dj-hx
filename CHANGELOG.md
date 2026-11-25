@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- `hx_map`, `W024` and `W025` read django-htmx's `trigger_client_event(response, "name", ...)` in a view as announcing
+  that event, as `.trigger()` does. With `after="swap"` or `"settle"` it writes `HX-Trigger-After-Swap` or `-Settle`,
+  which htmx 4.0.2 does not read, so it announces nothing and a listener for it is still W025. Found on two of the
+  six public projects (hypha, NAV).
+- `hx_map`, `W024` and `W025` read an `hx-trigger` spec by spec (hx-flask #19), so the events written literally
+  beside a template tag are listeners: `load, saved from:body{% if x %}, {{ more }}{% endif %}` listens for `saved`.
+  Any `{{ }}` or branch tag in the value used to drop all of it, so W024 warned that nothing listened for an event a
+  listener like that hears. A spec whose name is built in the template, or which a branch tag divides into
+  alternatives, is still not read.
+
 ## 0.4.2 (2026-11-25)
 
 The four false classes left after 0.4.1's map fixes, from the same run of the checks on six public Django projects:
