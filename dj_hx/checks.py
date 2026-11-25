@@ -82,7 +82,8 @@ read, and only when a tag fails. A name a call builds (debug_toolbar_urls())
 or a loop adds is not read, and stays E022.
 W024 and W025 pair the events views announce with .trigger() or an HX-Trigger
 header they write (response["HX-Trigger"] = "a, b" or HttpResponse(headers={...}),
-read for its literal names as htmx 4.0.2 reads the header; as hx_map finds them) and interactions declare in triggers= with the listeners in the project's
+read for its literal names as htmx 4.0.2 reads the header), or with django-htmx's
+trigger_client_event() unless after= is "swap" or "settle" (as hx_map finds them) and interactions declare in triggers= with the listeners in the project's
 templates (hx-trigger, hx-on, and hyperscript on in an attribute or an inline
 <script type="text/hyperscript">, behaviors included), through
 mapcore.unpaired_events(), the pairing hx_map warns from. A browser event,

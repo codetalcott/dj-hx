@@ -75,6 +75,30 @@ def _scan(handler: Handler, func, verb_names: dict[str, str], method: str = ALL_
     # is a class-based view's get_context_data, an interaction's context, or a view that raises.
     for kinds in handler.json_returns.values():
         kinds -= {"a dict", "a list"}
+    handler.announces |= _client_events(tree)
+
+
+def _client_events(tree: ast.AST) -> set[str]:
+    """
+    The events django-htmx's ``trigger_client_event(response, "name", ...)`` announces, as ``.trigger()`` does: a
+    literal name, with ``after`` unset or ``"receive"``. ``after="swap"`` or ``"settle"`` writes
+    ``HX-Trigger-After-Swap`` or ``-Settle``, which htmx 4.0.2 does not read, so it announces nothing.
+    """
+    events: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", None)
+        if func != "trigger_client_event":
+            continue
+        kw = {k.arg: k.value for k in node.keywords}
+        name = node.args[1] if len(node.args) > 1 else kw.get("name")
+        after = node.args[3] if len(node.args) > 3 else kw.get("after")
+        if after is not None and not (isinstance(after, ast.Constant) and after.value == "receive"):
+            continue
+        if isinstance(name, ast.Constant) and isinstance(name.value, str):
+            events.add(name.value)
+    return events
 
 
 def namespace_walk(path: list[str], resolver) -> tuple[list[tuple[str, str, Any]], str | None]:

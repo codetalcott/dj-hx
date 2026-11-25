@@ -299,12 +299,24 @@ def test_w024_and_w025_read_an_hx_trigger_header_a_view_writes_by_hand(tmp_path)
     # HttpResponse(headers={"HX-Trigger": json.dumps(...)}); W025 said nothing announced either.
     (tmp_path / "page.html").write_text(
         '<div hx-get="/h/changed/" hx-target="body" hx-trigger="issueChanged from:body, saved from:body, '
-        'leadUpdated from:body">x</div>'
+        'leadUpdated from:body, taskListUpdated from:body">x</div>'
     )
     with override_settings(ROOT_URLCONF="tests.urlconfs.headers", TEMPLATES=on_disk(tmp_path)):
         messages = [m for m in hx_check_messages() if m.id in ("dj_hx.W024", "dj_hx.W025")]
     assert [(m.id, m.obj) for m in messages] == [("dj_hx.W024", "h-saved")]  # archived, which nothing hears
     assert messages[0].msg.startswith("saved() announces 'archived' with .trigger() or an HX-Trigger header, but")
+
+
+def test_w025_reads_django_htmx_trigger_client_event(tmp_path):
+    # hypha's todo view: trigger_client_event(response, "taskListUpdated", {}); after="settle" writes an htmx 2
+    # header htmx 4.0.2 does not read, so dashboardUpdated is still announced by nothing.
+    (tmp_path / "page.html").write_text(
+        '<div hx-get="/h/task/" hx-target="body" hx-trigger="issueChanged from:body, saved from:body, '
+        'leadUpdated from:body, archived from:body, taskListUpdated from:body, dashboardUpdated from:body">x</div>'
+    )
+    with override_settings(ROOT_URLCONF="tests.urlconfs.headers", TEMPLATES=on_disk(tmp_path)):
+        messages = [m for m in hx_check_messages() if m.id in ("dj_hx.W024", "dj_hx.W025")]
+    assert [(m.id, m.msg.split("'")[1]) for m in messages] == [("dj_hx.W025", "dashboardUpdated")]
 
 
 def test_w024_a_views_trigger_no_template_listens_for(tmp_path):
