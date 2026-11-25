@@ -10,8 +10,9 @@ outer sync (E013), a self-replacing control, click-to-edit's ``hx-target:inherit
 ``closest #<partial>`` (E012), and a ``<form method="post" hx-action>`` (E011); the other forms they accept
 are read from htmx 4.0.2's source. Then what the swaps E013 rejects do instead, and what an ``hx-select`` that
 reaches a control does (E026), with the ``hx-select=""`` that stops an inherited one. tests/test_interactions.py
-shows the desk passes every check. Last, two facts the guard rests on: fetch follows a redirect with the request's
-headers, and a whole page answering a partial request lands inside the target.
+shows the desk passes every check. Last, three facts the guard rests on: fetch follows a redirect with the request's
+headers, a 204 leaves a ``hx-swap="delete"`` row where an empty 200 deletes it, and a whole page answering a partial
+request lands inside the target.
 """
 
 from urllib.parse import urlparse
@@ -389,6 +390,27 @@ def test_fetch_follows_a_redirect_with_the_requests_headers(page, live, desk):
     page.locator("#ask").click()
     finished(page, 1)
     expect(page.locator("#slot")).to_have_text("GET partial")  # a 302 after a POST is followed as a GET
+    assert page.console_errors == []
+
+
+def test_a_204_leaves_a_delete_controls_row_where_removed_empty_200_deletes_it(page, live, desk):
+    # README's first example: HxNoSwap is recorded because htmx 4.0.2 swaps nothing on a 204, hx-swap="delete"
+    # included, so the deleted row stays on screen. The browser serves both answers; no view is involved.
+    page.route("**/answer/204/", lambda route: route.fulfill(status=204))
+    page.route("**/answer/200/", lambda route: route.fulfill(status=200, body="", content_type="text/html"))
+    open_desk(page, live)
+    page.evaluate("""() => {
+        document.body.insertAdjacentHTML('beforeend', '<ul id="rows">'
+            + '<li id="r204"><button hx-delete="/answer/204/" hx-target="closest li" hx-swap="delete">x</button></li>'
+            + '<li id="r200"><button hx-delete="/answer/200/" hx-target="closest li" hx-swap="delete">x</button></li></ul>');
+        htmx.process(document.getElementById('rows'));
+    }""")
+    page.locator("#r204 button").click()
+    finished(page, 1)
+    expect(page.locator("#r204")).to_have_count(1)  # still on screen
+    page.locator("#r200 button").click()
+    finished(page, 2)
+    expect(page.locator("#r200")).to_have_count(0)  # removed() answers with this
     assert page.console_errors == []
 
 

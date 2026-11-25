@@ -15,6 +15,8 @@ with the verbs that wants 0.3.0's strictness sets `HX_REQUIRE_VERBS = True`.
   `login_required`'s login page included, and a fragment there is what the redirect meant. `APPEND_SLASH`'s 301 is
   still always recorded.
 - W003's hint says to silence it when the fragments show their own messages.
+- README: a silent failure being caught comes first, then Install (line 60, was 140), then the vocabulary. The
+  principles and the rejected designs moved to `PRINCIPLES.md`. A test runs the first example as written.
 
 ### Added
 
