@@ -810,20 +810,19 @@ def _url_patterns(name: str):
     from django.urls import get_resolver
     from django.urls.resolvers import get_ns_resolver
 
+    from .hxmap import namespace_walk
+
     resolver = get_resolver()
     *path, view = name.split(":")
-    inside: list[str] = []
-    ns_pattern, ns_converters = "", {}
-    for namespace in path:
-        instances = resolver.app_dict.get(namespace)
-        if instances and namespace not in instances:
-            namespace = instances[0]  # an application namespace reverses to its default instance
-        if namespace not in resolver.namespace_dict:
-            return None, (namespace, inside, sorted({*resolver.namespace_dict, *resolver.app_dict}))
-        extra, resolver = resolver.namespace_dict[namespace]
-        inside.append(namespace)
-        ns_pattern += extra
-        ns_converters.update(resolver.pattern.converters)
+    steps, missing = namespace_walk(path, resolver)
+    inside = [step[0] for step in steps]
+    if steps:
+        resolver = steps[-1][2]
+    if missing is not None:
+        return None, (missing, inside, sorted({*resolver.namespace_dict, *resolver.app_dict}))
+    ns_pattern, ns_converters = "".join(step[1] for step in steps), {}
+    for step in steps:
+        ns_converters.update(step[2].pattern.converters)
     if ns_pattern:
         resolver = get_ns_resolver(ns_pattern, resolver, tuple(ns_converters.items()))
     patterns = [

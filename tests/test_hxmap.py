@@ -9,10 +9,11 @@ import types
 from pathlib import Path
 
 import pytest
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.test import override_settings
 from django.urls import include, path
 from django.utils.safestring import SafeString
+from django.views.generic import TemplateView
 
 from dj_hx import fragment
 from dj_hx.hxmap import build_map, print_map
@@ -403,3 +404,58 @@ def test_the_map_reads_each_views_module_for_its_own_verb_names(tmp_path, monkey
     ]
     m = build_map(urlconf, sources={})
     assert {endpoint: h.verbs for endpoint, h in m.handlers.items()} == {"one": {"page"}, "two": {"page"}, "three": {"fragment"}}
+
+
+# ------------------------------------------- what experiment 1 found on public projects (2026-11-24)
+
+
+def test_an_application_namespace_resolves_to_its_default_instance():
+    # hypha: include("...funds.urls", "apply") with app_name = "funds", and its templates write funds:... as
+    # reverse() accepts it; 60 of its controls were "names no URL pattern the map can see".
+    urlconf = types.ModuleType("ns_urls")
+    urlconf.urlpatterns = [path("store/", include(([path("item/", mapping.detail, name="item")], "shop"), namespace="store"))]
+    sources = {"p.html": "<a hx-get=\"{% url 'shop:item' %}\" hx-target=\"body\">a</a>\n<a hx-get=\"{% url 'store:item' %}\" hx-target=\"body\">b</a>"}
+    m = build_map(urlconf, sources=sources)
+    assert m.errors == [] and [c.endpoint for c in m.controls] == ["store:item", "store:item"]
+
+
+def test_patterns_included_under_two_namespaces_resolve_under_both():
+    # nav: its API patterns are included under api:, api:1: and api:2:, and the walk (dj-fixi's urlconf) found the
+    # first way only, so {% url 'api:1:interface-detail' %} named "no URL pattern the map can see".
+    api = [path("", include([path("thing/", mapping.detail, name="thing")]))]
+    urlconf = types.ModuleType("shared_urls")
+    urlconf.urlpatterns = [path("v1/", include((api, "api"), namespace="v1")), path("v2/", include((api, "api"), namespace="v2"))]
+    sources = {"p.html": "<a hx-get=\"{% url 'v2:thing' %}\" hx-target=\"body\">a</a>"}
+    m = build_map(urlconf, sources=sources)
+    assert m.errors == [] and m.controls[0].endpoint == "v2:thing"
+
+
+def test_a_url_name_ends_at_its_own_tag_when_another_tag_follows():
+    # hypha: hx-get="{% url 'apply:submissions:list' %}{% modify_query ... %}" read as the name 'list__JINJA__'.
+    urlconf = types.ModuleType("glued_urls")
+    urlconf.urlpatterns = [path("m/detail/", mapping.detail, name="m-detail")]
+    sources = {"p.html": "<a hx-get=\"{% url 'm-detail' %}{% now 'Y' %}\" hx-target=\"body\">a</a>"}
+    m = build_map(urlconf, sources=sources)
+    assert m.errors == [] and m.controls[0].endpoint == "m-detail"
+
+
+class WithContext(TemplateView):
+    template_name = "p.html"
+
+    def get_context_data(self, **kwargs):
+        return {"rows": []}  # its context, not a reply
+
+
+def as_json(request):
+    return JsonResponse({"rows": []})
+
+
+def test_in_django_only_jsonresponse_is_a_json_reply():
+    # matorral: ten "can return JSON (a dict)" warnings, each from a get_context_data.
+    urlconf = types.ModuleType("json_urls")
+    urlconf.urlpatterns = [path("ctx/", WithContext.as_view(), name="ctx"), path("json/", as_json, name="json")]
+    sources = {"p.html": '<a hx-get="/ctx/" hx-target="#x">a</a>\n<a hx-get="/json/" hx-target="#x">b</a>'}
+    m = build_map(urlconf, sources=sources)
+    found = [f for f in m.errors + m.warnings if "JSON" in f]
+    assert len(found) == 1 and "as_json()" in found[0] and "JsonResponse(...)" in found[0]
+

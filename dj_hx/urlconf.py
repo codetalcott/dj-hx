@@ -67,9 +67,12 @@ def _describe(pattern: Any) -> str:
 
 
 def _walk(node, namespaces, prefix, depth, max_depth, seen) -> Iterator[RoutedView]:
+    # ``seen`` holds the resolvers on the way here, not every one visited: one list of patterns can be
+    # included under several namespaces (an API under api:, api:1: and api:2:), and each way is a route.
+    # It still stops a URLconf that includes itself, as ``max_depth`` does.
     if depth > max_depth or id(node) in seen:
         return
-    seen.add(id(node))
+    seen = seen | {id(node)}
 
     try:
         # A cached_property that imports the included module, so this is where a
@@ -132,7 +135,7 @@ def iter_routed_views(
     except Exception:
         return
 
-    yield from _walk(resolver, (), "", 0, max_depth, set())
+    yield from _walk(resolver, (), "", 0, max_depth, frozenset())
 
 
 def routed_view_classes(

@@ -18,9 +18,10 @@ import inspect
 import textwrap
 from typing import Any
 
-from django.urls import Resolver404, resolve
+from django.urls import Resolver404, get_resolver, resolve
 
 from . import mapcore
+from .hxlint import JINJA
 from .mapcore import ALL_METHODS, URLFOR, Handler, Map
 from .templates import ACT_MARK, in_site_packages, strip_template_syntax, template_sources
 from .urlconf import RoutedView, iter_routed_views
@@ -70,6 +71,28 @@ def _scan(handler: Handler, func, verb_names: dict[str, str], method: str = ALL_
     except (OSError, TypeError, SyntaxError):
         return
     mapcore.scan_function(handler, tree, verb_names, method=method)
+    # The core reads a returned dict or list as JSON, as Flask sends it. In Django only JsonResponse is: a dict
+    # is a class-based view's get_context_data, an interaction's context, or a view that raises.
+    for kinds in handler.json_returns.values():
+        kinds -= {"a dict", "a list"}
+
+
+def namespace_walk(path: list[str], resolver) -> tuple[list[tuple[str, str, Any]], str | None]:
+    """
+    The namespaces of a ``{% url %}`` name as ``reverse()`` walks them, an application namespace going to its
+    default instance: ``([(instance, its route prefix, its resolver), ...], None)``, or the steps so far and
+    the namespace that is not installed. Check ``dj_hx.E022`` and the map both read names through this.
+    """
+    steps: list[tuple[str, str, Any]] = []
+    for namespace in path:
+        instances = resolver.app_dict.get(namespace)
+        if instances and namespace not in instances:
+            namespace = instances[0]  # an application namespace reverses to its default instance
+        if namespace not in resolver.namespace_dict:
+            return steps, namespace
+        extra, resolver = resolver.namespace_dict[namespace]
+        steps.append((namespace, extra, resolver))
+    return steps, None
 
 
 def _endpoint(routed: RoutedView) -> str:
@@ -182,6 +205,13 @@ def map_with_interactions(urlconf=None, sources: dict[str, str] | None = None) -
     for ep, h in handlers.items():
         short.setdefault(ep.rsplit(":", 1)[-1], h)
     acts: list = []  # one list for every template, so each __ACT<n>__ marker names one tag
+    root = get_resolver(urlconf)
+
+    def instance(name: str) -> str:
+        """``shop:item`` as the URLconf routes it, ``store:item``, when shop is store's application namespace."""
+        *path, view = name.split(":")
+        steps, missing = namespace_walk(path, root)
+        return name if missing is not None else ":".join([*(step[0] for step in steps), view])
 
     def resolve_control(url: str, method: str) -> tuple[str | None, str | None]:
         act = ACT_MARK.match(url)
@@ -189,10 +219,12 @@ def map_with_interactions(urlconf=None, sources: dict[str, str] | None = None) -
             return _act_endpoint(acts[int(act.group(1))], interactions)
         if url.startswith(URLFOR):
             written = url[len(URLFOR):].split("?", 1)[0].split("#", 1)[0]
-            # The name ends where the tag did: what the attribute writes after it, as in
-            # {% url 'x' %}{% if q %}?q={{ q }}{% endif %}, reaches here as a space-padded branch marker.
+            # The name ends where the tag did: what the attribute writes after it reaches here as a space-padded
+            # branch marker ({% url 'x' %}{% if q %}?q={{ q }}{% endif %}) or as the sentinel a value tag leaves
+            # ({% url 'x' %}{% modify_query ... %}), which no URL name holds.
+            written = written.split(JINJA, 1)[0]
             first = written.split(None, 1)[0] if written.strip() else written
-            for name in dict.fromkeys((written, first)):
+            for name in dict.fromkeys((written, first, instance(first))):
                 h = handlers.get(name) or short.get(name)
                 if h is not None:
                     return h.endpoint, None
