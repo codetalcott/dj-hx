@@ -1,8 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.4.2 (2026-11-25)
 
-The four false classes left after 0.4.1's map fixes, from the same run of the checks on six public Django projects.
+The four false classes left after 0.4.1's map fixes, from the same run of the checks on six public Django projects:
+false Errors there went from 10 in 110 to 1 in 101. Added: check `W027` (a Warning), and a `script_attributes=` keyword on
+`templates.lint_template_source()`. Nothing changes incompatibly.
 
 ### Added
 
@@ -13,6 +15,8 @@ The four false classes left after 0.4.1's map fixes, from the same run of the ch
   `{% url 'set_language' %}` under the same condition. The URLconf's source is read only when a tag has failed. A
   route a call builds (`debug_toolbar_urls()`), a loop adds, or a third-party URLconf adds by what is installed is
   not seen, and stays E022.
+- `templates.lint_template_source(..., script_attributes=())`: the `hx-*` names scripts in other templates read, so a
+  project's own attribute is not reported (`lint_templates()` passes them).
 
 ### Fixed
 

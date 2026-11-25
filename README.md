@@ -18,12 +18,10 @@ header, offers no way to read the others, and makes each of htmx 4's silent
 outcomes loud (see [Beside the alternatives](#beside-the-alternatives)). The
 same design for Flask is [hx-flask]; the sibling for Fixi.js is [dj-fixi].
 
-**Status:** 0.4.1 (2026-11-25), alpha, installed from its git tag; not on PyPI. Django 5.2, 6.0
+**Status:** 0.4.2 (2026-11-25), alpha, installed from its git tag; not on PyPI. Django 5.2, 6.0
 and 6.1; Python 3.11 to 3.14, the free-threaded 3.14 included. Upgrading from 0.3.0: a project written
 with the verbs sets `HX_REQUIRE_VERBS = True` to keep 0.3.0's strictness (see the
-[CHANGELOG](https://github.com/codetalcott/dj-hx/blob/main/CHANGELOG.md)). This page describes `main`, which is
-ahead of 0.4.1: check `W027` and the lint and event fixes under the CHANGELOG's Unreleased are not in 0.4.1.
-Install `@main` for them.
+[CHANGELOG](https://github.com/codetalcott/dj-hx/blob/main/CHANGELOG.md)).
 
 ## A silent failure, caught
 
@@ -63,8 +61,8 @@ HxNoSwap`). It runs under pytest-django, with `DJANGO_SETTINGS_MODULE` set in
 ## Install
 
 ```sh
-pip install "dj-hx @ git+https://github.com/codetalcott/dj-hx@v0.4.1"
-pip install "dj-hx[partials] @ git+https://github.com/codetalcott/dj-hx@v0.4.1"   # Django 5.2
+pip install "dj-hx @ git+https://github.com/codetalcott/dj-hx@v0.4.2"
+pip install "dj-hx[partials] @ git+https://github.com/codetalcott/dj-hx@v0.4.2"   # Django 5.2
 ```
 
 ```python
