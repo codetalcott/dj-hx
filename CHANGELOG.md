@@ -1,11 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 (2026-11-24)
 
-The guard can now sit beside django-htmx. Installing `HxMiddleware` no longer flags every view the verbs did
-not build: by default the guard records only what goes wrong whoever built the response. That was measured on a
-miniature copying five of matorral's django-htmx response patterns (README, "The htmx layer"). A project written
-with the verbs that wants 0.3.0's strictness sets `HX_REQUIRE_VERBS = True`.
+The guard can now sit beside django-htmx. Installing `HxMiddleware` no longer flags every view the verbs did not
+build: by default the guard records only what goes wrong whoever built the response. That was measured on a
+miniature copying five of matorral's django-htmx response patterns (README, "The htmx layer"). One default changes,
+so check Changed before upgrading. A project written with the verbs that wants 0.3.0's strictness sets
+`HX_REQUIRE_VERBS = True`.
 
 ### Changed
 
