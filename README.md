@@ -3,6 +3,123 @@
 Handler-first htmx 4 for Django. The view names the outcome; the template
 keeps the controls; fragments are partials of the page template.
 
+htmx 4 does some things without a word. A 204 leaves the target as it was, so a deleted row
+stays on screen. A whole page answering a control that targets an element is swapped into that
+element. A message added while answering a fragment waits for some later page. dj-hx makes each of
+these loud. A verb raises where the outcome is certain when it is called. The middleware records
+and logs the rest in production, and its test client raises them. It also has two checks any
+Django project can use, for `{% url %}` tags and undefined template variables.
+
+Nothing here depends on django-htmx. The difference is a stance, not htmx 4
+support, which django-htmx has had since 1.28: [django-htmx] and [djxi] hand the
+view `request.htmx.target` and `.source` and a setter for every response
+header, and leave it to the view to use them well. dj-hx reads one request
+header, offers no way to read the others, and makes each of htmx 4's silent
+outcomes loud (see [Beside the alternatives](#beside-the-alternatives)). The
+same design for Flask is [hx-flask]; the sibling for Fixi.js is [dj-fixi].
+
+**Status:** 0.3.0 (2026-11-24), alpha, installed from its git tag; not on PyPI. Django 5.2, 6.0
+and 6.1; Python 3.11 to 3.14, the free-threaded 3.14 included. This page describes `main`, which is
+ahead of 0.3.0. `HX_REQUIRE_VERBS`, the guard's check for a whole page, and adding the guard beside
+django-htmx are not in 0.3.0 (see [CHANGELOG](https://github.com/codetalcott/dj-hx/blob/main/CHANGELOG.md),
+Unreleased). Install `@main` for them.
+
+## A silent failure, caught
+
+A row's button deletes it, `<button hx-delete="{% url 'delete_contact' c.pk %}"
+hx-target="closest tr" hx-swap="delete">`, and the view answers as many Django
+views do:
+
+```python
+from django.http import HttpResponse
+
+def delete_contact(request, pk):
+    Contact.objects.filter(pk=pk).delete()
+    return HttpResponse(status=204)  # htmx 4 swaps nothing on a 204: the deleted row stays on screen
+```
+
+With dj-hx installed (below), the test that requests it as htmx 4 does fails:
+
+```python
+import pytest
+from dj_hx.testing import HxTestClient
+
+@pytest.mark.django_db
+def test_delete_contact():
+    HxTestClient().hx_delete("/contacts/3/")  # HX-Request: true, HX-Request-Type: partial
+```
+
+```text
+dj_hx.errors.HxNoSwap: delete_contact() answered a request that targets an element with a 204; htmx 4 does not swap it. Use removed() with hx-swap="delete", or return a fragment.
+```
+
+`return removed(request)` (`from dj_hx import removed`) fixes it. In production
+the middleware logs the same finding to the `dj_hx` logger instead of raising.
+A test that expects it writes `with pytest.raises(HxNoSwap):` (`from dj_hx import
+HxNoSwap`). It runs under pytest-django, with `DJANGO_SETTINGS_MODULE` set in
+`pytest.ini`. [What is loud](#what-is-loud) lists every failure dj-hx catches.
+
+## Install
+
+```sh
+pip install "dj-hx @ git+https://github.com/codetalcott/dj-hx@v0.3.0"
+pip install "dj-hx[partials] @ git+https://github.com/codetalcott/dj-hx@v0.3.0"   # Django 5.2
+```
+
+```python
+INSTALLED_APPS = [..., "django.contrib.messages", "dj_hx", ...]
+
+MIDDLEWARE = [
+    ...,
+    "django.contrib.messages.middleware.MessageMiddleware",
+    ...,
+    "dj_hx.middleware.HxMiddleware",        # anywhere after MessageMiddleware; last is fine
+]
+
+HX_MESSAGES_TEMPLATE = "layout.html#messages"   # see the messages bridge
+HX_REQUIRE_VERBS = True                         # optional, and on main only (not in 0.3.0); see below
+```
+
+With `django.contrib.messages` installed, as `startproject` installs it, check `dj_hx.W003`
+warns until `HX_MESSAGES_TEMPLATE` names a partial (see [the messages bridge](#the-messages-bridge)).
+
+Set `HX_REQUIRE_VERBS` in a project written with the verbs: on a partial request
+it also records any 3xx and any response no verb built. Leave it out to add the
+guard beside django-htmx and keep the views as they are (see
+[the htmx layer](#the-htmx-layer)).
+
+On Django 5.2, `{% partialdef %}` comes from django-template-partials,
+which registers nothing globally. Install it, add it to `INSTALLED_APPS`, and
+name its tag library as a builtin, or every template has to `{% load partials %}`:
+
+```python
+INSTALLED_APPS = ["template_partials", ..., "dj_hx", ...]
+
+TEMPLATES = [{
+    "BACKEND": "django.template.backends.django.DjangoTemplates",
+    "OPTIONS": {"builtins": ["template_partials.templatetags.partials"], ...},
+}]
+```
+
+Django 6.0 needs none of that; `{% partialdef %}` is built in.
+
+The layout loads htmx 4, here 4.0.2 from jsDelivr: the release the checks were read from. Attributes
+reach descendants only with `:inherited` in htmx 4, so the layout uses it to boost links and send the
+CSRF header. It also holds the messages partial that `HX_MESSAGES_TEMPLATE` names:
+
+```django
+<script src="https://cdn.jsdelivr.net/npm/htmx.org@4.0.2/dist/htmx.min.js"></script>
+...
+<body hx-boost:inherited="true" hx-headers:inherited='{"X-CSRFToken": "{{ csrf_token }}"}'>
+{% partialdef messages inline %}
+<div id="messages">{% for message in messages %}<div class="flash">{{ message }}</div>{% endfor %}</div>
+{% endpartialdef %}
+```
+
+## The vocabulary
+
+A view written with the verbs, and the partial it names:
+
 ```python
 from dj_hx import render, page, invalid, redirect, removed, wants_page
 
@@ -28,16 +145,28 @@ def contacts_view(request, contact_id):
 </tbody>
 ```
 
-Nothing here depends on django-htmx. The difference is a stance, not htmx 4
-support, which django-htmx has had since 1.28: django-htmx and djxi hand the
-view `request.htmx.target` and `.source` and a setter for every response
-header, and leave it to the view to use them well. dj-hx reads one request
-header, offers no way to read the others, and makes each of htmx 4's silent
-outcomes loud (see [Beside the alternatives](#beside-the-alternatives)). The
-same design for Flask is [hx-flask]; the sibling for Fixi.js is [dj-fixi].
+```python
+from dj_hx import (is_htmx, wants_page, wants_fragment,                 # HX-Request-Type, nothing else
+                   render, page, fragment, invalid, redirect, navigate, removed, text)
 
-**Status:** 0.3.0 (2026-11-24), alpha, installed from its git tag; not on PyPI. Django 5.2, 6.0
-and 6.1; Python 3.11 to 3.14, the free-threaded 3.14 included.
+render(request, "index.html", "rows", ctx)        # the page, or the partial, by request type
+page(request, "show.html", ctx)                   # always the page; raises on a partial request
+fragment(request, "archive_ui.html", context=ctx) # always a fragment; loud on a boosted request
+invalid(request, "new.html", "form", ctx)         # render, status 422
+redirect(request, "contacts", pk=3)               # a plain 303 (resolves like django.shortcuts.redirect); raises on a partial request
+navigate(request, "login")                        # leave the page: a 303, or HX-Redirect on a partial request
+removed(request)                                  # 200, empty; the control's hx-swap="delete" acts (beside a message, only delete or swapEmpty:true swaps it)
+text(request, "(3 total)")                        # an escaped text fragment
+
+response.trigger("contacts-changed")              # HX-Trigger, always JSON, always with a target (body)
+response.partial("count")                         # appends <hx-partial hx-target="#count"> from the partial (fragments; raises on removed() and text())
+response.push_url(url) / .replace_url(url) / .with_status(code)
+```
+
+A partial name containing a dot (`rows.html`) is a separate template file;
+anything else is a `{% partialdef %}` of the page template. A partial used as
+an `<hx-partial>` (`.partial("count")`, the messages partial) must have a root
+element whose `id` is the partial's name; the render checks it.
 
 ## Two checks for any Django project
 
@@ -77,137 +206,8 @@ silence (`SILENCED_SYSTEM_CHECKS = ["dj_hx.W001"]`).
    Django 6.0 has partials built in; on 5.2 install
    `django-template-partials` and register its tags (see Install).
 
-## Principles, stated so an agent can apply them
-
-The three rules have working consequences. Each is a sentence to check code
-against.
-
-- **Never return `HttpResponseRedirect`, `HttpResponse("")`, a 204 or
-  `django.shortcuts.render` to an htmx request.** Say what happened:
-  `redirect`, `removed`, `text`, `render(request, template, partial)`, and
-  `navigate` when the answer is another page whatever the control targets (a
-  login check). With `HX_REQUIRE_VERBS`, a response no verb built that answers
-  a partial request is recorded (`HxBareResponse`), and so is any 3xx.
-- **Never read `HX-Source` or `HX-Target`.** The real question is whether the
-  client asked for a page or a fragment: `wants_page(request)`.
-- **Announce facts; do not update regions.** Prefer `.trigger("contacts-changed")`
-  with `hx-trigger="contacts-changed from:body"` on the element that cares, and
-  `.partial()` only when the handler already holds the data. `.trigger()` always
-  names a target, so the event lands whether or not the swap removed the element
-  that asked.
-- **The template predicts the DOM effect; the handler predicts the resource
-  effect and the representation.** `.retarget()` and `.reswap()` exist and break
-  the first half; use them with a comment saying why.
-- **Every control says `{% url %}`, or `{% act %}` for an interaction.** Then a
-  control names the view that answers it, a search for the view finds every
-  caller, and the trailing slash cannot drift from the route.
-- **Every name is literal.** `render(request, "index.html", "rows")` is matched
-  by `{% partialdef rows %}` in that file; nothing is derived from a naming
-  scheme. The one convention, a partial's root `id` equals its name, is checked
-  at the render.
-
-Silent failure, not API surface, is the friction, for people and agents alike.
-Every row of the catalogue below lands on the first tier it can: delete the
-dependency (there is no `source` or `target` to read; `.trigger()` cannot omit
-a target), else fail at the first deterministic moment (the verbs raise, the
-guard records, `HxTestClient` raises), else check statically (the lint, the
-map, the system checks), else document.
-
-What was rejected, and why:
-
-- **Controls declared in Python**, an `hx_attrs(get=..., target=...)` helper or
-  control objects beside the view. It hides what the search box does from a
-  reader of `index.html`, it is a vocabulary agents have never seen, and it does
-  not enforce the agreement it seems to promise. `hx_map` does, from the HTML
-  people and agents already write.
-- **Server-side retargeting as a default.** `HX-Retarget`, `HX-Reswap` and
-  `HX-Location` make a control's DOM effect invisible from the template.
-  `HX-Redirect` is not one of them: it replaces the page instead of changing
-  what the control swaps, and `navigate` sends it only where a 303 would land
-  inside the target.
-- **htmx 2 compatibility.** Without `HX-Request-Type` the page-or-fragment
-  question is a guess.
-- **Decorators that render a returned dict, as first proposed.** A view that
-  sometimes returns a dict and sometimes a redirect has two return types, which
-  is an agent trap. `@interaction` (below) is that decorator, made safe by
-  three rules: one return type, a dict of context keys or `None`, and anything
-  else, a response included, raises; the reply is always the partial it
-  declares, a refusal's 422 included; and leaving the page is a plain view's
-  job, through `navigate()`. What it costs: one more concept beside the verbs,
-  and routes minted for interactions (`x/<app label>/<handler>/…`) instead of
-  written in the app's URLconf, served by one more include.
-
-## Install
-
-```sh
-pip install "dj-hx @ git+https://github.com/codetalcott/dj-hx@v0.3.0"
-pip install "dj-hx[partials] @ git+https://github.com/codetalcott/dj-hx@v0.3.0"   # Django 5.2
-```
-
-```python
-INSTALLED_APPS = [..., "django.contrib.messages", "dj_hx", ...]
-
-MIDDLEWARE = [
-    ...,
-    "django.contrib.messages.middleware.MessageMiddleware",
-    "dj_hx.middleware.HxMiddleware",        # after MessageMiddleware
-]
-
-HX_MESSAGES_TEMPLATE = "layout.html#messages"   # optional; see the messages bridge
-HX_REQUIRE_VERBS = True                         # optional; see below
-```
-
-Set `HX_REQUIRE_VERBS` in a project written with the verbs: on a partial request
-it also records any 3xx and any response no verb built. Leave it out to add the
-guard beside django-htmx and keep the views as they are (see
-[the htmx layer](#the-htmx-layer)).
-
-On Django 5.2, `{% partialdef %}` comes from django-template-partials,
-which registers nothing globally. Install it, add it to `INSTALLED_APPS`, and
-name its tag library as a builtin, or every template has to `{% load partials %}`:
-
-```python
-INSTALLED_APPS = ["template_partials", ..., "dj_hx", ...]
-
-TEMPLATES = [{
-    "BACKEND": "django.template.backends.django.DjangoTemplates",
-    "OPTIONS": {"builtins": ["template_partials.templatetags.partials"], ...},
-}]
-```
-
-Django 6.0 needs none of that; `{% partialdef %}` is built in.
-
-The layout loads htmx 4 and, because attributes reach descendants only with
-`:inherited` in htmx 4, boosts and sends the CSRF header like this:
-
-```django
-<body hx-boost:inherited="true" hx-headers:inherited='{"X-CSRFToken": "{{ csrf_token }}"}'>
-```
-
-## The vocabulary
-
-```python
-from dj_hx import (is_htmx, wants_page, wants_fragment,                 # HX-Request-Type, nothing else
-                   render, page, fragment, invalid, redirect, navigate, removed, text)
-
-render(request, "index.html", "rows", ctx)        # the page, or the partial, by request type
-page(request, "show.html", ctx)                   # always the page; raises on a partial request
-fragment(request, "archive_ui.html", context=ctx) # always a fragment; loud on a boosted request
-invalid(request, "new.html", "form", ctx)         # render, status 422
-redirect(request, "contacts", pk=3)               # a plain 303 (resolves like django.shortcuts.redirect); raises on a partial request
-navigate(request, "login")                        # leave the page: a 303, or HX-Redirect on a partial request
-removed(request)                                  # 200, empty; the control's hx-swap="delete" acts (beside a message, only delete or swapEmpty:true swaps it)
-text(request, "(3 total)")                        # an escaped text fragment
-
-response.trigger("contacts-changed")              # HX-Trigger, always JSON, always with a target (body)
-response.partial("count")                         # appends <hx-partial hx-target="#count"> from the partial (fragments; raises on removed() and text())
-response.push_url(url) / .replace_url(url) / .with_status(code)
-```
-
-A partial name containing a dot (`rows.html`) is a separate template file;
-anything else is a `{% partialdef %}` of the page template. A partial used as
-an `<hx-partial>` (`.partial("count")`, the messages partial) must have a root
-element whose `id` is the partial's name; the render checks it.
+[PRINCIPLES.md](https://github.com/codetalcott/dj-hx/blob/main/PRINCIPLES.md) states the rules'
+consequences as sentences to check code against, and says what was rejected and why.
 
 ## The messages bridge
 
@@ -332,7 +332,8 @@ The verbs raise where the outcome is certain at call time; everything else is
 recorded on `response.hx_findings`, logged to the `dj_hx` logger, and raised
 by `HxTestClient`. Nothing is gated on `DEBUG` that a test needs. A response
 carrying `HX-Redirect`, `HX-Refresh: true` or `HX-Location` is not judged,
-because htmx 4 obeys those headers before any swap.
+because htmx 4 obeys those headers before any swap. Every exception named here
+imports from `dj_hx` (`from dj_hx import HxNoSwap`).
 
 | Failure | What happens | Full entry |
 |---|---|---|
@@ -598,7 +599,8 @@ project is still on or moving from htmx 2. Use dj-hx when you want the server
 to refuse, record or raise on what htmx 4 would do silently, and accept the
 stance that comes with it.
 
-Or keep django-htmx and add dj-hx beside it for the guard alone: `"dj_hx"` in
+Or keep django-htmx and add dj-hx beside it for the guard alone (on `main`, not in
+0.3.0): `"dj_hx"` in
 `INSTALLED_APPS` and `HxMiddleware` after `MessageMiddleware`, with the views
 unchanged and `HX_REQUIRE_VERBS` left out. The guard then records only what goes
 wrong whoever built the response: a 204, a whole page answering a partial
@@ -704,3 +706,5 @@ MIT
 [hx-flask]: https://github.com/codetalcott/hx-flask
 [dj-fixi]: https://github.com/codetalcott/dj-fixi
 [matorral]: https://github.com/matorral-project/matorral
+[django-htmx]: https://github.com/adamchainz/django-htmx
+[djxi]: https://pypi.org/project/djxi/

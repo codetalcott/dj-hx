@@ -129,3 +129,31 @@ def test_readmes_client_swap_reaches_every_client_a_suite_builds(tmp_path):
         cwd=tmp_path, env=env, capture_output=True, text=True, timeout=120,
     )
     assert "4 passed" in result.stdout, result.stdout + result.stderr
+
+
+def test_readmes_silent_failure_is_caught_as_it_shows(settings, monkeypatch):
+    """README's first example, run as written: its view, its test, and the error it quotes."""
+    import sys
+    import types
+
+    from django.urls import path
+
+    from dj_hx import HxNoSwap
+
+    text = (ROOT / "README.md").read_text()
+    begin = text.index("## A silent failure, caught")
+    view_code, test_code, shown = FENCED.findall(text[begin : text.index("\n## ", begin + 1)])
+    module = types.ModuleType("readme_caught")
+    deleted = []
+    module.Contact = types.SimpleNamespace(
+        objects=types.SimpleNamespace(filter=lambda **kw: types.SimpleNamespace(delete=lambda: deleted.append(kw)))
+    )
+    exec(view_code, module.__dict__)
+    module.urlpatterns = [path("contacts/<int:pk>/", module.delete_contact, name="delete_contact")]
+    monkeypatch.setitem(sys.modules, "readme_caught", module)
+    settings.ROOT_URLCONF = "readme_caught"
+    exec(test_code, module.__dict__)
+    with pytest.raises(HxNoSwap) as info:
+        module.test_delete_contact()
+    assert deleted == [{"pk": 3}]
+    assert f"dj_hx.errors.HxNoSwap: {info.value}" == shown.strip()

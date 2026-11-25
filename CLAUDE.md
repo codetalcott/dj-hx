@@ -21,9 +21,9 @@ No virtualenv is checked in: `.venv/` is gitignored, and an old local one can po
 uv venv <venv> && uv pip install -p <venv>/bin/python "django~=6.1.0" pytest pytest-django ruff mypy django-stubs "playwright==1.64.0"  # below Django 6, add django-template-partials
 <venv>/bin/python -m playwright install chromium
 
-<venv>/bin/python -m pytest -q                      # 468 tests, ~19 s
-<venv>/bin/python -m pytest -q -m "not browser"     # 425, ~4 s, skipping Chromium
-<venv>/bin/python -m pytest -q -m browser           # the 43 Playwright tests alone, ~15 s
+<venv>/bin/python -m pytest -q                      # 470 tests, ~19 s
+<venv>/bin/python -m pytest -q -m "not browser"     # 426, ~4 s, skipping Chromium
+<venv>/bin/python -m pytest -q -m browser           # the 44 Playwright tests alone, ~15 s
 <venv>/bin/python -m pytest tests/test_verbs.py::test_text_escapes
 <venv>/bin/ruff check .
 <venv>/bin/mypy dj_hx                                # typed: the Typing :: Typed classifier is a claim, and these two back it
