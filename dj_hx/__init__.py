@@ -6,7 +6,7 @@ own protocol; the template keeps the request-side controls; fragments are
 partials of the page template. See README.md.
 """
 
-__version__ = "0.4.0"
+__version__ = "0.4.1"
 
 from .errors import (
     HxBareResponse,

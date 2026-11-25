@@ -21,8 +21,8 @@ No virtualenv is checked in: `.venv/` is gitignored, and an old local one can po
 uv venv <venv> && uv pip install -p <venv>/bin/python "django~=6.1.0" pytest pytest-django ruff mypy django-stubs "playwright==1.64.0"  # below Django 6, add django-template-partials
 <venv>/bin/python -m playwright install chromium
 
-<venv>/bin/python -m pytest -q                      # 470 tests, ~19 s
-<venv>/bin/python -m pytest -q -m "not browser"     # 426, ~4 s, skipping Chromium
+<venv>/bin/python -m pytest -q                      # 474 tests, ~20 s
+<venv>/bin/python -m pytest -q -m "not browser"     # 430, ~4 s, skipping Chromium
 <venv>/bin/python -m pytest -q -m browser           # the 44 Playwright tests alone, ~15 s
 <venv>/bin/python -m pytest tests/test_verbs.py::test_text_escapes
 <venv>/bin/ruff check .
@@ -30,7 +30,7 @@ uv venv <venv> && uv pip install -p <venv>/bin/python "django~=6.1.0" pytest pyt
 <venv>/bin/mypy --strict --follow-imports=silent tests/typed_consumer.py   # README's idioms, as a project's mypy sees them
 ```
 
-Counts and times measured 2026-11-24 on an Apple M4: Python 3.13.7, Django 6.1.3, Playwright 1.64.0.
+Counts and times measured 2026-11-25 on an Apple M4: Python 3.13.7, Django 6.1.3, Playwright 1.64.0.
 The eight modules a project's code reaches (`pyproject.toml`'s mypy override) must annotate every function: an
 unannotated or `-> Any` method there hands every project `Any`, which only the consumer file catches for `Any`.
 `pytest.ini` puts the repo and `example/` on the path, so no `PYTHONPATH` is needed. On macOS 27.2 here,
